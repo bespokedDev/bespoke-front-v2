@@ -1,0 +1,920 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+"use client";
+
+import { useState, useEffect } from "react";
+import { apiClient } from "@/lib/api";
+import { handleApiError, getFriendlyErrorMessage } from "@/lib/errorHandler";
+import { formatDateForDisplay, extractDatePart } from "@/lib/dateUtils";
+import { PageHeader } from "@/components/ui/page-header";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { DataTable } from "@/components/ui/data-table";
+import {
+  Plus,
+  Pencil,
+  Ban,
+  CheckCircle2,
+  Loader2,
+  Trash2,
+  Eye,
+  ArrowUpDown,
+  X,
+  AlertCircle,
+} from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import type { ColumnDef } from "@tanstack/react-table";
+
+// --- Tipos y Estado Inicial (igual que antes) ---
+interface PaymentData {
+  _id?: string;
+  bankName: string;
+  accountType?: string | null;
+  accountNumber?: string | null;
+  holderName?: string | null;
+  holderCI?: string | null;
+  holderEmail?: string | null;
+  holderAddress?: string | null;
+  routingNumber?: string | null;
+}
+interface EmergencyContact {
+  name?: string | null;
+  phone?: string | null;
+}
+interface Professor {
+  _id: string;
+  name: string;
+  ciNumber: string;
+  dob: string;
+  address: string;
+  email: string;
+  phone: string;
+  occupation: string;
+  startDate?: string;
+  emergencyContact: EmergencyContact;
+  paymentData: PaymentData[];
+  isActive: boolean;
+}
+type ProfessorFormData = Omit<Professor, "_id" | "isActive">;
+const initialProfessorState: ProfessorFormData = {
+  name: "",
+  ciNumber: "",
+  dob: "",
+  address: "",
+  email: "",
+  phone: "",
+  occupation: "",
+  startDate: "",
+  emergencyContact: { name: "", phone: "" },
+  paymentData: [
+    {
+      bankName: "",
+      accountType: "",
+      accountNumber: "",
+      holderName: "",
+      holderCI: "",
+      holderEmail: "",
+      holderAddress: "",
+      routingNumber: "",
+    },
+  ],
+};
+const formatDateForInput = (dateString?: string | null) => {
+  if (!dateString) return "";
+  try {
+    return extractDatePart(dateString);
+  } catch (e) {
+    console.log("error: ", e);
+    return "";
+  }
+};
+
+// --- COMPONENTE PRINCIPAL ---
+export default function TeachersPage() {
+  const [teachers, setTeachers] = useState<Professor[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Estados del diálogo (se mantienen igual)
+  const [openDialog, setOpenDialog] = useState<
+    "create" | "edit" | "status" | "view" | null
+  >(null);
+  const [selectedTeacher, setSelectedTeacher] = useState<Professor | null>(
+    null
+  );
+  const [formData, setFormData] = useState<Partial<ProfessorFormData>>(
+    initialProfessorState
+  );
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [dialogError, setDialogError] = useState<string | null>(null);
+
+  // --- Lógica de la API (se mantiene igual) ---
+  const fetchTeachers = async () => {
+    /* ... (sin cambios) ... */
+    try {
+      setIsLoading(true);
+      setError(null);
+      const data = await apiClient("api/professors");
+      setTeachers(data);
+    } catch (err: unknown) {
+      const errorMessage = getFriendlyErrorMessage(
+        err,
+        "Failed to load teachers. Please try again."
+      );
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  useEffect(() => {
+    fetchTeachers();
+  }, []);
+
+  const handleOpen = (
+    type: "create" | "edit" | "status" | "view",
+    teacher?: Professor
+  ) => {
+    /* ... (sin cambios) ... */
+    setDialogError(null);
+    if (type === "create") {
+      setSelectedTeacher(null);
+      setFormData(initialProfessorState);
+    } else if (teacher) {
+      setSelectedTeacher(teacher);
+      if (type === "edit") {
+        const { /*_id, isActive, __v,*/ ...editableData } = teacher as any;
+        if (editableData.dob)
+          editableData.dob = formatDateForInput(editableData.dob);
+        if (editableData.startDate)
+          editableData.startDate = formatDateForInput(editableData.startDate);
+        setFormData(editableData);
+      }
+    }
+    setOpenDialog(type);
+  };
+  const handleClose = () => {
+    /* ... (sin cambios) ... */
+    setOpenDialog(null);
+    setSelectedTeacher(null);
+    setFormData(initialProfessorState);
+    setIsSubmitting(false);
+    setDialogError(null);
+  };
+
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    /* ... (sin cambios) ... */
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+  const handleNestedChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    parentKey: keyof ProfessorFormData,
+    childKey: keyof EmergencyContact
+  ) => {
+    /* ... (sin cambios) ... */
+    const { value } = e.target;
+    setFormData((prev: any) => ({
+      ...prev,
+      [parentKey]: { ...prev[parentKey], [childKey]: value },
+    }));
+  };
+  const handlePaymentDataChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    index: number,
+    field: keyof PaymentData
+  ) => {
+    /* ... (sin cambios) ... */
+    const { value } = e.target;
+    const updatedPaymentData = [...(formData.paymentData || [])];
+    updatedPaymentData[index] = {
+      ...updatedPaymentData[index],
+      [field]: value,
+    };
+    setFormData((prev) => ({ ...prev, paymentData: updatedPaymentData }));
+  };
+  const addPaymentMethod = () => {
+    /* ... (sin cambios) ... */
+    const newPaymentData = [...(formData.paymentData || []), { bankName: "" }];
+    setFormData((prev) => ({ ...prev, paymentData: newPaymentData }));
+  };
+  const removePaymentMethod = (index: number) => {
+    /* ... (sin cambios) ... */
+    const newPaymentData = (formData.paymentData || []).filter(
+      (_, i) => i !== index
+    );
+    setFormData((prev) => ({ ...prev, paymentData: newPaymentData }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    /* ... (sin cambios) ... */
+    e.preventDefault();
+    setIsSubmitting(true);
+    setDialogError(null);
+    const payload = { ...formData };
+    if (!payload.startDate) {
+      delete payload.startDate;
+    }
+    if (
+      payload.emergencyContact &&
+      !payload.emergencyContact.name &&
+      !payload.emergencyContact.phone
+    ) {
+      delete payload.emergencyContact;
+    }
+    try {
+      if (openDialog === "create") {
+        await apiClient("api/professors", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+      } else if (openDialog === "edit" && selectedTeacher) {
+        await apiClient(`api/professors/${selectedTeacher._id}`, {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        });
+      }
+      await fetchTeachers();
+      handleClose();
+    } catch (err: unknown) {
+      const errorInfo = handleApiError(err);
+      const errorMessage = getFriendlyErrorMessage(
+        err,
+        errorInfo.isValidationError
+          ? "Please check all required fields and try again."
+          : errorInfo.isConflictError
+          ? "A teacher with this information already exists."
+          : "Failed to save teacher. Please try again."
+      );
+      setDialogError(errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleToggleStatus = async () => {
+    /* ... (sin cambios) ... */
+    if (!selectedTeacher) return;
+    setIsSubmitting(true);
+    setDialogError(null);
+    const action = selectedTeacher.isActive ? "deactivate" : "activate";
+    try {
+      await apiClient(`api/professors/${selectedTeacher._id}/${action}`, {
+        method: "PATCH",
+      });
+      await fetchTeachers();
+      handleClose();
+    } catch (err: unknown) {
+      const errorInfo = handleApiError(err);
+      const errorMessage = getFriendlyErrorMessage(
+        err,
+        errorInfo.isNotFoundError
+          ? "Teacher not found."
+          : "Failed to update teacher status. Please try again."
+      );
+      setDialogError(errorMessage); // Mostrar error dentro del modal
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const stringLocaleSort =
+    (locale = "es") =>
+    (rowA: any, rowB: any, columnId: string) => {
+      const a = (rowA.getValue(columnId) ?? "").toString();
+      const b = (rowB.getValue(columnId) ?? "").toString();
+      return a.localeCompare(b, locale, {
+        numeric: true,
+        sensitivity: "base",
+        ignorePunctuation: true,
+      });
+    };
+
+  // --- DEFINICIÓN DE COLUMNAS PARA LA TABLA REUTILIZABLE ---
+  const columns: ColumnDef<Professor>[] = [
+    {
+      accessorKey: "name",
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="flex items-center gap-1"
+        >
+          Name
+          <ArrowUpDown className="h-4 w-4" />
+        </Button>
+      ),
+      sortingFn: stringLocaleSort(),
+    },
+    {
+      accessorKey: "email",
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="flex items-center gap-1"
+        >
+          Email
+          <ArrowUpDown className="h-4 w-4" />
+        </Button>
+      ),
+      sortingFn: stringLocaleSort(),
+    },
+    {
+      accessorKey: "phone",
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="flex items-center gap-1"
+        >
+          Phone
+          <ArrowUpDown className="h-4 w-4" />
+        </Button>
+      ),
+      sortingFn: stringLocaleSort(),
+    },
+    {
+      accessorKey: "isActive",
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="flex items-center gap-1"
+        >
+          Status
+          <ArrowUpDown className="h-4 w-4" />
+        </Button>
+      ),
+      sortingFn: stringLocaleSort(),
+      cell: ({ row }) => (
+        <span
+          className={`px-2 py-1 rounded-full text-xs font-semibold ${
+            row.original.isActive
+              ? "bg-secondary/20 text-secondary"
+              : "bg-accent-1/20 text-accent-1"
+          }`}
+        >
+          {row.original.isActive ? "Active" : "Inactive"}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      cell: ({ row }) => (
+        <div className="flex gap-2">
+          <Button
+            size="icon"
+            variant="outline"
+            className="text-secondary border-secondary/50 hover:bg-secondary/10"
+            onClick={() => handleOpen("view", row.original)}
+          >
+            <Eye className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            className="text-primary border-primary/50 hover:bg-primary/10"
+            onClick={() => handleOpen("edit", row.original)}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          {row.original.isActive ? (
+            <Button
+              size="icon"
+              variant="outline"
+              className="text-accent-1 border-accent-1/50 hover:bg-accent-1/10"
+              onClick={() => handleOpen("status", row.original)}
+            >
+              <Ban className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button
+              size="icon"
+              variant="outline"
+              className="text-secondary border-secondary/50 hover:bg-secondary/10"
+              onClick={() => handleOpen("status", row.original)}
+            >
+              <CheckCircle2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  // --- RENDERIZADO DEL COMPONENTE ---
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Teachers"
+        subtitle="List of all teachers registered in the academy"
+      >
+        <Button
+          className="bg-primary text-white hover:bg-primary/90"
+          onClick={() => handleOpen("create")}
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Add teacher
+        </Button>
+      </PageHeader>
+
+      {isLoading && (
+        <div className="flex justify-center items-center p-8">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      )}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-700 hover:text-red-900"
+            aria-label="Close error message"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {!isLoading && !error && (
+        <Card className=" border-none">
+          <CardContent>
+            <DataTable
+              columns={columns}
+              data={teachers}
+              searchKeys={["name", "email", "phone"]}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog
+        open={openDialog !== null}
+        onOpenChange={(isOpen) => !isOpen && handleClose()}
+      >
+        <DialogContent className="sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>
+              {openDialog === "create" && "Add New Teacher"}
+              {openDialog === "edit" && "Edit Teacher&apos;s Information"}
+              {openDialog === "view" && "Teacher Details"}
+              {openDialog === "status" && `Confirm Status Change`}
+            </DialogTitle>
+          </DialogHeader>
+          {(openDialog === "create" || openDialog === "edit") && (
+            <form
+              onSubmit={handleSubmit}
+              className="max-h-[70vh] overflow-y-auto p-1 pr-4"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Full Name</Label>
+                  <Input
+                    id="name"
+                    name="name"
+                    value={formData.name || ""}
+                    onChange={handleFormChange}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ciNumber">CI Number</Label>
+                  <Input
+                    id="ciNumber"
+                    name="ciNumber"
+                    value={formData.ciNumber || ""}
+                    onChange={handleFormChange}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    name="email"
+                    type="email"
+                    value={formData.email || ""}
+                    onChange={handleFormChange}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone</Label>
+                  <Input
+                    id="phone"
+                    name="phone"
+                    type="tel"
+                    value={formData.phone || ""}
+                    onChange={handleFormChange}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="dob">Date of Birth</Label>
+                  <Input
+                    id="dob"
+                    name="dob"
+                    type="date"
+                    value={formData.dob || ""}
+                    onChange={handleFormChange}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="address">Address</Label>
+                  <Input
+                    id="address"
+                    name="address"
+                    value={formData.address || ""}
+                    onChange={handleFormChange}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="occupation">Occupation</Label>
+                  <Input
+                    id="occupation"
+                    name="occupation"
+                    value={formData.occupation || ""}
+                    onChange={handleFormChange}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="startDate">Start Date</Label>
+                  <Input
+                    id="startDate"
+                    name="startDate"
+                    type="date"
+                    value={formData.startDate || ""}
+                    onChange={handleFormChange}
+                  />
+                </div>
+                <fieldset className="md:col-span-2 border p-4 rounded-md border-light-border dark:border-dark-border">
+                  <legend className="text-sm font-medium px-1 text-light-subtext dark:text-dark-subtext">
+                    Emergency Contact
+                  </legend>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="emergencyName">Name</Label>
+                      <Input
+                        id="emergencyName"
+                        value={formData.emergencyContact?.name || ""}
+                        onChange={(e) =>
+                          handleNestedChange(e, "emergencyContact", "name")
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="emergencyPhone">Phone</Label>
+                      <Input
+                        id="emergencyPhone"
+                        type="tel"
+                        value={formData.emergencyContact?.phone || ""}
+                        onChange={(e) =>
+                          handleNestedChange(e, "emergencyContact", "phone")
+                        }
+                      />
+                    </div>
+                  </div>
+                </fieldset>
+                <div className="md:col-span-2 space-y-4">
+                  <h3 className="text-lg font-medium text-light-subtext dark:text-dark-subtext">
+                    Payment Data
+                  </h3>
+                  {(formData.paymentData || []).map((payment, index) => (
+                    <fieldset
+                      key={index}
+                      className="border p-4 rounded-md border-light-border dark:border-dark-border relative"
+                    >
+                      <legend className="text-sm font-medium px-1 text-light-subtext dark:text-dark-subtext">
+                        Method {index + 1}
+                      </legend>
+                      {formData.paymentData &&
+                        formData.paymentData.length > 1 && (
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="absolute top-1 right-1 text-accent-1"
+                            onClick={() => removePaymentMethod(index)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
+                        <div className="space-y-2">
+                          <Label>Bank Name</Label>
+                          <Input
+                            value={payment.bankName}
+                            onChange={(e) =>
+                              handlePaymentDataChange(e, index, "bankName")
+                            }
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Account Type</Label>
+                          <Input
+                            value={payment.accountType || ""}
+                            onChange={(e) =>
+                              handlePaymentDataChange(e, index, "accountType")
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Account Number</Label>
+                          <Input
+                            value={payment.accountNumber || ""}
+                            onChange={(e) =>
+                              handlePaymentDataChange(e, index, "accountNumber")
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Holder´s Name</Label>
+                          <Input
+                            value={payment.holderName || ""}
+                            onChange={(e) =>
+                              handlePaymentDataChange(e, index, "holderName")
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Holder´s CI</Label>
+                          <Input
+                            value={payment.holderCI || ""}
+                            onChange={(e) =>
+                              handlePaymentDataChange(e, index, "holderCI")
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Holder´s Email</Label>
+                          <Input
+                            value={payment.holderEmail || ""}
+                            onChange={(e) =>
+                              handlePaymentDataChange(e, index, "holderEmail")
+                            }
+                          />
+                        </div>
+                      </div>
+                    </fieldset>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={addPaymentMethod}
+                  >
+                    <Plus className="h-4 w-4 mr-2" /> Add Payment Method
+                  </Button>
+                </div>
+              </div>
+              {dialogError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{dialogError}</span>
+                </div>
+              )}
+              <DialogFooter className="mt-6">
+                <Button
+                  variant="outline"
+                  onClick={handleClose}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-primary hover:bg-primary/90 text-white"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting && (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  )}{" "}
+                  {openDialog === "create" ? "Create Teacher" : "Save Changes"}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+          {openDialog === "status" && selectedTeacher && (
+            <div>
+              <DialogDescription className="text-light-text dark:text-dark-text">
+                Are you sure you want to{" "}
+                {selectedTeacher.isActive ? "deactivate" : "activate"} the
+                teacher{" "}
+                <span className="font-bold">{selectedTeacher.name}</span>?
+              </DialogDescription>
+              {dialogError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{dialogError}</span>
+                </div>
+              )}
+              <DialogFooter className="mt-6">
+                <Button
+                  variant="outline"
+                  onClick={handleClose}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant={selectedTeacher.isActive ? "destructive" : "default"}
+                  className={
+                    !selectedTeacher.isActive
+                      ? "bg-secondary hover:bg-secondary/90 text-white"
+                      : ""
+                  }
+                  onClick={handleToggleStatus}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting && (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  )}
+                  {selectedTeacher.isActive ? "Deactivate" : "Activate"}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+
+          {openDialog === "view" && selectedTeacher && (
+            <div className="space-y-6 max-h-[70vh] overflow-y-auto p-1 pr-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                <div>
+                  <Label className="font-semibold">Full Name</Label>
+                  <p className="text-sm font-semibold">
+                    {selectedTeacher.name}
+                  </p>
+                </div>
+                <div>
+                  <Label className="font-semibold">CI Number</Label>
+                  <p className="text-sm font-semibold">
+                    {selectedTeacher.ciNumber}
+                  </p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Email</Label>
+                  <p className="text-sm">{selectedTeacher.email}</p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Phone</Label>
+                  <p className="text-sm">{selectedTeacher.phone}</p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Date of Birth</Label>
+                  <p className="text-sm">
+                    {selectedTeacher.dob
+                      ? formatDateForDisplay(selectedTeacher.dob)
+                      : "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Start Date</Label>
+                  <p className="text-sm">
+                    {selectedTeacher.startDate
+                      ? formatDateForDisplay(selectedTeacher.startDate)
+                      : "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Occupation</Label>
+                  <p className="text-sm">
+                    {selectedTeacher.occupation || "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Status</Label>
+                  <span
+                    className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                      selectedTeacher.isActive
+                        ? "bg-secondary/20 text-secondary"
+                        : "bg-accent-1/20 text-accent-1"
+                    }`}
+                  >
+                    {selectedTeacher.isActive ? "Active" : "Inactive"}
+                  </span>
+                </div>
+                <div className="md:col-span-2">
+                  <Label className="font-semibold">Address</Label>
+                  <p className="text-sm">{selectedTeacher.address || "N/A"}</p>
+                </div>
+              </div>
+
+              {selectedTeacher.emergencyContact &&
+                (selectedTeacher.emergencyContact.name ||
+                  selectedTeacher.emergencyContact.phone) && (
+                  <div className="border p-4 rounded-md">
+                    <h3 className="text-lg font-medium mb-4">
+                      Emergency Contact
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label className="text-sm text-muted-foreground font-semibold">
+                          Name
+                        </Label>
+                        <p className="text-sm">
+                          {selectedTeacher.emergencyContact.name || "N/A"}
+                        </p>
+                      </div>
+                      <div>
+                        <Label className="text-sm text-muted-foreground font-semibold">
+                          Phone
+                        </Label>
+                        <p className="text-sm">
+                          {selectedTeacher.emergencyContact.phone || "N/A"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              {selectedTeacher.paymentData &&
+                selectedTeacher.paymentData.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold pb-1">Payment Data</h3>
+                    {selectedTeacher.paymentData.map((payment, index) => (
+                      <div
+                        key={payment._id || index}
+                        className="border p-4 rounded-md mb-4"
+                      >
+                        <h4 className="font-semibold mb-3">
+                          Method {index + 1}
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div>
+                            <Label className="text-sm text-muted-foreground">
+                              Bank Name
+                            </Label>
+                            <p className="text-sm">
+                              {payment.bankName || "N/A"}
+                            </p>
+                          </div>
+                          <div>
+                            <Label className="text-sm text-muted-foreground">
+                              Account Type
+                            </Label>
+                            <p className="text-sm">
+                              {payment.accountType || "N/A"}
+                            </p>
+                          </div>
+                          <div>
+                            <Label className="text-sm text-muted-foreground">
+                              Account Number
+                            </Label>
+                            <p className="text-sm">
+                              {payment.accountNumber || "N/A"}
+                            </p>
+                          </div>
+                          <div>
+                            <Label className="text-sm text-muted-foreground">
+                              Holder&apos;s Name
+                            </Label>
+                            <p className="text-sm">
+                              {payment.holderName || "N/A"}
+                            </p>
+                          </div>
+                          <div>
+                            <Label className="text-sm text-muted-foreground">
+                              Holder&apos;s CI
+                            </Label>
+                            <p className="text-sm">
+                              {payment.holderCI || "N/A"}
+                            </p>
+                          </div>
+                          <div>
+                            <Label className="text-sm text-muted-foreground">
+                              Holder&apos;s Email
+                            </Label>
+                            <p className="text-sm">
+                              {payment.holderEmail || "N/A"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+              <DialogFooter className="pt-4 border-t">
+                <Button variant="outline" onClick={handleClose}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
