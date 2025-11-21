@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api";
-import { handleApiError, getFriendlyErrorMessage } from "@/lib/errorHandler";
+import { getFriendlyErrorMessage } from "@/lib/errorHandler";
 import { PageHeader } from "@/components/ui/page-header";
 import { DataTable } from "@/components/ui/data-table";
 import type { ColumnDef, Row } from "@tanstack/react-table";

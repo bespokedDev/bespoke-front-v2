@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiClient } from "@/lib/api";
-import { handleApiError, getFriendlyErrorMessage } from "@/lib/errorHandler";
+import { getFriendlyErrorMessage } from "@/lib/errorHandler";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import {
