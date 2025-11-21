@@ -9,6 +9,7 @@ import {
   getCurrentDateString,
   extractDatePart,
   dateStringToISO,
+  addDaysToDate,
 } from "@/lib/dateUtils";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,7 @@ import {
   ArrowUpDown,
   AlertCircle,
   ChevronDown,
+  Trash2,
 } from "lucide-react";
 
 // --- DEFINICIONES DE TIPOS ---
@@ -78,13 +80,21 @@ interface ProfessorBrief {
   name: string;
 }
 
+interface SubstituteProfessor {
+  professorId: string;
+  status: number; // 1=activo, 0=inactivo
+  assignedDate: string;
+  expiryDate: string;
+}
+
 interface ScheduledDay {
   _id?: string;
   day: string;
 }
 
 interface StudentEnrollmentInfo {
-  studentId: string;
+  _id?: string;
+  studentId: string | StudentBrief;
   preferences?: string;
   firstTimeLearningLanguage?: string;
   previousExperience?: string;
@@ -113,6 +123,7 @@ interface Enrollment {
   available_balance?: number;
   classCalculationType?: number;
   numberOfWeeks?: number;
+  substituteProfessor?: SubstituteProfessor | null;
 }
 
 type StudentEnrollmentFormData = {
@@ -143,6 +154,7 @@ type EnrollmentFormData = {
   language?: string;
   classCalculationType?: number;
   numberOfWeeks?: number;
+  substituteProfessor?: SubstituteProfessor | null;
 };
 
 // --- ESTADO INICIAL ---
@@ -188,9 +200,13 @@ export default function EnrollmentsPage() {
   const [formData, setFormData] = useState<EnrollmentFormData>(
     initialEnrollmentState
   );
-  const [openStudentSections, setOpenStudentSections] = useState<Record<string, boolean>>({});
+  const [openStudentSections, setOpenStudentSections] = useState<
+    Record<string, boolean>
+  >({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
+  const [openDisolveDialog, setOpenDisolveDialog] = useState(false);
+  const [disolveReason, setDisolveReason] = useState("");
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -269,18 +285,34 @@ export default function EnrollmentsPage() {
         const scheduledDaysArray =
           enrollment.scheduledDays?.map((d) => d.day) || [];
         // Transformar studentIds: puede venir como StudentEnrollmentInfo[] o StudentBrief[]
-        const studentIdsArray = enrollment.studentIds.map((s: any) => ({
-          studentId: s.studentId || s._id,
-          preferences: s.preferences || "",
-          firstTimeLearningLanguage: s.firstTimeLearningLanguage || "",
-          previousExperience: s.previousExperience || "",
-          goals: s.goals || "",
-          dailyLearningTime: s.dailyLearningTime || "",
-          learningType: s.learningType || "",
-          idealClassType: s.idealClassType || "",
-          learningDifficulties: s.learningDifficulties || "",
-          languageLevel: s.languageLevel || "",
-        }));
+        // studentId puede ser un string o un objeto StudentBrief
+        const studentIdsArray = enrollment.studentIds.map((s: any) => {
+          // Extraer el ID del estudiante: puede ser string directo o objeto con _id
+          let studentIdValue: string;
+          if (typeof s.studentId === "object" && s.studentId !== null) {
+            // Si studentId es un objeto, tomar su _id
+            studentIdValue = s.studentId._id || s.studentId;
+          } else if (s.studentId) {
+            // Si studentId es un string
+            studentIdValue = s.studentId;
+          } else {
+            // Fallback: usar _id del objeto si existe
+            studentIdValue = s._id || "";
+          }
+          
+          return {
+            studentId: studentIdValue,
+            preferences: s.preferences || "",
+            firstTimeLearningLanguage: s.firstTimeLearningLanguage || "",
+            previousExperience: s.previousExperience || "",
+            goals: s.goals || "",
+            dailyLearningTime: s.dailyLearningTime || "",
+            learningType: s.learningType || "",
+            idealClassType: s.idealClassType || "",
+            learningDifficulties: s.learningDifficulties || "",
+            languageLevel: s.languageLevel || "",
+          };
+        });
         setFormData({
           planId: enrollment.planId._id,
           studentIds: studentIdsArray,
@@ -298,6 +330,18 @@ export default function EnrollmentsPage() {
           language: enrollment.language || "",
           classCalculationType: enrollment.classCalculationType || 1,
           numberOfWeeks: (enrollment as any).numberOfWeeks || undefined,
+          substituteProfessor: enrollment.substituteProfessor
+            ? {
+                professorId: enrollment.substituteProfessor.professorId,
+                status: enrollment.substituteProfessor.status || 1,
+                assignedDate: extractDatePart(
+                  enrollment.substituteProfessor.assignedDate
+                ),
+                expiryDate: extractDatePart(
+                  enrollment.substituteProfessor.expiryDate
+                ),
+              }
+            : null,
         });
       }
     }
@@ -307,6 +351,21 @@ export default function EnrollmentsPage() {
   const handleClose = () => {
     setOpenDialog(null);
     setOpenStudentSections({});
+    setDisolveReason("");
+  };
+
+  const handleDisolveClose = () => {
+    setOpenDisolveDialog(false);
+    setDisolveReason("");
+  };
+
+  const handleDisolveConfirm = () => {
+    // Por ahora solo cerramos el modal y limpiamos el estado
+    // TODO: Conectar con endpoint cuando esté disponible
+    console.log("Disolve reason:", disolveReason);
+    handleDisolveClose();
+    // Opcionalmente cerrar también el modal de edición
+    // handleClose();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -355,7 +414,7 @@ export default function EnrollmentsPage() {
     const purchaseDateISO = formData.purchaseDate
       ? dateStringToISO(formData.purchaseDate)
       : new Date().toISOString();
-    
+
     const startDateISO = formData.startDate
       ? dateStringToISO(formData.startDate)
       : new Date().toISOString();
@@ -366,15 +425,24 @@ export default function EnrollmentsPage() {
         studentId: student.studentId,
       };
       // Agregar campos opcionales solo si tienen valor
-      if (student.preferences?.trim()) payload.preferences = student.preferences.trim();
-      if (student.firstTimeLearningLanguage?.trim()) payload.firstTimeLearningLanguage = student.firstTimeLearningLanguage.trim();
-      if (student.previousExperience?.trim()) payload.previousExperience = student.previousExperience.trim();
+      if (student.preferences?.trim())
+        payload.preferences = student.preferences.trim();
+      if (student.firstTimeLearningLanguage?.trim())
+        payload.firstTimeLearningLanguage =
+          student.firstTimeLearningLanguage.trim();
+      if (student.previousExperience?.trim())
+        payload.previousExperience = student.previousExperience.trim();
       if (student.goals?.trim()) payload.goals = student.goals.trim();
-      if (student.dailyLearningTime?.trim()) payload.dailyLearningTime = student.dailyLearningTime.trim();
-      if (student.learningType?.trim()) payload.learningType = student.learningType.trim();
-      if (student.idealClassType?.trim()) payload.idealClassType = student.idealClassType.trim();
-      if (student.learningDifficulties?.trim()) payload.learningDifficulties = student.learningDifficulties.trim();
-      if (student.languageLevel?.trim()) payload.languageLevel = student.languageLevel.trim();
+      if (student.dailyLearningTime?.trim())
+        payload.dailyLearningTime = student.dailyLearningTime.trim();
+      if (student.learningType?.trim())
+        payload.learningType = student.learningType.trim();
+      if (student.idealClassType?.trim())
+        payload.idealClassType = student.idealClassType.trim();
+      if (student.learningDifficulties?.trim())
+        payload.learningDifficulties = student.learningDifficulties.trim();
+      if (student.languageLevel?.trim())
+        payload.languageLevel = student.languageLevel.trim();
       return payload;
     });
 
@@ -389,18 +457,41 @@ export default function EnrollmentsPage() {
       pricePerStudent: formData.pricePerStudent,
       totalAmount: formData.totalAmount,
       language: formData.language,
-      classCalculationType: formData.classCalculationType || 1,
     };
+
+    // classCalculationType solo se envía al crear, no al editar
+    if (openDialog === "create") {
+      payload.classCalculationType = formData.classCalculationType || 1;
+    }
 
     // Agregar campos opcionales solo si tienen valor
     if (formData.alias) {
       payload.alias = formData.alias;
     }
 
-    // Si classCalculationType es 2, numberOfWeeks es obligatorio
-    if (payload.classCalculationType === 2) {
+    // Agregar substituteProfessor si existe (solo al editar)
+    // El status se maneja internamente, siempre se envía como 1
+    if (
+      openDialog === "edit" &&
+      formData.substituteProfessor &&
+      formData.substituteProfessor.professorId
+    ) {
+      payload.substituteProfessor = {
+        professorId: formData.substituteProfessor.professorId,
+        status: 1, // Siempre 1, se maneja internamente
+        assignedDate: dateStringToISO(
+          formData.substituteProfessor.assignedDate
+        ),
+        expiryDate: dateStringToISO(formData.substituteProfessor.expiryDate),
+      };
+    }
+
+    // Si classCalculationType es 2, numberOfWeeks es obligatorio (solo al crear)
+    if (openDialog === "create" && payload.classCalculationType === 2) {
       if (!formData.numberOfWeeks || formData.numberOfWeeks <= 0) {
-        setDialogError("Number of weeks is required when using weekly calculation type.");
+        setDialogError(
+          "Number of weeks is required when using weekly calculation type."
+        );
         setIsSubmitting(false);
         return;
       }
@@ -426,10 +517,13 @@ export default function EnrollmentsPage() {
           throw new Error("Invalid response structure from server");
         }
       } else if (openDialog === "edit" && selectedEnrollment) {
-        response = await apiClient(`api/enrollments/${selectedEnrollment._id}`, {
-          method: "PUT",
-          body: JSON.stringify(payload),
-        });
+        response = await apiClient(
+          `api/enrollments/${selectedEnrollment._id}`,
+          {
+            method: "PUT",
+            body: JSON.stringify(payload),
+          }
+        );
         // Validar estructura de respuesta
         if (!response || !response.enrollment) {
           throw new Error("Invalid response structure from server");
@@ -464,9 +558,12 @@ export default function EnrollmentsPage() {
       const action =
         selectedEnrollment.status === 1 ? "deactivate" : "activate";
 
-      const response = await apiClient(`api/enrollments/${selectedEnrollment._id}/${action}`, {
-        method: "PATCH",
-      });
+      const response = await apiClient(
+        `api/enrollments/${selectedEnrollment._id}/${action}`,
+        {
+          method: "PATCH",
+        }
+      );
 
       // Validar estructura de respuesta
       if (!response || !response.enrollment) {
@@ -506,14 +603,27 @@ export default function EnrollmentsPage() {
     // Alias o lista de estudiantes (string plano)
     {
       id: "aliasOrStudents",
-      accessorFn: (row) =>
-        row.alias?.trim() ||
-        row.studentIds.map((s: any) => {
-          // Manejar tanto StudentBrief como StudentEnrollmentInfo
-          if (s.name) return s.name;
-          if (s.studentId) return "N/A";
-          return "";
-        }).filter(Boolean).join(", "),
+      accessorFn: (row) => {
+        // Si hay alias, usarlo
+        if (row.alias?.trim()) return row.alias.trim();
+        // Si no, extraer nombres de studentIds
+        return row.studentIds
+          .map((s: any) => {
+            // Si studentId es un objeto (StudentBrief), tomar su name
+            if (s.studentId && typeof s.studentId === "object" && s.studentId.name) {
+              return s.studentId.name;
+            }
+            // Si studentId es un string, buscar en el array de students
+            if (typeof s.studentId === "string") {
+              return "N/A";
+            }
+            // Si tiene name directamente (StudentBrief)
+            if (s.name) return s.name;
+            return "";
+          })
+          .filter(Boolean)
+          .join(", ");
+      },
       header: ({ column }) => (
         <Button
           variant="ghost"
@@ -528,8 +638,23 @@ export default function EnrollmentsPage() {
       cell: ({ row }) => {
         const alias = row.original.alias;
         if (alias?.trim()) return alias;
-        // Manejar tanto StudentBrief[] como StudentEnrollmentInfo[]
-        return row.original.studentIds.map((s: any) => s.name || "N/A").join(", ");
+        // Extraer nombres de studentIds
+        return row.original.studentIds
+          .map((s: any) => {
+            // Si studentId es un objeto (StudentBrief), tomar su name
+            if (s.studentId && typeof s.studentId === "object" && s.studentId.name) {
+              return s.studentId.name;
+            }
+            // Si studentId es un string, buscar en el array de students
+            if (typeof s.studentId === "string") {
+              const student = students.find((st) => st._id === s.studentId);
+              return student?.name || "N/A";
+            }
+            // Si tiene name directamente (StudentBrief)
+            if (s.name) return s.name;
+            return "N/A";
+          })
+          .join(", ");
       },
     },
     // Language
@@ -813,13 +938,17 @@ export default function EnrollmentsPage() {
                   placeholder="Select students..."
                 />
               </div>
-              
+
               {/* Campos opcionales para cada estudiante */}
               {formData.studentIds.length > 0 && (
                 <div className="space-y-4">
-                  <h3 className="text-lg font-medium">Student Information (Optional)</h3>
+                  <h3 className="text-lg font-medium">
+                    Student Information (Optional)
+                  </h3>
                   {formData.studentIds.map((student, index) => {
-                    const studentName = students.find((s) => s._id === student.studentId)?.name || `Student ${index + 1}`;
+                    const studentName =
+                      students.find((s) => s._id === student.studentId)?.name ||
+                      `Student ${index + 1}`;
                     const studentKey = student.studentId || `student-${index}`;
                     const isOpen = openStudentSections[studentKey] || false;
                     return (
@@ -839,7 +968,9 @@ export default function EnrollmentsPage() {
                             variant="ghost"
                             className="w-full justify-between p-4 h-auto hover:bg-muted/50"
                           >
-                            <span className="text-sm font-semibold">{studentName}</span>
+                            <span className="text-sm font-semibold">
+                              {studentName}
+                            </span>
                             <ChevronDown
                               className={`h-4 w-4 transition-transform duration-200 ${
                                 isOpen ? "transform rotate-180" : ""
@@ -849,115 +980,169 @@ export default function EnrollmentsPage() {
                         </CollapsibleTrigger>
                         <CollapsibleContent className="px-4 pb-4">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                          <div className="space-y-2">
-                            <Label>Preferences</Label>
-                            <Textarea
-                              value={student.preferences || ""}
-                              onChange={(e) => {
-                                const updated = [...formData.studentIds];
-                                updated[index] = { ...updated[index], preferences: e.target.value };
-                                setFormData((p) => ({ ...p, studentIds: updated }));
-                              }}
-                              placeholder="e.g., Prefers practical and conversational classes"
-                              rows={2}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>First Time Learning Language</Label>
-                            <Input
-                              value={student.firstTimeLearningLanguage || ""}
-                              onChange={(e) => {
-                                const updated = [...formData.studentIds];
-                                updated[index] = { ...updated[index], firstTimeLearningLanguage: e.target.value };
-                                setFormData((p) => ({ ...p, studentIds: updated }));
-                              }}
-                              placeholder="e.g., Yes, this is the first time"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Previous Experience</Label>
-                            <Input
-                              value={student.previousExperience || ""}
-                              onChange={(e) => {
-                                const updated = [...formData.studentIds];
-                                updated[index] = { ...updated[index], previousExperience: e.target.value };
-                                setFormData((p) => ({ ...p, studentIds: updated }));
-                              }}
-                              placeholder="e.g., No previous experience"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Goals</Label>
-                            <Input
-                              value={student.goals || ""}
-                              onChange={(e) => {
-                                const updated = [...formData.studentIds];
-                                updated[index] = { ...updated[index], goals: e.target.value };
-                                setFormData((p) => ({ ...p, studentIds: updated }));
-                              }}
-                              placeholder="e.g., Learn English for travel"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Daily Learning Time</Label>
-                            <Input
-                              value={student.dailyLearningTime || ""}
-                              onChange={(e) => {
-                                const updated = [...formData.studentIds];
-                                updated[index] = { ...updated[index], dailyLearningTime: e.target.value };
-                                setFormData((p) => ({ ...p, studentIds: updated }));
-                              }}
-                              placeholder="e.g., 1 hour per day"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Learning Type</Label>
-                            <Input
-                              value={student.learningType || ""}
-                              onChange={(e) => {
-                                const updated = [...formData.studentIds];
-                                updated[index] = { ...updated[index], learningType: e.target.value };
-                                setFormData((p) => ({ ...p, studentIds: updated }));
-                              }}
-                              placeholder="e.g., Visual and auditory"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Ideal Class Type</Label>
-                            <Input
-                              value={student.idealClassType || ""}
-                              onChange={(e) => {
-                                const updated = [...formData.studentIds];
-                                updated[index] = { ...updated[index], idealClassType: e.target.value };
-                                setFormData((p) => ({ ...p, studentIds: updated }));
-                              }}
-                              placeholder="e.g., Individual classes"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Learning Difficulties</Label>
-                            <Input
-                              value={student.learningDifficulties || ""}
-                              onChange={(e) => {
-                                const updated = [...formData.studentIds];
-                                updated[index] = { ...updated[index], learningDifficulties: e.target.value };
-                                setFormData((p) => ({ ...p, studentIds: updated }));
-                              }}
-                              placeholder="e.g., Difficulty with pronunciation"
-                            />
-                          </div>
-                          <div className="space-y-2 md:col-span-2">
-                            <Label>Language Level</Label>
-                            <Input
-                              value={student.languageLevel || ""}
-                              onChange={(e) => {
-                                const updated = [...formData.studentIds];
-                                updated[index] = { ...updated[index], languageLevel: e.target.value };
-                                setFormData((p) => ({ ...p, studentIds: updated }));
-                              }}
-                              placeholder="e.g., Beginner"
-                            />
-                          </div>
+                            <div className="space-y-2">
+                              <Label>Preferences</Label>
+                              <Textarea
+                                value={student.preferences || ""}
+                                onChange={(e) => {
+                                  const updated = [...formData.studentIds];
+                                  updated[index] = {
+                                    ...updated[index],
+                                    preferences: e.target.value,
+                                  };
+                                  setFormData((p) => ({
+                                    ...p,
+                                    studentIds: updated,
+                                  }));
+                                }}
+                                placeholder="e.g., Prefers practical and conversational classes"
+                                rows={2}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>First Time Learning Language</Label>
+                              <Input
+                                value={student.firstTimeLearningLanguage || ""}
+                                onChange={(e) => {
+                                  const updated = [...formData.studentIds];
+                                  updated[index] = {
+                                    ...updated[index],
+                                    firstTimeLearningLanguage: e.target.value,
+                                  };
+                                  setFormData((p) => ({
+                                    ...p,
+                                    studentIds: updated,
+                                  }));
+                                }}
+                                placeholder="e.g., Yes, this is the first time"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Previous Experience</Label>
+                              <Input
+                                value={student.previousExperience || ""}
+                                onChange={(e) => {
+                                  const updated = [...formData.studentIds];
+                                  updated[index] = {
+                                    ...updated[index],
+                                    previousExperience: e.target.value,
+                                  };
+                                  setFormData((p) => ({
+                                    ...p,
+                                    studentIds: updated,
+                                  }));
+                                }}
+                                placeholder="e.g., No previous experience"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Goals</Label>
+                              <Input
+                                value={student.goals || ""}
+                                onChange={(e) => {
+                                  const updated = [...formData.studentIds];
+                                  updated[index] = {
+                                    ...updated[index],
+                                    goals: e.target.value,
+                                  };
+                                  setFormData((p) => ({
+                                    ...p,
+                                    studentIds: updated,
+                                  }));
+                                }}
+                                placeholder="e.g., Learn English for travel"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Daily Learning Time</Label>
+                              <Input
+                                value={student.dailyLearningTime || ""}
+                                onChange={(e) => {
+                                  const updated = [...formData.studentIds];
+                                  updated[index] = {
+                                    ...updated[index],
+                                    dailyLearningTime: e.target.value,
+                                  };
+                                  setFormData((p) => ({
+                                    ...p,
+                                    studentIds: updated,
+                                  }));
+                                }}
+                                placeholder="e.g., 1 hour per day"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Learning Type</Label>
+                              <Input
+                                value={student.learningType || ""}
+                                onChange={(e) => {
+                                  const updated = [...formData.studentIds];
+                                  updated[index] = {
+                                    ...updated[index],
+                                    learningType: e.target.value,
+                                  };
+                                  setFormData((p) => ({
+                                    ...p,
+                                    studentIds: updated,
+                                  }));
+                                }}
+                                placeholder="e.g., Visual and auditory"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Ideal Class Type</Label>
+                              <Input
+                                value={student.idealClassType || ""}
+                                onChange={(e) => {
+                                  const updated = [...formData.studentIds];
+                                  updated[index] = {
+                                    ...updated[index],
+                                    idealClassType: e.target.value,
+                                  };
+                                  setFormData((p) => ({
+                                    ...p,
+                                    studentIds: updated,
+                                  }));
+                                }}
+                                placeholder="e.g., Individual classes"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Learning Difficulties</Label>
+                              <Input
+                                value={student.learningDifficulties || ""}
+                                onChange={(e) => {
+                                  const updated = [...formData.studentIds];
+                                  updated[index] = {
+                                    ...updated[index],
+                                    learningDifficulties: e.target.value,
+                                  };
+                                  setFormData((p) => ({
+                                    ...p,
+                                    studentIds: updated,
+                                  }));
+                                }}
+                                placeholder="e.g., Difficulty with pronunciation"
+                              />
+                            </div>
+                            <div className="space-y-2 md:col-span-2">
+                              <Label>Language Level</Label>
+                              <Input
+                                value={student.languageLevel || ""}
+                                onChange={(e) => {
+                                  const updated = [...formData.studentIds];
+                                  updated[index] = {
+                                    ...updated[index],
+                                    languageLevel: e.target.value,
+                                  };
+                                  setFormData((p) => ({
+                                    ...p,
+                                    studentIds: updated,
+                                  }));
+                                }}
+                                placeholder="e.g., Beginner"
+                              />
+                            </div>
                           </div>
                         </CollapsibleContent>
                       </Collapsible>
@@ -1046,66 +1231,221 @@ export default function EnrollmentsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Class Calculation Type</Label>
-                  <Select
-                    value={formData.classCalculationType?.toString() || "1"}
-                    onValueChange={(v) =>
-                      setFormData((p) => ({
-                        ...p,
-                        classCalculationType: parseInt(v),
-                        numberOfWeeks: undefined, // Reset cuando cambia el tipo
-                      }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select calculation type..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">Normal (Monthly)</SelectItem>
-                      <SelectItem value="2">Weekly</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  {openDialog === "create" ? (
+                    <Select
+                      value={formData.classCalculationType?.toString() || "1"}
+                      onValueChange={(v) =>
+                        setFormData((p) => ({
+                          ...p,
+                          classCalculationType: parseInt(v),
+                          numberOfWeeks: undefined, // Reset cuando cambia el tipo
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select calculation type..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">Normal (Monthly)</SelectItem>
+                        <SelectItem value="2">Weekly</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      value={
+                        formData.classCalculationType === 2
+                          ? "Weekly"
+                          : "Normal (Monthly)"
+                      }
+                      disabled
+                      className="bg-muted"
+                    />
+                  )}
                 </div>
                 {formData.classCalculationType === 2 && (
                   <div className="space-y-2">
                     <Label>
                       Number of Weeks <span className="text-red-500">*</span>
                     </Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={formData.numberOfWeeks || ""}
-                      onChange={(e) =>
-                        setFormData((p) => ({
-                          ...p,
-                          numberOfWeeks: parseInt(e.target.value) || undefined,
-                        }))
-                      }
-                      placeholder="Enter number of weeks..."
-                      required
-                    />
+                    {openDialog === "create" ? (
+                      <Input
+                        type="number"
+                        min="1"
+                        value={formData.numberOfWeeks || ""}
+                        onChange={(e) =>
+                          setFormData((p) => ({
+                            ...p,
+                            numberOfWeeks: parseInt(e.target.value) || undefined,
+                          }))
+                        }
+                        placeholder="Enter number of weeks..."
+                        required
+                      />
+                    ) : (
+                      <Input
+                        value={formData.numberOfWeeks || ""}
+                        disabled
+                        className="bg-muted"
+                      />
+                    )}
                   </div>
                 )}
               </div>
               {openDialog === "edit" && (
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select
-                    value={formData.status?.toString() || ""}
-                    onValueChange={(v) =>
-                      setFormData((p) => ({ ...p, status: parseInt(v) }))
-                    }
-                    required
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select status..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">Active</SelectItem>
-                      <SelectItem value="0">Inactive</SelectItem>
-                      <SelectItem value="2">Paused</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                <>
+                  <div className="space-y-2">
+                    <Label>Status</Label>
+                    <Select
+                      value={formData.status?.toString() || ""}
+                      onValueChange={(v) =>
+                        setFormData((p) => ({ ...p, status: parseInt(v) }))
+                      }
+                      required
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select status..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">Active</SelectItem>
+                        <SelectItem value="0">Inactive</SelectItem>
+                        <SelectItem value="2">Paused</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-4 p-4 border rounded-md">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-base font-semibold">
+                        Substitute Professor
+                      </Label>
+                      {formData.substituteProfessor && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            setFormData((p) => ({
+                              ...p,
+                              substituteProfessor: null,
+                            }))
+                          }
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Remove
+                        </Button>
+                      )}
+                    </div>
+                    {formData.substituteProfessor ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Professor</Label>
+                          <Select
+                            value={formData.substituteProfessor.professorId}
+                            onValueChange={(v) => {
+                              const currentDate = getCurrentDateString();
+                              setFormData((p) => ({
+                                ...p,
+                                substituteProfessor: {
+                                  professorId: v,
+                                  status: 1,
+                                  assignedDate: currentDate,
+                                  expiryDate: addDaysToDate(currentDate, 3),
+                                },
+                              }));
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select substitute professor..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {professors
+                                .filter(
+                                  (p) => p._id !== formData.professorId
+                                )
+                                .map((p) => (
+                                  <SelectItem key={p._id} value={p._id}>
+                                    {p.name}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Assigned Date</Label>
+                          <Input
+                            type="date"
+                            value={formData.substituteProfessor.assignedDate}
+                            onChange={(e) => {
+                              const newAssignedDate = e.target.value;
+                              setFormData((p) => ({
+                                ...p,
+                                substituteProfessor: p.substituteProfessor
+                                  ? {
+                                      ...p.substituteProfessor,
+                                      assignedDate: newAssignedDate,
+                                      expiryDate: addDaysToDate(
+                                        newAssignedDate,
+                                        3
+                                      ),
+                                    }
+                                  : null,
+                              }));
+                            }}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Expiry Date</Label>
+                          <Input
+                            type="date"
+                            value={formData.substituteProfessor.expiryDate}
+                            onChange={(e) =>
+                              setFormData((p) => ({
+                                ...p,
+                                substituteProfessor: p.substituteProfessor
+                                  ? {
+                                      ...p.substituteProfessor,
+                                      expiryDate: e.target.value,
+                                    }
+                                  : null,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Select
+                          value=""
+                          onValueChange={(v) => {
+                            const currentDate = getCurrentDateString();
+                            setFormData((p) => ({
+                              ...p,
+                              substituteProfessor: {
+                                professorId: v,
+                                status: 1,
+                                assignedDate: currentDate,
+                                expiryDate: addDaysToDate(currentDate, 3),
+                              },
+                            }));
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select substitute professor..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {professors
+                              .filter((p) => p._id !== formData.professorId)
+                              .map((p) => (
+                                <SelectItem key={p._id} value={p._id}>
+                                  {p.name}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-md">
                 <div className="space-y-1">
@@ -1141,15 +1481,28 @@ export default function EnrollmentsPage() {
                 </div>
               )}
               <DialogFooter className="pt-4 border-t">
-                <Button type="button" variant="outline" onClick={handleClose}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting && (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  )}{" "}
-                  Save
-                </Button>
+                <div className="flex justify-between w-full">
+                  {openDialog === "edit" && (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={() => setOpenDisolveDialog(true)}
+                    >
+                      Disolve
+                    </Button>
+                  )}
+                  <div className="flex gap-2 ml-auto">
+                    <Button type="button" variant="outline" onClick={handleClose}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={isSubmitting}>
+                      {isSubmitting && (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      )}{" "}
+                      Save
+                    </Button>
+                  </div>
+                </div>
               </DialogFooter>
             </form>
           )}
@@ -1171,12 +1524,19 @@ export default function EnrollmentsPage() {
                   <p className="text-sm">
                     {selectedEnrollment.studentIds
                       .map((s: any) => {
-                        // Puede venir como StudentBrief (con name) o StudentEnrollmentInfo (con studentId)
-                        if (s.name) return s.name;
-                        if (s.studentId) {
-                          const student = students.find((st) => st._id === s.studentId);
+                        // Si studentId es un objeto (StudentBrief), tomar su name
+                        if (s.studentId && typeof s.studentId === "object" && s.studentId.name) {
+                          return s.studentId.name;
+                        }
+                        // Si studentId es un string, buscar en el array de students
+                        if (typeof s.studentId === "string") {
+                          const student = students.find(
+                            (st) => st._id === s.studentId
+                          );
                           return student?.name || "N/A";
                         }
+                        // Si tiene name directamente (StudentBrief)
+                        if (s.name) return s.name;
                         return "N/A";
                       })
                       .join(", ")}
@@ -1266,6 +1626,48 @@ export default function EnrollmentsPage() {
               </DialogFooter>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de confirmación de Disolve */}
+      <Dialog
+        open={openDisolveDialog}
+        onOpenChange={(isOpen) => !isOpen && handleDisolveClose()}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Disolve Enrollment</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to disolve this enrollment? This action
+              cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>
+                Reason <span className="text-red-500">*</span>
+              </Label>
+              <Textarea
+                value={disolveReason}
+                onChange={(e) => setDisolveReason(e.target.value)}
+                placeholder="Enter the reason for disolving this enrollment..."
+                rows={4}
+                required
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleDisolveClose}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDisolveConfirm}
+              disabled={!disolveReason.trim()}
+            >
+              Confirm Disolve
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1406,7 +1808,7 @@ function StudentMultiSelect({
   const handleSelect = (id: string) => {
     const isSelected = selectedStudents.some((s) => s.studentId === id);
     let newSelectedStudents: StudentEnrollmentFormData[];
-    
+
     if (isSelected) {
       // Remover estudiante
       newSelectedStudents = selectedStudents.filter((s) => s.studentId !== id);

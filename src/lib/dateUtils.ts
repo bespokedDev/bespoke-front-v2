@@ -45,7 +45,7 @@ export function extractDatePart(dateString: string): string {
       const day = String(date.getDate()).padStart(2, "0");
       return `${year}-${month}-${day}`;
     }
-  } catch (e) {
+  } catch {
     // If parsing fails, continue to return empty string
   }
   
@@ -92,4 +92,19 @@ export function getCurrentDateString(): string {
 export function dateStringToISO(dateString: string): string {
   if (!dateString) return "";
   return new Date(dateString).toISOString();
+}
+
+/**
+ * Adds days to a date string in YYYY-MM-DD format
+ * @param dateString - Date string in YYYY-MM-DD format
+ * @param days - Number of days to add (can be negative to subtract)
+ * @returns Date string in YYYY-MM-DD format
+ */
+export function addDaysToDate(dateString: string, days: number): string {
+  const date = new Date(dateString + "T00:00:00");
+  date.setDate(date.getDate() + days);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
