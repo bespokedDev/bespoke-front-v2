@@ -46,7 +46,6 @@ interface CreateCategoryClassData {
 
 interface UpdateCategoryClassData {
   name: string;
-  status: number;
 }
 
 export default function CategoryClassPage() {
@@ -312,9 +311,6 @@ export default function CategoryClassPage() {
     const formData = new FormData(e.target as HTMLFormElement);
     const categoryClassData = {
       name: formData.get("name") as string,
-      ...(openDialog === "edit" && {
-        status: Number(formData.get("status")),
-      }),
     };
 
     const errors = validateForm(categoryClassData);
@@ -522,21 +518,6 @@ export default function CategoryClassPage() {
                   <p className="text-red-500 text-sm">{formErrors.name}</p>
                 )}
               </div>
-
-              {openDialog === "edit" && (
-                <div className="space-y-2">
-                  <Label htmlFor="status">Status</Label>
-                  <select
-                    id="status"
-                    name="status"
-                    defaultValue={selectedCategoryClass?.status || 1}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    <option value={1}>Activo</option>
-                    <option value={2}>Anulado</option>
-                  </select>
-                </div>
-              )}
             </form>
           )}
 

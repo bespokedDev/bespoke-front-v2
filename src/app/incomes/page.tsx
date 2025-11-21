@@ -323,34 +323,45 @@ export default function IncomesPage() {
       return;
     }
 
+    if (!formData.idPaymentMethod) {
+      setDialogError("El método de pago es obligatorio.");
+      return;
+    }
+
     if (!formData.idDivisa) {
       setDialogError("La divisa es obligatoria.");
-      return;
-    }
-
-    if (!formData.idPaymentMethod) {
-      setDialogError("El tipo de pago es obligatorio.");
-      return;
-    }
-
-    if (!formData.tasa || formData.tasa <= 0) {
-      setDialogError("La tasa de cambio es obligatoria y debe ser mayor a 0.");
       return;
     }
 
     setIsSubmitting(true);
     setDialogError(null);
     try {
-      // Calcular amountInDollars basado en la tasa
-      const amountInDollars = formData.amount / formData.tasa;
+      // Calcular amountInDollars basado en la tasa (si existe divisa y tasa)
+      const selectedDivisa = divisas.find((d) => d._id === formData.idDivisa);
+      const isDollar =
+        selectedDivisa &&
+        (selectedDivisa.name.toLowerCase() === "dollar" ||
+          selectedDivisa.name.toLowerCase() === "dólar");
+      
+      const amountInDollars = isDollar || !formData.tasa || formData.tasa <= 0
+        ? formData.amount
+        : formData.amount / formData.tasa;
+
+      // income_date siempre debe ser enviado en formato ISO
+      const incomeDate = formData.income_date
+        ? dateStringToISO(formData.income_date)
+        : new Date().toISOString();
 
       const incomePayload = {
         ...formData,
         amountInDollars: amountInDollars,
-        // Convertir income_date a ISO string si está presente
-        income_date: formData.income_date
-          ? dateStringToISO(formData.income_date)
-          : undefined,
+        income_date: incomeDate,
+        // Limpiar campos vacíos (convertir strings vacíos a undefined)
+        idDivisa: formData.idDivisa,
+        idProfessor: formData.idProfessor || undefined,
+        idEnrollment: formData.idEnrollment || undefined,
+        note: formData.note || undefined,
+        tasa: formData.tasa && formData.tasa > 0 ? formData.tasa : undefined,
       };
 
       console.log("incomePayload", incomePayload);
@@ -399,25 +410,31 @@ export default function IncomesPage() {
     setIsSubmitting(true);
     setDialogError(null);
     try {
-      await apiClient(`api/incomes/${selectedIncome._id}`, {
+      const response = await apiClient(`api/incomes/${selectedIncome._id}`, {
         method: "DELETE",
       });
+
+      // Validar que la respuesta tenga la estructura esperada
+      if (!response || !response.income) {
+        throw new Error("Invalid response structure from server");
+      }
 
       // Remover el ingreso de la lista
       setIncomes((prev) =>
         prev.filter((income) => income._id !== selectedIncome._id)
       );
       handleClose();
-    } catch (err: any) {
-      if (err.message.includes("400")) {
-        setDialogError("ID inválido.");
-      } else if (err.message.includes("404")) {
-        setDialogError("Ingreso no encontrado.");
-      } else if (err.message.includes("500")) {
-        setDialogError("Error interno del servidor.");
-      } else {
-        setDialogError(err.message || "Failed to delete income.");
-      }
+    } catch (err: unknown) {
+      const errorInfo = handleApiError(err);
+      const errorMessage = getFriendlyErrorMessage(
+        err,
+        errorInfo.isNotFoundError
+          ? "Income not found"
+          : errorInfo.isValidationError
+          ? "Invalid income ID"
+          : "Failed to delete income. Please try again."
+      );
+      setDialogError(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -707,7 +724,6 @@ export default function IncomesPage() {
                 "paymentMethod",
                 "amount",
                 "amountInDollars",
-                "note",
               ]}
               searchPlaceholder="Search incomes..."
             />
@@ -791,6 +807,7 @@ export default function IncomesPage() {
                       setFormData((p) => ({ ...p, idDivisa: v }))
                     }
                     placeholder="Select currency..."
+                    required
                   />
                 </div>
               </div>
@@ -822,7 +839,6 @@ export default function IncomesPage() {
                             tasa: Number(parseFloat(e.target.value).toFixed(2)),
                           }))
                         }
-                        required
                         placeholder="Ej: 35.50"
                       />
                     </div>
@@ -835,6 +851,19 @@ export default function IncomesPage() {
                   </div>
                 ) : null;
               })()}
+              <div className="space-y-2">
+                <Label>
+                  Payment Method <span className="text-red-500">*</span>
+                </Label>
+                <SearchableSelect
+                  items={paymentMethods}
+                  selectedId={formData.idPaymentMethod}
+                  onSelectedChange={(v) =>
+                    setFormData((p) => ({ ...p, idPaymentMethod: v }))
+                  }
+                  placeholder="Select payment method..."
+                />
+              </div>
               <div className="space-y-2">
                 <Label>Professor</Label>
                 <SearchableSelect
@@ -856,19 +885,6 @@ export default function IncomesPage() {
                   }
                   placeholder="Select an enrollment..."
                   disabled={!formData.idProfessor}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>
-                  Payment Method <span className="text-red-500">*</span>
-                </Label>
-                <SearchableSelect
-                  items={paymentMethods}
-                  selectedId={formData.idPaymentMethod}
-                  onSelectedChange={(v) =>
-                    setFormData((p) => ({ ...p, idPaymentMethod: v }))
-                  }
-                  placeholder="Select payment method..."
                 />
               </div>
               <div className="space-y-2">
@@ -1070,11 +1086,13 @@ function SearchableSelect({
   selectedId,
   onSelectedChange,
   placeholder,
+  required,
 }: {
   items: { _id: string; name: string }[];
   selectedId: string;
   onSelectedChange: (id: string) => void;
   placeholder: string;
+  required?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -1087,6 +1105,7 @@ function SearchableSelect({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-required={required}
           className="w-full justify-between h-auto min-h-10 hover:!bg-primary/30 dark:hover:!primary/30"
         >
           {selectedItem ? selectedItem.name : placeholder}

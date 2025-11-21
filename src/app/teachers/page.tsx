@@ -123,6 +123,7 @@ export default function TeachersPage() {
       setIsLoading(true);
       setError(null);
       const data = await apiClient("api/professors");
+      console.log("EL DATA", data);
       setTeachers(data);
     } catch (err: unknown) {
       const errorMessage = getFriendlyErrorMessage(

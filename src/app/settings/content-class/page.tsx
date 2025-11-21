@@ -46,7 +46,6 @@ interface CreateContentClassData {
 
 interface UpdateContentClassData {
   name: string;
-  status: number;
 }
 
 export default function ContentClassPage() {
@@ -310,9 +309,6 @@ export default function ContentClassPage() {
     const formData = new FormData(e.target as HTMLFormElement);
     const contentClassData = {
       name: formData.get("name") as string,
-      ...(openDialog === "edit" && {
-        status: Number(formData.get("status")),
-      }),
     };
 
     const errors = validateForm(contentClassData);
@@ -519,21 +515,6 @@ export default function ContentClassPage() {
                   <p className="text-red-500 text-sm">{formErrors.name}</p>
                 )}
               </div>
-
-              {openDialog === "edit" && (
-                <div className="space-y-2">
-                  <Label htmlFor="status">Status</Label>
-                  <select
-                    id="status"
-                    name="status"
-                    defaultValue={selectedContentClass?.status || 1}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    <option value={1}>Activo</option>
-                    <option value={2}>Anulado</option>
-                  </select>
-                </div>
-              )}
             </form>
           )}
 

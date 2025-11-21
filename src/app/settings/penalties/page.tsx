@@ -46,7 +46,6 @@ interface CreatePenaltyData {
 
 interface UpdatePenaltyData {
   name: string;
-  status: number;
 }
 
 export default function PenaltiesPage() {
@@ -92,7 +91,6 @@ export default function PenaltiesPage() {
         body: JSON.stringify(penaltyData),
       });
       
-       console.log("el response es", response);
       if (!response || !response.penalizacion) {
         throw new Error("Invalid response structure from server");
       }
@@ -186,7 +184,7 @@ export default function PenaltiesPage() {
           method: "PATCH",
         }
       );
-      console.log("el response es", response);
+      
       // Validar que la respuesta tenga la estructura esperada
       if (!response || !response.penalizacion) {
         throw new Error("Invalid response structure from server");
@@ -227,7 +225,7 @@ export default function PenaltiesPage() {
           method: "PATCH",
         }
       );
-      console.log("el response es", response);
+      
       // Validar que la respuesta tenga la estructura esperada
       if (!response || !response.penalizacion) {
         throw new Error("Invalid response structure from server");
@@ -305,9 +303,6 @@ export default function PenaltiesPage() {
     const formData = new FormData(e.target as HTMLFormElement);
     const penaltyData = {
       name: formData.get("name") as string,
-      ...(openDialog === "edit" && {
-        status: Number(formData.get("status")),
-      }),
     };
 
     const errors = validateForm(penaltyData);
@@ -514,21 +509,6 @@ export default function PenaltiesPage() {
                   <p className="text-red-500 text-sm">{formErrors.name}</p>
                 )}
               </div>
-
-              {openDialog === "edit" && (
-                <div className="space-y-2">
-                  <Label htmlFor="status">Status</Label>
-                  <select
-                    id="status"
-                    name="status"
-                    defaultValue={selectedPenalty?.status || 1}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    <option value={1}>Activo</option>
-                    <option value={2}>Anulado</option>
-                  </select>
-                </div>
-              )}
             </form>
           )}
 

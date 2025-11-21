@@ -193,11 +193,7 @@ export default function PlansPage() {
       }
       
       setPlans((prev) =>
-        prev.map((plan) =>
-          plan._id === planId
-            ? { ...plan, isActive: false, updatedAt: response.plan.updatedAt }
-            : plan
-        )
+        prev.map((plan) => (plan._id === planId ? response.plan : plan))
       );
       setSuccessMessage("Plan deactivated successfully");
       handleClose();
@@ -217,6 +213,38 @@ export default function PlansPage() {
     }
   };
 
+  // Activate plan
+  const activatePlan = async (planId: string) => {
+    try {
+      setIsSubmitting(true);
+      setError(null);
+      const response = await apiClient(`api/plans/${planId}/activate`, {
+        method: "PATCH",
+      });
+      
+      if (!response || !response.plan) {
+        throw new Error("Invalid response structure from server");
+      }
+      
+      setPlans((prev) =>
+        prev.map((plan) => (plan._id === planId ? response.plan : plan))
+      );
+    } catch (err: unknown) {
+      const errorInfo = handleApiError(err);
+      const errorMessage = getFriendlyErrorMessage(
+        err,
+        errorInfo.isNotFoundError
+          ? "Plan not found"
+          : errorInfo.isValidationError
+          ? "Plan is already active or invalid ID"
+          : "Failed to activate plan. Please try again."
+      );
+      setError(errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   useEffect(() => {
     fetchPlans();
   }, []);
@@ -230,49 +258,6 @@ export default function PlansPage() {
       return () => clearTimeout(timer);
     }
   }, [successMessage]);
-
-  // Activate plan
-  const activatePlan = async (planId: string) => {
-    try {
-      setIsSubmitting(true);
-      setDialogError(null);
-      setFormErrors({});
-      const response = await apiClient(`api/plans/${planId}/activate`, {
-        method: "PATCH",
-      });
-      
-      if (!response || !response.plan) {
-        throw new Error("Invalid response structure from server");
-      }
-      
-      setPlans((prev) =>
-        prev.map((plan) =>
-          plan._id === planId
-            ? { ...plan, isActive: true, updatedAt: response.plan.updatedAt }
-            : plan
-        )
-      );
-      setSuccessMessage("Plan activated successfully");
-      handleClose();
-    } catch (err: unknown) {
-      const errorInfo = handleApiError(err);
-      const errorMessage = getFriendlyErrorMessage(
-        err,
-        errorInfo.isNotFoundError
-          ? "Plan not found"
-          : errorInfo.isValidationError
-          ? "Plan is already active or invalid ID"
-          : "Failed to activate plan. Please try again."
-      );
-      setDialogError(errorMessage);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchPlans();
-  }, []);
 
   const handleOpen = (
     type: "create" | "edit" | "deactivate" | "view",

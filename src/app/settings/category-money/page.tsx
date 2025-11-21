@@ -46,7 +46,6 @@ interface CreateCategoryMoneyData {
 
 interface UpdateCategoryMoneyData {
   name: string;
-  status: number;
 }
 
 export default function CategoryMoneyPage() {
@@ -312,9 +311,6 @@ export default function CategoryMoneyPage() {
     const formData = new FormData(e.target as HTMLFormElement);
     const categoryMoneyData = {
       name: formData.get("name") as string,
-      ...(openDialog === "edit" && {
-        status: Number(formData.get("status")),
-      }),
     };
 
     const errors = validateForm(categoryMoneyData);
@@ -522,21 +518,6 @@ export default function CategoryMoneyPage() {
                   <p className="text-red-500 text-sm">{formErrors.name}</p>
                 )}
               </div>
-
-              {openDialog === "edit" && (
-                <div className="space-y-2">
-                  <Label htmlFor="status">Status</Label>
-                  <select
-                    id="status"
-                    name="status"
-                    defaultValue={selectedCategoryMoney?.status || 1}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    <option value={1}>Activo</option>
-                    <option value={2}>Anulado</option>
-                  </select>
-                </div>
-              )}
             </form>
           )}
 

@@ -5,9 +5,7 @@ import { useState, useEffect } from "react";
 import { apiClient } from "@/lib/api";
 import { handleApiError, getFriendlyErrorMessage } from "@/lib/errorHandler";
 import {
-  formatDateForDisplay,
   getCurrentDateString,
-  extractDatePart,
 } from "@/lib/dateUtils";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -33,17 +31,17 @@ import {
 import { DataTable } from "@/components/ui/data-table";
 import {
   Plus,
-  Pencil,
   Ban,
   CheckCircle2,
   Loader2,
-  Trash2,
   Eye,
   ArrowUpDown,
   X,
   AlertCircle,
+  Trash2,
 } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
+import Link from "next/link";
 
 // --- DEFINICIONES DE TIPOS ---
 interface Note {
@@ -96,17 +94,6 @@ const initialStudentState: StudentFormData = {
   notes: [],
 };
 
-// --- FUNCIONES DE AYUDA ---
-const formatDateForInput = (dateString?: string | null) => {
-  if (!dateString) return "";
-  try {
-    return extractDatePart(dateString);
-  } catch (e) {
-    console.log("error: ", e);
-    return "";
-  }
-};
-
 // --- COMPONENTE PRINCIPAL ---
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
@@ -114,7 +101,7 @@ export default function StudentsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [openDialog, setOpenDialog] = useState<
-    "create" | "edit" | "status" | "view" | null
+    "create" | "status" | null
   >(null);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [formData, setFormData] =
@@ -148,7 +135,7 @@ export default function StudentsPage() {
 
   // --- MANEJADORES DE DIÁLOGOS ---
   const handleOpen = (
-    type: "create" | "edit" | "status" | "view",
+    type: "create" | "status",
     student?: Student
   ) => {
     setDialogError(null);
@@ -158,17 +145,6 @@ export default function StudentsPage() {
       setFormData(initialStudentState);
     } else if (student) {
       setSelectedStudent(student);
-      if (type === "edit") {
-        const editableData = {
-          ...student,
-          dob: formatDateForInput(student.dob),
-          notes: student.notes.map((note) => ({
-            ...note,
-            date: formatDateForInput(note.date),
-          })),
-        };
-        setFormData(editableData);
-      }
     }
     setOpenDialog(type);
   };
@@ -221,15 +197,20 @@ export default function StudentsPage() {
     setIsSubmitting(true);
     setDialogError(null);
     try {
+      // Enviar solo la fecha en formato YYYY-MM-DD (sin hora)
+      const payload = {
+        ...formData,
+        dob: formData.dob || undefined,
+        notes: formData.notes?.map((note) => ({
+          ...note,
+          date: note.date || undefined,
+        })),
+      };
+
       if (openDialog === "create") {
         await apiClient("api/students", {
           method: "POST",
-          body: JSON.stringify(formData),
-        });
-      } else if (openDialog === "edit" && selectedStudent) {
-        await apiClient(`api/students/${selectedStudent._id}`, {
-          method: "PUT",
-          body: JSON.stringify(formData),
+          body: JSON.stringify(payload),
         });
       }
       await fetchStudents();
@@ -397,17 +378,11 @@ export default function StudentsPage() {
             size="icon"
             variant="outline"
             className="text-secondary border-secondary/50 hover:bg-secondary/10"
-            onClick={() => handleOpen("view", row.original)}
+            asChild
           >
-            <Eye className="h-4 w-4" />
-          </Button>
-          <Button
-            size="icon"
-            variant="outline"
-            className="text-primary border-primary/50 hover:bg-primary/10"
-            onClick={() => handleOpen("edit", row.original)}
-          >
-            <Pencil className="h-4 w-4" />
+            <Link href={`/students/${row.original._id}`}>
+              <Eye className="h-4 w-4" />
+            </Link>
           </Button>
           {row.original.status === 1 ? (
             <Button
@@ -489,13 +464,11 @@ export default function StudentsPage() {
           <DialogHeader>
             <DialogTitle>
               {openDialog === "create" && "Add New Student"}
-              {openDialog === "edit" && "Edit Student's Information"}
-              {openDialog === "view" && "Student Details"}
               {openDialog === "status" && `Confirm Status Change`}
             </DialogTitle>
           </DialogHeader>
 
-          {(openDialog === "create" || openDialog === "edit") && (
+          {openDialog === "create" && (
             <form
               onSubmit={handleSubmit}
               className="max-h-[70vh] overflow-y-auto p-1 pr-4 space-y-6"
@@ -706,25 +679,23 @@ export default function StudentsPage() {
           {openDialog === "status" && selectedStudent && (
             <div>
               <DialogDescription className="text-light-text dark:text-dark-text">
-                <p>
-                  Are you sure you want to{" "}
-                  {selectedStudent.status === 1 ? "deactivate" : "activate"}{" "}
-                  <span className="font-bold">{selectedStudent.name}</span>?
-                </p>
-                {selectedStudent.status === 1 && (
-                  <div className="mt-4 space-y-2">
-                    <Label htmlFor="reason">
-                      Reason for deactivation (optional)
-                    </Label>
-                    <Input
-                      id="reason"
-                      value={deactivationReason}
-                      onChange={(e) => setDeactivationReason(e.target.value)}
-                      placeholder="e.g., Moved to another city"
-                    />
-                  </div>
-                )}
+                Are you sure you want to{" "}
+                {selectedStudent.status === 1 ? "deactivate" : "activate"}{" "}
+                <span className="font-bold">{selectedStudent.name}</span>?
               </DialogDescription>
+              {selectedStudent.status === 1 && (
+                <div className="mt-4 space-y-2">
+                  <Label htmlFor="reason">
+                    Reason for deactivation (optional)
+                  </Label>
+                  <Input
+                    id="reason"
+                    value={deactivationReason}
+                    onChange={(e) => setDeactivationReason(e.target.value)}
+                    placeholder="e.g., Moved to another city"
+                  />
+                </div>
+              )}
               {dialogError && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 shrink-0" />
@@ -760,123 +731,6 @@ export default function StudentsPage() {
             </div>
           )}
 
-          {openDialog === "view" && selectedStudent && (
-            <div className="space-y-6 max-h-[70vh] overflow-y-auto p-1 pr-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                <div>
-                  <Label className="font-semibold">Student Code</Label>
-                  <p className="text-sm font-semibold">
-                    {selectedStudent.studentCode}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Full Name</Label>
-                  <p className="text-sm font-semibold">
-                    {selectedStudent.name}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Date of Birth</Label>
-                  <p className="text-sm">
-                    {selectedStudent.dob
-                      ? formatDateForDisplay(selectedStudent.dob)
-                      : "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Gender</Label>
-                  <p className="text-sm">{selectedStudent.gender || "N/A"}</p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Representative</Label>
-                  <p className="text-sm">
-                    {selectedStudent.representativeName || "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Occupation</Label>
-                  <p className="text-sm">
-                    {selectedStudent.occupation || "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Email</Label>
-                  <p className="text-sm">{selectedStudent.email}</p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Phone</Label>
-                  <p className="text-sm">{selectedStudent.phone}</p>
-                </div>
-                <div className="md:col-span-2">
-                  <Label className="font-semibold">Address</Label>
-                  <p className="text-sm">{selectedStudent.address}</p>
-                </div>
-                <div>
-                  <Label className="font-semibold">City</Label>
-                  <p className="text-sm">{selectedStudent.city}</p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Country</Label>
-                  <p className="text-sm">{selectedStudent.country}</p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Status</Label>
-                  <span
-                    className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                      selectedStudent.status === 1
-                        ? "bg-secondary/20 text-secondary"
-                        : selectedStudent.status === 0
-                        ? "bg-accent-1/20 text-accent-1"
-                        : "bg-yellow-100 text-yellow-800"
-                    }`}
-                  >
-                    {selectedStudent.status === 1
-                      ? "Active"
-                      : selectedStudent.status === 0
-                      ? "Inactive"
-                      : "Paused"}
-                  </span>
-                </div>
-              </div>
-
-              {selectedStudent.notes && selectedStudent.notes.length > 0 && (
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium">Notes</h3>
-                  {selectedStudent.notes.map((note, index) => (
-                    <div
-                      key={note._id || index}
-                      className="border p-4 rounded-md"
-                    >
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <Label className="text-sm text-muted-foreground">
-                            Date
-                          </Label>
-                          <p className="text-sm font-semibold">
-                            {note.date
-                              ? formatDateForDisplay(note.date)
-                              : "N/A"}
-                          </p>
-                        </div>
-                        <div className="md:col-span-2">
-                          <Label className="text-sm text-muted-foreground">
-                            Note
-                          </Label>
-                          <p className="text-sm">{note.text}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <DialogFooter className="pt-4 border-t">
-                <Button variant="outline" onClick={handleClose}>
-                  Close
-                </Button>
-              </DialogFooter>
-            </div>
-          )}
         </DialogContent>
       </Dialog>
     </div>

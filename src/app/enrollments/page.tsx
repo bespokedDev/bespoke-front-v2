@@ -2,13 +2,13 @@
 "use client";
 import { useState, useEffect } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown, X, AlertCircle } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { handleApiError, getFriendlyErrorMessage } from "@/lib/errorHandler";
 import {
   formatDateForDisplay,
   getCurrentDateString,
   extractDatePart,
+  dateStringToISO,
 } from "@/lib/dateUtils";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -30,6 +31,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Command,
   CommandEmpty,
@@ -52,6 +58,9 @@ import {
   ChevronsUpDown,
   X,
   Eye,
+  ArrowUpDown,
+  AlertCircle,
+  ChevronDown,
 } from "lucide-react";
 
 // --- DEFINICIONES DE TIPOS ---
@@ -74,10 +83,23 @@ interface ScheduledDay {
   day: string;
 }
 
+interface StudentEnrollmentInfo {
+  studentId: string;
+  preferences?: string;
+  firstTimeLearningLanguage?: string;
+  previousExperience?: string;
+  goals?: string;
+  dailyLearningTime?: string;
+  learningType?: string;
+  idealClassType?: string;
+  learningDifficulties?: string;
+  languageLevel?: string;
+}
+
 interface Enrollment {
   _id: string;
   planId: Plan;
-  studentIds: StudentBrief[];
+  studentIds: StudentEnrollmentInfo[] | StudentBrief[];
   professorId?: ProfessorBrief | null;
   enrollmentType: "single" | "couple" | "group";
   scheduledDays: ScheduledDay[] | null;
@@ -86,13 +108,29 @@ interface Enrollment {
   pricePerStudent: number;
   totalAmount: number;
   status: number; // 1=activo, 0=inactivo, 2=pausado
-  alias?: string; // 👈 NUEVO
-  language?: string; // 👈 NUEVO
+  alias?: string;
+  language?: string;
+  available_balance?: number;
+  classCalculationType?: number;
+  numberOfWeeks?: number;
 }
+
+type StudentEnrollmentFormData = {
+  studentId: string;
+  preferences?: string;
+  firstTimeLearningLanguage?: string;
+  previousExperience?: string;
+  goals?: string;
+  dailyLearningTime?: string;
+  learningType?: string;
+  idealClassType?: string;
+  learningDifficulties?: string;
+  languageLevel?: string;
+};
 
 type EnrollmentFormData = {
   planId: string;
-  studentIds: string[];
+  studentIds: StudentEnrollmentFormData[];
   professorId?: string;
   enrollmentType: "single" | "couple" | "group";
   scheduledDays: string[];
@@ -101,8 +139,10 @@ type EnrollmentFormData = {
   pricePerStudent: number;
   totalAmount: number;
   status?: number;
-  alias?: string; // 👈 NUEVO
-  language?: string; // 👈 NUEVO
+  alias?: string;
+  language?: string;
+  classCalculationType?: number;
+  numberOfWeeks?: number;
 };
 
 // --- ESTADO INICIAL ---
@@ -116,8 +156,9 @@ const initialEnrollmentState: EnrollmentFormData = {
   startDate: getCurrentDateString(),
   pricePerStudent: 0,
   totalAmount: 0,
-  alias: "", // 👈 NUEVO
-  language: "", // 👈 NUEVO
+  alias: "",
+  language: "",
+  classCalculationType: 1,
 };
 
 const weekDays = [
@@ -147,6 +188,7 @@ export default function EnrollmentsPage() {
   const [formData, setFormData] = useState<EnrollmentFormData>(
     initialEnrollmentState
   );
+  const [openStudentSections, setOpenStudentSections] = useState<Record<string, boolean>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
 
@@ -191,18 +233,19 @@ export default function EnrollmentsPage() {
     let pricePerStudent = 0;
     let enrollmentType: "single" | "couple" | "group" = "group";
 
-    if (formData.studentIds.length === 1) {
+    const studentCount = formData.studentIds.length;
+    if (studentCount === 1) {
       pricePerStudent = selectedPlan.pricing.single;
       enrollmentType = "single";
-    } else if (formData.studentIds.length === 2) {
-      pricePerStudent = selectedPlan.pricing.couple / 2;
+    } else if (studentCount === 2) {
+      pricePerStudent = selectedPlan.pricing.couple;
       enrollmentType = "couple";
-    } else if (formData.studentIds.length > 2) {
-      pricePerStudent = selectedPlan.pricing.group / formData.studentIds.length;
+    } else if (studentCount > 2) {
+      pricePerStudent = selectedPlan.pricing.group;
       enrollmentType = "group";
     }
 
-    const totalAmount = pricePerStudent * formData.studentIds.length;
+    const totalAmount = pricePerStudent * studentCount;
 
     setFormData((prev) => ({
       ...prev,
@@ -225,9 +268,22 @@ export default function EnrollmentsPage() {
       if (type === "edit") {
         const scheduledDaysArray =
           enrollment.scheduledDays?.map((d) => d.day) || [];
+        // Transformar studentIds: puede venir como StudentEnrollmentInfo[] o StudentBrief[]
+        const studentIdsArray = enrollment.studentIds.map((s: any) => ({
+          studentId: s.studentId || s._id,
+          preferences: s.preferences || "",
+          firstTimeLearningLanguage: s.firstTimeLearningLanguage || "",
+          previousExperience: s.previousExperience || "",
+          goals: s.goals || "",
+          dailyLearningTime: s.dailyLearningTime || "",
+          learningType: s.learningType || "",
+          idealClassType: s.idealClassType || "",
+          learningDifficulties: s.learningDifficulties || "",
+          languageLevel: s.languageLevel || "",
+        }));
         setFormData({
           planId: enrollment.planId._id,
-          studentIds: enrollment.studentIds.map((s) => s._id),
+          studentIds: studentIdsArray,
           professorId: enrollment.professorId?._id || "",
           enrollmentType: enrollment.enrollmentType,
           scheduledDays: scheduledDaysArray,
@@ -238,8 +294,10 @@ export default function EnrollmentsPage() {
           pricePerStudent: enrollment.pricePerStudent,
           totalAmount: enrollment.totalAmount,
           status: enrollment.status,
-          alias: enrollment.alias || "", // 👈 NUEVO
-          language: enrollment.language || "", // 👈 NUEVO
+          alias: enrollment.alias || "",
+          language: enrollment.language || "",
+          classCalculationType: enrollment.classCalculationType || 1,
+          numberOfWeeks: (enrollment as any).numberOfWeeks || undefined,
         });
       }
     }
@@ -248,33 +306,134 @@ export default function EnrollmentsPage() {
 
   const handleClose = () => {
     setOpenDialog(null);
+    setOpenStudentSections({});
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setDialogError(null);
-    const payload = {
-      ...formData,
-      scheduledDays:
-        formData.scheduledDays.length > 0
-          ? formData.scheduledDays.map((day) => ({ day }))
-          : [],
-      status: openDialog === "create" ? 1 : formData.status,
+
+    // Validaciones de campos obligatorios
+    if (!formData.planId) {
+      setDialogError("Plan is required.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!formData.studentIds || formData.studentIds.length === 0) {
+      setDialogError("At least one student is required.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!formData.professorId) {
+      setDialogError("Professor is required.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!formData.scheduledDays || formData.scheduledDays.length === 0) {
+      setDialogError("At least one scheduled day is required.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!formData.startDate) {
+      setDialogError("Start date is required.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!formData.language) {
+      setDialogError("Language is required.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    // Convertir fechas a formato ISO
+    const purchaseDateISO = formData.purchaseDate
+      ? dateStringToISO(formData.purchaseDate)
+      : new Date().toISOString();
+    
+    const startDateISO = formData.startDate
+      ? dateStringToISO(formData.startDate)
+      : new Date().toISOString();
+
+    // Transformar studentIds: ya son objetos, pero limpiar campos vacíos
+    const studentIdsPayload = formData.studentIds.map((student) => {
+      const payload: any = {
+        studentId: student.studentId,
+      };
+      // Agregar campos opcionales solo si tienen valor
+      if (student.preferences?.trim()) payload.preferences = student.preferences.trim();
+      if (student.firstTimeLearningLanguage?.trim()) payload.firstTimeLearningLanguage = student.firstTimeLearningLanguage.trim();
+      if (student.previousExperience?.trim()) payload.previousExperience = student.previousExperience.trim();
+      if (student.goals?.trim()) payload.goals = student.goals.trim();
+      if (student.dailyLearningTime?.trim()) payload.dailyLearningTime = student.dailyLearningTime.trim();
+      if (student.learningType?.trim()) payload.learningType = student.learningType.trim();
+      if (student.idealClassType?.trim()) payload.idealClassType = student.idealClassType.trim();
+      if (student.learningDifficulties?.trim()) payload.learningDifficulties = student.learningDifficulties.trim();
+      if (student.languageLevel?.trim()) payload.languageLevel = student.languageLevel.trim();
+      return payload;
+    });
+
+    const payload: any = {
+      planId: formData.planId,
+      studentIds: studentIdsPayload,
+      professorId: formData.professorId,
+      enrollmentType: formData.enrollmentType,
+      scheduledDays: formData.scheduledDays.map((day) => ({ day })),
+      purchaseDate: purchaseDateISO,
+      startDate: startDateISO,
+      pricePerStudent: formData.pricePerStudent,
+      totalAmount: formData.totalAmount,
+      language: formData.language,
+      classCalculationType: formData.classCalculationType || 1,
     };
-    console.log("EL STATTUSSS", formData.status, openDialog);
-    console.log("EL PAYLLOOAAADDD", payload);
+
+    // Agregar campos opcionales solo si tienen valor
+    if (formData.alias) {
+      payload.alias = formData.alias;
+    }
+
+    // Si classCalculationType es 2, numberOfWeeks es obligatorio
+    if (payload.classCalculationType === 2) {
+      if (!formData.numberOfWeeks || formData.numberOfWeeks <= 0) {
+        setDialogError("Number of weeks is required when using weekly calculation type.");
+        setIsSubmitting(false);
+        return;
+      }
+      payload.numberOfWeeks = formData.numberOfWeeks;
+    }
+
+    // Para edición, incluir status si existe
+    if (openDialog === "edit" && formData.status !== undefined) {
+      payload.status = formData.status;
+    } else if (openDialog === "create") {
+      payload.status = 1;
+    }
+
     try {
+      let response;
       if (openDialog === "create") {
-        await apiClient("api/enrollments", {
+        response = await apiClient("api/enrollments", {
           method: "POST",
           body: JSON.stringify(payload),
         });
+        // Validar estructura de respuesta
+        if (!response || !response.enrollment) {
+          throw new Error("Invalid response structure from server");
+        }
       } else if (openDialog === "edit" && selectedEnrollment) {
-        await apiClient(`api/enrollments/${selectedEnrollment._id}`, {
+        response = await apiClient(`api/enrollments/${selectedEnrollment._id}`, {
           method: "PUT",
           body: JSON.stringify(payload),
         });
+        // Validar estructura de respuesta
+        if (!response || !response.enrollment) {
+          throw new Error("Invalid response structure from server");
+        }
       }
       const enrollmentData = await apiClient("api/enrollments");
       setEnrollments(enrollmentData);
@@ -305,9 +464,14 @@ export default function EnrollmentsPage() {
       const action =
         selectedEnrollment.status === 1 ? "deactivate" : "activate";
 
-      await apiClient(`api/enrollments/${selectedEnrollment._id}/${action}`, {
+      const response = await apiClient(`api/enrollments/${selectedEnrollment._id}/${action}`, {
         method: "PATCH",
       });
+
+      // Validar estructura de respuesta
+      if (!response || !response.enrollment) {
+        throw new Error("Invalid response structure from server");
+      }
 
       const enrollmentData = await apiClient("api/enrollments");
       setEnrollments(enrollmentData);
@@ -344,7 +508,12 @@ export default function EnrollmentsPage() {
       id: "aliasOrStudents",
       accessorFn: (row) =>
         row.alias?.trim() ||
-        row.studentIds.map((s: { name: string }) => s.name).join(", "),
+        row.studentIds.map((s: any) => {
+          // Manejar tanto StudentBrief como StudentEnrollmentInfo
+          if (s.name) return s.name;
+          if (s.studentId) return "N/A";
+          return "";
+        }).filter(Boolean).join(", "),
       header: ({ column }) => (
         <Button
           variant="ghost"
@@ -358,9 +527,9 @@ export default function EnrollmentsPage() {
       sortingFn: stringLocaleSort(), // 👈 orden alfabético real
       cell: ({ row }) => {
         const alias = row.original.alias;
-        return alias?.trim()
-          ? alias
-          : row.original.studentIds.map((s) => s.name).join(", ");
+        if (alias?.trim()) return alias;
+        // Manejar tanto StudentBrief[] como StudentEnrollmentInfo[]
+        return row.original.studentIds.map((s: any) => s.name || "N/A").join(", ");
       },
     },
     // Language
@@ -608,12 +777,15 @@ export default function EnrollmentsPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Professor</Label>
+                  <Label>
+                    Professor <span className="text-red-500">*</span>
+                  </Label>
                   <Select
                     value={formData.professorId}
                     onValueChange={(v) =>
                       setFormData((p) => ({ ...p, professorId: v }))
                     }
+                    required
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select a professor..." />
@@ -629,16 +801,170 @@ export default function EnrollmentsPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Students</Label>
-                <MultiSelect
+                <Label>
+                  Students <span className="text-red-500">*</span>
+                </Label>
+                <StudentMultiSelect
                   items={students}
-                  selectedIds={formData.studentIds}
-                  onSelectedChange={(ids) =>
-                    setFormData((p) => ({ ...p, studentIds: ids }))
+                  selectedStudents={formData.studentIds}
+                  onSelectedChange={(selectedStudents) =>
+                    setFormData((p) => ({ ...p, studentIds: selectedStudents }))
                   }
                   placeholder="Select students..."
                 />
               </div>
+              
+              {/* Campos opcionales para cada estudiante */}
+              {formData.studentIds.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium">Student Information (Optional)</h3>
+                  {formData.studentIds.map((student, index) => {
+                    const studentName = students.find((s) => s._id === student.studentId)?.name || `Student ${index + 1}`;
+                    const studentKey = student.studentId || `student-${index}`;
+                    const isOpen = openStudentSections[studentKey] || false;
+                    return (
+                      <Collapsible
+                        key={studentKey}
+                        open={isOpen}
+                        onOpenChange={(open) =>
+                          setOpenStudentSections((prev) => ({
+                            ...prev,
+                            [studentKey]: open,
+                          }))
+                        }
+                        className="border rounded-md"
+                      >
+                        <CollapsibleTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            className="w-full justify-between p-4 h-auto hover:bg-muted/50"
+                          >
+                            <span className="text-sm font-semibold">{studentName}</span>
+                            <ChevronDown
+                              className={`h-4 w-4 transition-transform duration-200 ${
+                                isOpen ? "transform rotate-180" : ""
+                              }`}
+                            />
+                          </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="px-4 pb-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                          <div className="space-y-2">
+                            <Label>Preferences</Label>
+                            <Textarea
+                              value={student.preferences || ""}
+                              onChange={(e) => {
+                                const updated = [...formData.studentIds];
+                                updated[index] = { ...updated[index], preferences: e.target.value };
+                                setFormData((p) => ({ ...p, studentIds: updated }));
+                              }}
+                              placeholder="e.g., Prefers practical and conversational classes"
+                              rows={2}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>First Time Learning Language</Label>
+                            <Input
+                              value={student.firstTimeLearningLanguage || ""}
+                              onChange={(e) => {
+                                const updated = [...formData.studentIds];
+                                updated[index] = { ...updated[index], firstTimeLearningLanguage: e.target.value };
+                                setFormData((p) => ({ ...p, studentIds: updated }));
+                              }}
+                              placeholder="e.g., Yes, this is the first time"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Previous Experience</Label>
+                            <Input
+                              value={student.previousExperience || ""}
+                              onChange={(e) => {
+                                const updated = [...formData.studentIds];
+                                updated[index] = { ...updated[index], previousExperience: e.target.value };
+                                setFormData((p) => ({ ...p, studentIds: updated }));
+                              }}
+                              placeholder="e.g., No previous experience"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Goals</Label>
+                            <Input
+                              value={student.goals || ""}
+                              onChange={(e) => {
+                                const updated = [...formData.studentIds];
+                                updated[index] = { ...updated[index], goals: e.target.value };
+                                setFormData((p) => ({ ...p, studentIds: updated }));
+                              }}
+                              placeholder="e.g., Learn English for travel"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Daily Learning Time</Label>
+                            <Input
+                              value={student.dailyLearningTime || ""}
+                              onChange={(e) => {
+                                const updated = [...formData.studentIds];
+                                updated[index] = { ...updated[index], dailyLearningTime: e.target.value };
+                                setFormData((p) => ({ ...p, studentIds: updated }));
+                              }}
+                              placeholder="e.g., 1 hour per day"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Learning Type</Label>
+                            <Input
+                              value={student.learningType || ""}
+                              onChange={(e) => {
+                                const updated = [...formData.studentIds];
+                                updated[index] = { ...updated[index], learningType: e.target.value };
+                                setFormData((p) => ({ ...p, studentIds: updated }));
+                              }}
+                              placeholder="e.g., Visual and auditory"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Ideal Class Type</Label>
+                            <Input
+                              value={student.idealClassType || ""}
+                              onChange={(e) => {
+                                const updated = [...formData.studentIds];
+                                updated[index] = { ...updated[index], idealClassType: e.target.value };
+                                setFormData((p) => ({ ...p, studentIds: updated }));
+                              }}
+                              placeholder="e.g., Individual classes"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Learning Difficulties</Label>
+                            <Input
+                              value={student.learningDifficulties || ""}
+                              onChange={(e) => {
+                                const updated = [...formData.studentIds];
+                                updated[index] = { ...updated[index], learningDifficulties: e.target.value };
+                                setFormData((p) => ({ ...p, studentIds: updated }));
+                              }}
+                              placeholder="e.g., Difficulty with pronunciation"
+                            />
+                          </div>
+                          <div className="space-y-2 md:col-span-2">
+                            <Label>Language Level</Label>
+                            <Input
+                              value={student.languageLevel || ""}
+                              onChange={(e) => {
+                                const updated = [...formData.studentIds];
+                                updated[index] = { ...updated[index], languageLevel: e.target.value };
+                                setFormData((p) => ({ ...p, studentIds: updated }));
+                              }}
+                              placeholder="e.g., Beginner"
+                            />
+                          </div>
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    );
+                  })}
+                </div>
+              )}
               {(formData.enrollmentType === "couple" ||
                 formData.enrollmentType === "group") && (
                 <div className="space-y-2">
@@ -673,7 +999,9 @@ export default function EnrollmentsPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Scheduled Days</Label>
+                <Label>
+                  Scheduled Days <span className="text-red-500">*</span>
+                </Label>
                 <MultiSelect
                   items={weekDays.map((d) => ({ _id: d, name: d }))}
                   selectedIds={formData.scheduledDays}
@@ -699,18 +1027,64 @@ export default function EnrollmentsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Start Date</Label>
+                  <Label>
+                    Start Date <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     type="date"
-                    value={formData.startDate || ""}
+                    value={formData.startDate || getCurrentDateString()}
                     onChange={(e) =>
                       setFormData((p) => ({
                         ...p,
                         startDate: e.target.value,
                       }))
                     }
+                    required
                   />
                 </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Class Calculation Type</Label>
+                  <Select
+                    value={formData.classCalculationType?.toString() || "1"}
+                    onValueChange={(v) =>
+                      setFormData((p) => ({
+                        ...p,
+                        classCalculationType: parseInt(v),
+                        numberOfWeeks: undefined, // Reset cuando cambia el tipo
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select calculation type..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">Normal (Monthly)</SelectItem>
+                      <SelectItem value="2">Weekly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {formData.classCalculationType === 2 && (
+                  <div className="space-y-2">
+                    <Label>
+                      Number of Weeks <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={formData.numberOfWeeks || ""}
+                      onChange={(e) =>
+                        setFormData((p) => ({
+                          ...p,
+                          numberOfWeeks: parseInt(e.target.value) || undefined,
+                        }))
+                      }
+                      placeholder="Enter number of weeks..."
+                      required
+                    />
+                  </div>
+                )}
               </div>
               {openDialog === "edit" && (
                 <div className="space-y-2">
@@ -757,6 +1131,9 @@ export default function EnrollmentsPage() {
                   </p>
                 </div>
               </div>
+              <div className="text-sm text-muted-foreground">
+                <span className="text-red-500">*</span> Campos obligatorios
+              </div>
               {dialogError && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 shrink-0" />
@@ -793,7 +1170,15 @@ export default function EnrollmentsPage() {
                   <Label className="font-semibold">Students</Label>
                   <p className="text-sm">
                     {selectedEnrollment.studentIds
-                      .map((s) => s.name)
+                      .map((s: any) => {
+                        // Puede venir como StudentBrief (con name) o StudentEnrollmentInfo (con studentId)
+                        if (s.name) return s.name;
+                        if (s.studentId) {
+                          const student = students.find((st) => st._id === s.studentId);
+                          return student?.name || "N/A";
+                        }
+                        return "N/A";
+                      })
                       .join(", ")}
                   </p>
                 </div>
@@ -948,6 +1333,107 @@ function MultiSelect({
   };
 
   const selectedItems = items.filter((item) => selectedIds.includes(item._id));
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between h-auto min-h-10 hover:!bg-primary/30 dark:hover:!primary/30"
+        >
+          <div className="flex gap-1 flex-wrap">
+            {selectedItems.length > 0
+              ? selectedItems.map((item) => (
+                  <span
+                    key={item._id}
+                    className="bg-muted text-muted-foreground text-xs font-medium px-2 py-1 rounded-md flex items-center gap-1"
+                  >
+                    {item.name}
+                    <div
+                      className="ml-1 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSelect(item._id);
+                      }}
+                    >
+                      <X className="h-3 w-3 cursor-pointer" />
+                    </div>
+                  </span>
+                ))
+              : placeholder}
+          </div>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+        <Command>
+          <CommandInput placeholder={placeholder} />
+          <CommandEmpty>No item found.</CommandEmpty>
+          <CommandGroup className="max-h-60 overflow-y-auto">
+            {items.map((item) => (
+              <CommandItem
+                key={item._id}
+                value={item.name}
+                onSelect={() => handleSelect(item._id)}
+                className="hover:!bg-secondary/20 dark:hover:!secondary/30"
+              >
+                {item.name}
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// --- COMPONENTE MULTI-SELECT PARA ESTUDIANTES CON CAMPOS OPCIONALES ---
+function StudentMultiSelect({
+  items,
+  selectedStudents,
+  onSelectedChange,
+  placeholder,
+}: {
+  items: { _id: string; name: string }[];
+  selectedStudents: StudentEnrollmentFormData[];
+  onSelectedChange: (students: StudentEnrollmentFormData[]) => void;
+  placeholder: string;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const handleSelect = (id: string) => {
+    const isSelected = selectedStudents.some((s) => s.studentId === id);
+    let newSelectedStudents: StudentEnrollmentFormData[];
+    
+    if (isSelected) {
+      // Remover estudiante
+      newSelectedStudents = selectedStudents.filter((s) => s.studentId !== id);
+    } else {
+      // Agregar estudiante con objeto inicializado
+      newSelectedStudents = [
+        ...selectedStudents,
+        {
+          studentId: id,
+          preferences: "",
+          firstTimeLearningLanguage: "",
+          previousExperience: "",
+          goals: "",
+          dailyLearningTime: "",
+          learningType: "",
+          idealClassType: "",
+          learningDifficulties: "",
+          languageLevel: "",
+        },
+      ];
+    }
+    onSelectedChange(newSelectedStudents);
+  };
+
+  const selectedItems = items.filter((item) =>
+    selectedStudents.some((s) => s.studentId === item._id)
+  );
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

@@ -5,13 +5,52 @@
  */
 
 /**
- * Extracts date part (YYYY-MM-DD) from ISO date string to avoid timezone issues
- * @param isoDateString - ISO date string like "2025-09-07T00:00:00.000Z"
+ * Extracts date part (YYYY-MM-DD) from date string to avoid timezone issues
+ * Handles multiple formats:
+ * - ISO format: "2025-09-07T00:00:00.000Z"
+ * - Space-separated format: "2015-02-22 00:00:00"
+ * - JavaScript Date string: "Fri Dec 31 2004 20:00:00 GMT-0400 (hora de Venezuela)"
+ * - Already in YYYY-MM-DD format
+ * @param dateString - Date string in various formats
  * @returns Date part as string "YYYY-MM-DD"
  */
-export function extractDatePart(isoDateString: string): string {
-  if (!isoDateString) return "";
-  return isoDateString.split("T")[0];
+export function extractDatePart(dateString: string): string {
+  if (!dateString) return "";
+  
+  // If already in YYYY-MM-DD format, return as is
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    return dateString;
+  }
+  
+  // Handle ISO format with T separator (e.g., "2025-09-07T00:00:00.000Z")
+  if (dateString.includes("T")) {
+    return dateString.split("T")[0];
+  }
+  
+  // Handle space-separated format (e.g., "2015-02-22 00:00:00")
+  // Check if it starts with YYYY-MM-DD pattern
+  const spaceSeparatedMatch = dateString.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (spaceSeparatedMatch) {
+    return spaceSeparatedMatch[1];
+  }
+  
+  // Handle JavaScript Date string format (e.g., "Fri Dec 31 2004 20:00:00 GMT-0400")
+  // Try to parse it as a Date object and extract YYYY-MM-DD
+  try {
+    const date = new Date(dateString);
+    if (!isNaN(date.getTime())) {
+      // Format as YYYY-MM-DD
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+  } catch (e) {
+    // If parsing fails, continue to return empty string
+  }
+  
+  // If none of the formats match, return empty string
+  return "";
 }
 
 /**
