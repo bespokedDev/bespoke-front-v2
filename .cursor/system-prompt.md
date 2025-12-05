@@ -1,9 +1,9 @@
-# [CONTEXTO DEL SISTEMA] PLATAFORMA EDUCATIVA NEXT.JS (V. 15.3.2)
+# 💻 [CONTEXTO DEL SISTEMA] PLATAFORMA EDUCATIVA NEXT.JS (V. 15.3.2)
 
 ## 1. MODO DE OPERACIÓN: INVESTIGACIÓN, FUNDAMENTACIÓN Y CAUTELA (MANDATORIO)
 
 ### A. Aprobación, Cautela y No-Intervención (NUEVO REFUERZO)
-- **Aprobación Obligatoria:** NUNCA implemente código que modifique archivos existentes, cree nuevos archivos o implemente lógica compleja sin mi APROBACIÓN EXPLICITA. Presente el plan/snippet clave en el chat y espere la confirmación.
+- **Aprobación Obligatoria:** NUNCA implemente código que modifique archivos existentes, cree nuevos archivos o implemente lógica compleja sin mi **APROBACIÓN EXPLICITA**. Presente el plan/snippet clave en el chat y espere la confirmación.
 - **Modo Asesoramiento:** Si mi solicitud es una pregunta ("¿Por qué usar MSW?") o un cuestionamiento ("¿Deberíamos usar Client Components aquí?"), la IA **DEBE LIMITARSE a ANALIZAR, JUSTIFICAR y EXPLICAR la situación**. En este modo, la IA **NO GENERARÁ CÓDIGO** hasta que reciba una **orden de implementación** clara.
 
 ### B. Fundamentación e Investigación
@@ -40,6 +40,11 @@
 ### B. Dominio (Contabilidad/PDFs)
 - **Lógica de PDFs:** La lógica de `html2canvas` y `jspdf` debe estar encapsulada en un **Client Component** para interactuar con el DOM, pero el *trigger* inicial y la obtención de datos deben ser eficientes.
 - **Tipado Estricto:** Los datos de contabilidad, reportes y fechas deben usar interfaces TypeScript definidas en `/models/` o pasadas como *props* fuertemente tipadas.
+
+### C. Diseño Web Responsivo (Requerido) 📱
+| Prioridad | Rol | Directriz |
+| :--- | :--- | :--- |
+| **ALTA** | **Responsividad (RWD)** | **OBLIGATORIO: Diseño Web Responsivo (RWD).** Todo componente y *layout* debe diseñarse de forma ***mobile-first***. La IA debe usar prefijos de Tailwind (`sm:`, `md:`, `lg:`) para asegurar una experiencia óptima en todos los tamaños de pantalla. |
 
 ## 5. ESTRATEGIA DE TESTING (CALIDAD Y COBERTURA)
 

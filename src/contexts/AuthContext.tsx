@@ -56,14 +56,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const login = (newToken: string, userData: User) => {
+    console.log("[AuthContext] Login iniciado, guardando token y datos del usuario");
+    
     // Guardamos el token y los datos del usuario en el estado y en localStorage
     setToken(newToken);
     setUser(userData);
     localStorage.setItem("authToken", newToken);
     localStorage.setItem("user", JSON.stringify(userData));
+    
     // Guardamos el token en las cookies para que el middleware pueda acceder a él
-    document.cookie = `authToken=${newToken}; path=/; max-age=86400; SameSite=Strict;`; // max-age=1 day
-    router.push("/"); // Redirigimos al dashboard o a la página principal
+    // Usamos SameSite=Lax para mejor compatibilidad
+    if (typeof document !== "undefined") {
+      document.cookie = `authToken=${newToken}; path=/; max-age=86400; SameSite=Lax;`;
+    }
+    
+    console.log("[AuthContext] Token y datos guardados, redirigiendo según rol:", userData.role);
+    
+    // Redirigimos según el rol del usuario usando replace para evitar problemas de navegación
+    const role = userData.role?.toLowerCase();
+    if (role === "professor") {
+      router.replace("/professor/dashboard");
+    } else if (role === "student") {
+      router.replace("/student/dashboard");
+    } else {
+      // Admin o cualquier otro rol va al dashboard principal
+      router.replace("/");
+    }
   };
 
   const logout = () => {

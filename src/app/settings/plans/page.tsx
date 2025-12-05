@@ -14,6 +14,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { DataTable } from "@/components/ui/data-table";
 import {
   Plus,
@@ -35,6 +42,8 @@ interface Plan {
   _id: string;
   name: string;
   weeklyClasses: number;
+  planType: number; // 1 = mensual, 2 = semanal
+  weeks?: number | null; // Solo para planType: 2
   pricing: {
     single: number;
     couple: number;
@@ -49,6 +58,8 @@ interface Plan {
 interface CreatePlanData {
   name: string;
   weeklyClasses: number;
+  planType: number; // 1 = mensual, 2 = semanal
+  weeks?: number | null; // Solo para planType: 2
   pricing: {
     single: number;
     couple: number;
@@ -71,6 +82,7 @@ export default function PlansPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [dialogError, setDialogError] = useState<string | null>(null);
+  const [planType, setPlanType] = useState<string>("1"); // Estado para planType en el formulario
 
   // Fetch plans from API
   const fetchPlans = async () => {
@@ -264,6 +276,11 @@ export default function PlansPage() {
     plan?: Plan
   ) => {
     setSelectedPlan(plan || null);
+    if (plan && type === "edit") {
+      setPlanType(plan.planType?.toString() || "1");
+    } else {
+      setPlanType("1"); // Default a mensual al crear
+    }
     setOpenDialog(type);
   };
 
@@ -274,6 +291,7 @@ export default function PlansPage() {
     setError(null);
     setDialogError(null);
     setSuccessMessage(null);
+    setPlanType("1"); // Reset planType
   };
 
   // Form validation
@@ -286,6 +304,17 @@ export default function PlansPage() {
 
     if (formData.weeklyClasses === undefined || formData.weeklyClasses < 0) {
       errors.weeklyClasses = "Weekly classes must be 0 or greater";
+    }
+
+    if (!formData.planType || (formData.planType !== 1 && formData.planType !== 2)) {
+      errors.planType = "Plan type must be 1 (Monthly) or 2 (Weekly)";
+    }
+
+    // Validar weeks solo para planType: 2
+    if (formData.planType === 2) {
+      if (!formData.weeks || formData.weeks <= 0) {
+        errors.weeks = "Weeks must be greater than 0 for weekly plans";
+      }
     }
 
     if (!formData.pricing?.single || formData.pricing.single < 0) {
@@ -308,9 +337,13 @@ export default function PlansPage() {
     e.preventDefault();
 
     const formData = new FormData(e.target as HTMLFormElement);
-    const planData = {
+    const planTypeValue = Number(formData.get("planType") || planType);
+    
+    const planData: CreatePlanData = {
       name: formData.get("name") as string,
       weeklyClasses: Number(formData.get("weeklyClasses")),
+      planType: planTypeValue,
+      weeks: planTypeValue === 2 ? Number(formData.get("weeks")) : null,
       description: formData.get("description") as string,
       pricing: {
         single: Number(formData.get("singlePrice")),
@@ -377,6 +410,30 @@ export default function PlansPage() {
         </Button>
       ),
       sortingFn: stringLocaleSort(),
+    },
+    {
+      accessorKey: "planType",
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="flex items-center gap-1"
+        >
+          Type
+          <ArrowUpDown className="h-4 w-4" />
+        </Button>
+      ),
+      sortingFn: stringLocaleSort(),
+      cell: ({ row }) => (
+        <span className="font-medium">
+          {row.original.planType === 1 ? "Monthly" : "Weekly"}
+          {row.original.planType === 2 && row.original.weeks && (
+            <span className="text-muted-foreground ml-1">
+              ({row.original.weeks} weeks)
+            </span>
+          )}
+        </span>
+      ),
     },
     {
       accessorKey: "weeklyClasses",
@@ -563,6 +620,7 @@ export default function PlansPage() {
 
           {(openDialog === "create" || openDialog === "edit") && (
             <form onSubmit={handleSubmit} className="space-y-4">
+              <input type="hidden" name="planType" value={planType} />
               <div className="space-y-2">
                 <Label htmlFor="name">Name *</Label>
                 <Input
@@ -575,6 +633,50 @@ export default function PlansPage() {
                   <p className="text-red-500 text-sm">{formErrors.name}</p>
                 )}
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="planTypeSelect">Plan Type *</Label>
+                <Select
+                  value={planType}
+                  onValueChange={(value) => {
+                    setPlanType(value);
+                    setFormErrors((prev) => {
+                      const newErrors = { ...prev };
+                      delete newErrors.planType;
+                      delete newErrors.weeks;
+                      return newErrors;
+                    });
+                  }}
+                >
+                  <SelectTrigger className={formErrors.planType ? "border-red-500" : ""}>
+                    <SelectValue placeholder="Select plan type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Monthly</SelectItem>
+                    <SelectItem value="2">Weekly</SelectItem>
+                  </SelectContent>
+                </Select>
+                {formErrors.planType && (
+                  <p className="text-red-500 text-sm">{formErrors.planType}</p>
+                )}
+              </div>
+
+              {planType === "2" && (
+                <div className="space-y-2">
+                  <Label htmlFor="weeks">Number of Weeks *</Label>
+                  <Input
+                    id="weeks"
+                    name="weeks"
+                    type="number"
+                    min="1"
+                    defaultValue={selectedPlan?.weeks || ""}
+                    className={formErrors.weeks ? "border-red-500" : ""}
+                  />
+                  {formErrors.weeks && (
+                    <p className="text-red-500 text-sm">{formErrors.weeks}</p>
+                  )}
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="weeklyClasses">Weekly Classes *</Label>
@@ -679,6 +781,17 @@ export default function PlansPage() {
                 <div>
                   <Label className="text-sm font-semibold">Name</Label>
                   <p className="text-sm font-semibold">{selectedPlan.name}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-semibold">Plan Type</Label>
+                  <p className="text-sm">
+                    {selectedPlan.planType === 1 ? "Monthly" : "Weekly"}
+                    {selectedPlan.planType === 2 && selectedPlan.weeks && (
+                      <span className="text-muted-foreground ml-1">
+                        ({selectedPlan.weeks} weeks)
+                      </span>
+                    )}
+                  </p>
                 </div>
                 <div>
                   <Label className="text-sm font-semibold">

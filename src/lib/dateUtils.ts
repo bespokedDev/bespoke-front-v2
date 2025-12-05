@@ -108,3 +108,36 @@ export function addDaysToDate(dateString: string, days: number): string {
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
+
+/**
+ * Converts a date from YYYY-MM-DD format to DD/MM/YYYY format
+ * @param dateString - Date string in YYYY-MM-DD format
+ * @returns Date string in DD/MM/YYYY format (e.g., "07/01/2025")
+ */
+export function convertToDDMMYYYY(dateString: string): string {
+  if (!dateString) return "";
+  // Extract date part if it's in ISO format
+  const datePart = extractDatePart(dateString);
+  if (!datePart) return "";
+  
+  const [year, month, day] = datePart.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+/**
+ * Converts a date from DD/MM/YYYY format to YYYY-MM-DD format
+ * @param dateString - Date string in DD/MM/YYYY format (e.g., "07/01/2025")
+ * @returns Date string in YYYY-MM-DD format
+ */
+export function convertDDMMYYYYToYYYYMMDD(dateString: string): string {
+  if (!dateString) return "";
+  
+  // Check if it's already in DD/MM/YYYY format
+  const match = dateString.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (match) {
+    const [, day, month, year] = match;
+    return `${year}-${month}-${day}`;
+  }
+  
+  return "";
+}

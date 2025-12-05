@@ -63,7 +63,7 @@ interface Student {
   city: string;
   country: string;
   occupation: string;
-  status: number; // 0=inactivo, 1=activo, 2=pausa
+  status: number; // 0=inactivo, 1=activo
   notes: Note[];
 }
 
@@ -235,19 +235,21 @@ export default function StudentsPage() {
     setIsSubmitting(true);
     setDialogError(null);
 
-    // Cambiar entre activo (1) e inactivo (0)
-    const newStatus = selectedStudent.status === 1 ? 0 : 1;
-    const body: { status: number; reason?: string } = { status: newStatus };
-
-    if (newStatus === 0 && deactivationReason) {
-      body.reason = deactivationReason;
-    }
-
     try {
-      await apiClient(`api/students/${selectedStudent._id}`, {
-        method: "PUT",
-        body: JSON.stringify(body),
-      });
+      // Usar endpoints específicos según la documentación
+      if (selectedStudent.status === 1) {
+        // Desactivar: PATCH /api/students/:id/deactivate
+        const body = deactivationReason ? { reason: deactivationReason } : {};
+        await apiClient(`api/students/${selectedStudent._id}/deactivate`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        });
+      } else {
+        // Activar: PATCH /api/students/:id/activate
+        await apiClient(`api/students/${selectedStudent._id}/activate`, {
+          method: "PATCH",
+        });
+      }
       await fetchStudents();
       handleClose();
     } catch (err: unknown) {
@@ -257,7 +259,7 @@ export default function StudentsPage() {
         errorInfo.isNotFoundError
           ? "Student not found."
           : errorInfo.isValidationError
-          ? "Please provide a reason for deactivation."
+          ? "Please check the information and try again."
           : "Failed to update student status. Please try again."
       );
       setDialogError(errorMessage); // Mostrar error dentro del modal
@@ -352,7 +354,7 @@ export default function StudentsPage() {
       cell: ({ row }) => {
         const status = row.original.status;
         const statusText =
-          status === 1 ? "Active" : status === 0 ? "Inactive" : "Paused";
+          status === 1 ? "Active" : "Inactive";
         const statusClass =
           status === 1
             ? "bg-secondary/20 text-secondary"
@@ -544,7 +546,6 @@ export default function StudentsPage() {
                       <SelectContent>
                         <SelectItem value="1">Active</SelectItem>
                         <SelectItem value="0">Inactive</SelectItem>
-                        <SelectItem value="2">Paused</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

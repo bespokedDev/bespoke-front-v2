@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "../../contexts/AuthContext";
 import { apiClient } from "../../lib/api";
 import { handleApiError, getFriendlyErrorMessage } from "@/lib/errorHandler";
@@ -15,13 +16,43 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, user, isLoading: isAuthLoading } = useAuth();
+  const router = useRouter();
+
+  // Redirigir si el usuario ya está autenticado
+  useEffect(() => {
+    if (!isAuthLoading && user) {
+      const role = user.role?.toLowerCase();
+      if (role === "professor") {
+        router.replace("/professor/dashboard");
+      } else if (role === "student") {
+        router.replace("/student/dashboard");
+      } else {
+        router.replace("/");
+      }
+    }
+  }, [user, isAuthLoading, router]);
+
+  // Mostrar loader mientras se verifica la autenticación
+  if (isAuthLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-lightBackground dark:bg-darkBackground">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Si el usuario está autenticado, no mostrar el formulario (ya se redirigió)
+  if (user) {
+    return null;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,17 +60,46 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
+      console.log("[Login] Attempting login with email:", email);
+      
       const response = await apiClient("api/users/login", {
         method: "POST",
         body: JSON.stringify({ email, password }),
+        skipAutoRedirect: true, // Evitar redirección automática para poder manejar el error
       });
 
-      if (response.token && response.user) {
-        login(response.token, response.user);
-      } else {
-        setError("Login failed: Invalid response from server.");
+      console.log("[Login] Response received:", response);
+
+      // Verificar que la respuesta tenga la estructura esperada
+      if (!response) {
+        console.error("[Login] Empty response from server");
+        setError("Login failed: Empty response from server.");
+        return;
       }
+
+      if (!response.token) {
+        console.error("[Login] No token in response:", response);
+        setError("Login failed: No token received from server.");
+        return;
+      }
+
+      if (!response.user) {
+        console.error("[Login] No user data in response:", response);
+        setError("Login failed: No user data received from server.");
+        return;
+      }
+
+      // Verificar que el objeto user tenga los campos requeridos
+      if (!response.user.id || !response.user.role) {
+        console.error("[Login] Invalid user structure:", response.user);
+        setError("Login failed: Invalid user data structure.");
+        return;
+      }
+
+      console.log("[Login] Login successful, user:", response.user);
+      login(response.token, response.user);
     } catch (err: unknown) {
+      console.error("[Login] Error during login:", err);
       const errorInfo = handleApiError(err);
       const errorMessage = getFriendlyErrorMessage(
         err,

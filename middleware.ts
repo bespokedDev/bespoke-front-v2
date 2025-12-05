@@ -17,10 +17,12 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // Si hay token y la ruta ES pública (ej. /login), redirige al dashboard (/)
+  // Si hay token y la ruta ES pública (ej. /login), permitimos el acceso
+  // El AuthContext se encargará de redirigir según el rol del usuario
+  // Esto evita conflictos de redirección y errores de hidratación
   if (token && isPublicPath) {
-    console.log('[Middleware] ACCIÓN: Redirigiendo a / (ruta pública con token).');
-    return NextResponse.redirect(new URL('/', request.url));
+    console.log('[Middleware] ACCIÓN: Token encontrado en ruta pública, permitiendo acceso (AuthContext manejará redirección).');
+    return NextResponse.next();
   }
   
   console.log('[Middleware] ACCIÓN: Permitiendo acceso a la ruta.');

@@ -35,6 +35,7 @@ type ApiClientOptions = RequestInit & {
   token?: string | null;
   skipContentTypeHeader?: boolean;
   onUnauthorized?: () => void;
+  skipAutoRedirect?: boolean; // Para evitar redirección automática en login
 };
 
 export const apiClient = async (
@@ -43,6 +44,7 @@ export const apiClient = async (
     token,
     skipContentTypeHeader,
     onUnauthorized,
+    skipAutoRedirect = false,
     ...requestInit
   }: ApiClientOptions = {}
 ) => {
@@ -68,12 +70,27 @@ export const apiClient = async (
     const response = await fetch(fullUrl, requestConfig);
 
     if (response.status === 401 || response.status === 403) {
-      if (typeof window !== "undefined") {
+      // Solo redirigir automáticamente si no se especifica skipAutoRedirect
+      // Esto es importante para el login, donde queremos manejar el error manualmente
+      if (!skipAutoRedirect && typeof window !== "undefined") {
         clearBrowserSession();
         window.location.href = "/login";
       }
       onUnauthorized?.();
-      throw new Error("Unauthorized request");
+      
+      // Intentar obtener el mensaje de error de la respuesta
+      let errorMessage = "Unauthorized request";
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        // Si no se puede parsear, usar el mensaje por defecto
+      }
+      
+      const error = new Error(errorMessage) as Error & { statusCode?: number; apiMessage?: string };
+      error.statusCode = response.status;
+      error.apiMessage = errorMessage;
+      throw error;
     }
 
     if (!response.ok) {

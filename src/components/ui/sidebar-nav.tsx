@@ -1,9 +1,10 @@
 // En: components/ui/sidebar-nav.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -26,28 +27,39 @@ import {
   GraduationCap, // Icono para Class Types
   Tags, // Icono para Income Categories
   FolderTree, // Icono para Class Categories
+  ClipboardList, // Icono para Class Registry
+  User, // Icono para Profile
 } from "lucide-react";
 
-// --- NUEVA ESTRUCTURA DE NAVEGACIÓN ---
-const navItems = [
-  { title: "Dashboard", href: "/", icon: LayoutDashboard },
-  { title: "Teachers", href: "/teachers", icon: UserCircle },
-  { title: "Students", href: "/students", icon: Users },
-  { title: "Enrollments", href: "/enrollments", icon: FileBadge },
-  // Nuevo grupo para Contabilidad
+// --- ESTRUCTURA COMPLETA DE NAVEGACIÓN ---
+const allNavItems = [
+  // Admin items
+  { title: "Dashboard", href: "/", icon: LayoutDashboard, roles: ["admin"] },
+  { title: "Teachers", href: "/teachers", icon: UserCircle, roles: ["admin"] },
+  { title: "Students", href: "/students", icon: Users, roles: ["admin"] },
+  { title: "Enrollments", href: "/enrollments", icon: FileBadge, roles: ["admin"] },
+  // Professor items
+  { title: "Dashboard", href: "/professor/dashboard", icon: LayoutDashboard, roles: ["professor"] },
+  { title: "Enrollments", href: "/professor/class-registry", icon: FileBadge, roles: ["professor"] },
+  // Student items
+  { title: "Dashboard", href: "/student/dashboard", icon: LayoutDashboard, roles: ["student"] },
+  { title: "Profile", href: "/student/profile", icon: User, roles: ["student"] },
+  // Nuevo grupo para Contabilidad (solo admin)
   {
     title: "Accounting",
     icon: Landmark,
+    roles: ["admin"],
     subItems: [
       { title: "Incomes", href: "/incomes", icon: ArrowRightLeft },
       { title: "Accounting Report", href: "/accounting/report", icon: FileChartColumn },
       { title: "Payouts", href: "/payouts", icon: CircleDollarSign },
     ],
   },
-  // Nuevo grupo para Settings
+  // Nuevo grupo para Settings (solo admin)
   {
     title: "Settings",
     icon: Settings,
+    roles: ["admin"],
     subItems: [
       { title: "Plans", href: "/settings/plans", icon: BookOpen },
       { title: "Payment Methods", href: "/settings/payment-methods", icon: CreditCard },
@@ -63,12 +75,25 @@ const navItems = [
 
 export function SidebarNav() {
   const pathname = usePathname();
+  const { user } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   // Estado para manejar los submenús abiertos
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({
     Accounting: false,
     Settings: false, // Settings cerrado por defecto
   });
+
+  // Filtrar items según el rol del usuario
+  const navItems = useMemo(() => {
+    if (!user?.role) return [];
+    
+    const userRole = user.role.toLowerCase();
+    
+    return allNavItems.filter((item) => {
+      if (!item.roles || item.roles.length === 0) return true;
+      return item.roles.some((role) => role.toLowerCase() === userRole);
+    });
+  }, [user?.role]);
 
   const toggleSubmenu = (title: string) => {
     setOpenSubmenus((prev) => ({
@@ -162,7 +187,8 @@ export function SidebarNav() {
               className={cn(
                 "flex items-center gap-3 px-4 py-2 text-sm rounded-md hover:bg-primary/10 transition-colors",
                 "justify-start",
-                pathname === item.href
+                // Verificar si la ruta coincide exactamente o si es una sub-ruta
+                pathname === item.href || pathname.startsWith(item.href + "/")
                   ? "bg-secondary text-white hover:bg-secondary/90"
                   : "text-light-text hover:bg-primary hover:text-white dark:text-dark-text dark:hover:text-white",
                 collapsed && "justify-center"

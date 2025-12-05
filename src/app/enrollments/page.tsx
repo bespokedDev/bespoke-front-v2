@@ -117,12 +117,11 @@ interface Enrollment {
   startDate?: string;
   pricePerStudent: number;
   totalAmount: number;
-  status: number; // 1=activo, 0=inactivo, 2=pausado
+  status: number; // 1=activo, 2=inactivo, 0=disuelto, 3=pausado
   alias?: string;
   language?: string;
   available_balance?: number;
   classCalculationType?: number;
-  numberOfWeeks?: number;
   substituteProfessor?: SubstituteProfessor | null;
 }
 
@@ -153,7 +152,6 @@ type EnrollmentFormData = {
   alias?: string;
   language?: string;
   classCalculationType?: number;
-  numberOfWeeks?: number;
   substituteProfessor?: SubstituteProfessor | null;
 };
 
@@ -329,7 +327,6 @@ export default function EnrollmentsPage() {
           alias: enrollment.alias || "",
           language: enrollment.language || "",
           classCalculationType: enrollment.classCalculationType || 1,
-          numberOfWeeks: (enrollment as any).numberOfWeeks || undefined,
           substituteProfessor: enrollment.substituteProfessor
             ? {
                 professorId: enrollment.substituteProfessor.professorId,
@@ -486,18 +483,6 @@ export default function EnrollmentsPage() {
       };
     }
 
-    // Si classCalculationType es 2, numberOfWeeks es obligatorio (solo al crear)
-    if (openDialog === "create" && payload.classCalculationType === 2) {
-      if (!formData.numberOfWeeks || formData.numberOfWeeks <= 0) {
-        setDialogError(
-          "Number of weeks is required when using weekly calculation type."
-        );
-        setIsSubmitting(false);
-        return;
-      }
-      payload.numberOfWeeks = formData.numberOfWeeks;
-    }
-
     // Para edición, incluir status si existe
     if (openDialog === "edit" && formData.status !== undefined) {
       payload.status = formData.status;
@@ -520,8 +505,8 @@ export default function EnrollmentsPage() {
         response = await apiClient(
           `api/enrollments/${selectedEnrollment._id}`,
           {
-            method: "PUT",
-            body: JSON.stringify(payload),
+          method: "PUT",
+          body: JSON.stringify(payload),
           }
         );
         // Validar estructura de respuesta
@@ -555,13 +540,25 @@ export default function EnrollmentsPage() {
 
     try {
       // Determinar si está activo o inactivo basado en status
+      // Solo permitir toggle entre activo (1) e inactivo (2)
+      // No se puede cambiar status 0 (disuelto) ni 3 (pausado) con toggle
+      if (selectedEnrollment.status === 0) {
+        setDialogError("Cannot change status of a dissolved enrollment.");
+        setIsSubmitting(false);
+        return;
+      }
+      if (selectedEnrollment.status === 3) {
+        setDialogError("Cannot toggle status of a paused enrollment. Please edit the enrollment to change its status.");
+        setIsSubmitting(false);
+        return;
+      }
       const action =
         selectedEnrollment.status === 1 ? "deactivate" : "activate";
 
       const response = await apiClient(
         `api/enrollments/${selectedEnrollment._id}/${action}`,
         {
-          method: "PATCH",
+        method: "PATCH",
         }
       );
 
@@ -733,7 +730,13 @@ export default function EnrollmentsPage() {
     {
       id: "statusText",
       accessorFn: (row) =>
-        row.status === 1 ? "Active" : row.status === 0 ? "Inactive" : "Paused",
+        row.status === 1
+          ? "Active"
+          : row.status === 2
+          ? "Inactive"
+          : row.status === 3
+          ? "Paused"
+          : "Disolved",
       header: ({ column }) => (
         <Button
           variant="ghost"
@@ -748,13 +751,21 @@ export default function EnrollmentsPage() {
       cell: ({ row }) => {
         const status = row.original.status;
         const statusText =
-          status === 1 ? "Active" : status === 0 ? "Inactive" : "Paused";
+          status === 1
+            ? "Active"
+            : status === 2
+            ? "Inactive"
+            : status === 3
+            ? "Paused"
+            : "Disolved";
         const statusClass =
           status === 1
             ? "bg-secondary/20 text-secondary"
-            : status === 0
+            : status === 2
             ? "bg-accent-1/20 text-accent-1"
-            : "bg-yellow-100 text-yellow-800";
+            : status === 3
+            ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
+            : "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400";
         return (
           <span
             className={`px-2 py-1 rounded-full text-xs font-semibold ${statusClass}`}
@@ -790,11 +801,14 @@ export default function EnrollmentsPage() {
             variant="outline"
             className="text-accent-1 border-accent-1/50 hover:bg-accent-1/10"
             onClick={() => handleOpen("status", row.original)}
+            disabled={row.original.status === 0 || row.original.status === 3}
           >
             {row.original.status === 1 ? (
               <Ban className="h-4 w-4 text-accent-1" />
-            ) : (
+            ) : row.original.status === 2 ? (
               <CheckCircle2 className="h-4 w-4 text-secondary" />
+            ) : (
+              <Ban className="h-4 w-4 text-gray-400" />
             )}
           </Button>
         </div>
@@ -1238,7 +1252,6 @@ export default function EnrollmentsPage() {
                         setFormData((p) => ({
                           ...p,
                           classCalculationType: parseInt(v),
-                          numberOfWeeks: undefined, // Reset cuando cambia el tipo
                         }))
                       }
                     >
@@ -1262,56 +1275,28 @@ export default function EnrollmentsPage() {
                     />
                   )}
                 </div>
-                {formData.classCalculationType === 2 && (
-                  <div className="space-y-2">
-                    <Label>
-                      Number of Weeks <span className="text-red-500">*</span>
-                    </Label>
-                    {openDialog === "create" ? (
-                      <Input
-                        type="number"
-                        min="1"
-                        value={formData.numberOfWeeks || ""}
-                        onChange={(e) =>
-                          setFormData((p) => ({
-                            ...p,
-                            numberOfWeeks: parseInt(e.target.value) || undefined,
-                          }))
-                        }
-                        placeholder="Enter number of weeks..."
-                        required
-                      />
-                    ) : (
-                      <Input
-                        value={formData.numberOfWeeks || ""}
-                        disabled
-                        className="bg-muted"
-                      />
-                    )}
-                  </div>
-                )}
               </div>
               {openDialog === "edit" && (
                 <>
-                  <div className="space-y-2">
-                    <Label>Status</Label>
-                    <Select
-                      value={formData.status?.toString() || ""}
-                      onValueChange={(v) =>
-                        setFormData((p) => ({ ...p, status: parseInt(v) }))
-                      }
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select status..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">Active</SelectItem>
-                        <SelectItem value="0">Inactive</SelectItem>
-                        <SelectItem value="2">Paused</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select
+                    value={formData.status?.toString() || ""}
+                    onValueChange={(v) =>
+                      setFormData((p) => ({ ...p, status: parseInt(v) }))
+                    }
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select status..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">Active</SelectItem>
+                      <SelectItem value="2">Inactive</SelectItem>
+                      <SelectItem value="3">Paused</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                   <div className="space-y-4 p-4 border rounded-md">
                     <div className="flex items-center justify-between">
                       <Label className="text-base font-semibold">
@@ -1492,15 +1477,15 @@ export default function EnrollmentsPage() {
                     </Button>
                   )}
                   <div className="flex gap-2 ml-auto">
-                    <Button type="button" variant="outline" onClick={handleClose}>
-                      Cancel
-                    </Button>
-                    <Button type="submit" disabled={isSubmitting}>
-                      {isSubmitting && (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      )}{" "}
-                      Save
-                    </Button>
+                <Button type="button" variant="outline" onClick={handleClose}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting && (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  )}{" "}
+                  Save
+                </Button>
                   </div>
                 </div>
               </DialogFooter>
@@ -1564,16 +1549,20 @@ export default function EnrollmentsPage() {
                     className={`px-2 py-1 rounded-full text-xs font-semibold ${
                       selectedEnrollment.status === 1
                         ? "bg-secondary/20 text-secondary"
-                        : selectedEnrollment.status === 0
+                        : selectedEnrollment.status === 2
                         ? "bg-accent-1/20 text-accent-1"
-                        : "bg-yellow-100 text-yellow-800"
+                        : selectedEnrollment.status === 3
+                        ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
+                        : "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
                     }`}
                   >
                     {selectedEnrollment.status === 1
                       ? "Active"
-                      : selectedEnrollment.status === 0
+                      : selectedEnrollment.status === 2
                       ? "Inactive"
-                      : "Paused"}
+                      : selectedEnrollment.status === 3
+                      ? "Paused"
+                      : "Disolved"}
                   </span>
                 </div>
                 <div>
@@ -1683,6 +1672,18 @@ export default function EnrollmentsPage() {
             Are you sure you want to{" "}
             {selectedEnrollment?.status === 1 ? "deactivate" : "activate"} this
             enrollment?
+            {selectedEnrollment?.status === 0 && (
+              <span className="text-red-600">
+                {" "}
+                This enrollment is dissolved and cannot be changed.
+              </span>
+            )}
+            {selectedEnrollment?.status === 3 && (
+              <span className="text-yellow-600">
+                {" "}
+                This enrollment is paused. Please edit the enrollment to change its status.
+              </span>
+            )}
           </DialogDescription>
           {dialogError && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm flex items-center gap-2">
@@ -1699,12 +1700,18 @@ export default function EnrollmentsPage() {
                 selectedEnrollment?.status === 1 ? "destructive" : "default"
               }
               onClick={handleToggleStatus}
-              disabled={isSubmitting}
+              disabled={isSubmitting || selectedEnrollment?.status === 0 || selectedEnrollment?.status === 3}
             >
               {isSubmitting && (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               )}{" "}
-              {selectedEnrollment?.status === 1 ? "Deactivate" : "Activate"}
+              {selectedEnrollment?.status === 1 
+                ? "Deactivate" 
+                : selectedEnrollment?.status === 2 
+                ? "Activate" 
+                : selectedEnrollment?.status === 3
+                ? "Cannot Change (Paused)"
+                : "Cannot Change (Disolved)"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
 import { apiClient } from "@/lib/api";
 import { handleApiError, getFriendlyErrorMessage } from "@/lib/errorHandler";
 import {
@@ -9,7 +10,7 @@ import {
   extractDatePart,
 } from "@/lib/dateUtils";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,12 +28,23 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   ArrowLeft,
   Pencil,
   Loader2,
   AlertCircle,
   Plus,
   Trash2,
+  Eye,
+  BookOpen,
+  Calendar,
+  User,
 } from "lucide-react";
 
 // --- DEFINICIONES DE TIPOS ---
@@ -72,12 +84,166 @@ type StudentFormData = Omit<
   | "disenrollmentReason"
 >;
 
+interface StudentInfo {
+  student: {
+    id: string;
+    name: string;
+    email: string;
+    studentCode: string;
+  };
+  totalAvailableBalance: number;
+  enrollmentDetails: Array<{
+    enrollmentId: string;
+    planName: string;
+    amount: number;
+    rescheduleHours: number;
+    enrollmentType: string;
+    startDate: string;
+    endDate: string;
+    status: number;
+  }>;
+  rescheduleTime?: {
+    totalAvailableMinutes: number;
+    totalAvailableHours: number;
+    details: Array<{
+      classRegistryId: string;
+      enrollmentId: string;
+      classDate: string;
+      classTime: string | null;
+      minutesClassDefault: number;
+      minutesViewed: number;
+      availableMinutes: number;
+      availableHours: string;
+    }>;
+  };
+  rescheduleClasses?: {
+    total: number;
+    details: Array<{
+      classRegistryId: string;
+      enrollmentId: string;
+      classDate: string;
+      classTime: string | null;
+      reschedule: number;
+    }>;
+  };
+  viewedClasses?: {
+    total: number;
+    details: Array<{
+      classRegistryId: string;
+      enrollmentId: string;
+      classDate: string;
+      classTime: string | null;
+    }>;
+  };
+  pendingClasses?: {
+    total: number;
+    details: Array<{
+      classRegistryId: string;
+      enrollmentId: string;
+      classDate: string;
+      classTime: string | null;
+    }>;
+  };
+  lostClasses?: {
+    total: number;
+    details: Array<{
+      classRegistryId: string;
+      enrollmentId: string;
+      classDate: string;
+      classTime: string | null;
+      enrollmentEndDate: string;
+    }>;
+  };
+  noShowClasses?: {
+    total: number;
+    details: Array<{
+      classRegistryId: string;
+      enrollmentId: string;
+      classDate: string;
+      classTime: string | null;
+    }>;
+  };
+  incomeHistory?: Array<{
+    enrollment: {
+      _id: string;
+      planId: {
+        _id: string;
+        name: string;
+      };
+      enrollmentType: string;
+      purchaseDate: string;
+      startDate: string;
+      endDate: string;
+    };
+    incomes: Array<{
+      _id: string;
+      income_date: string;
+      deposit_name: string;
+      amount: number;
+      amountInDollars: number;
+      tasa: number;
+      note: string | null;
+      idDivisa: {
+        _id: string;
+        name: string;
+      };
+      idPaymentMethod: {
+        _id: string;
+        name: string;
+        type: string;
+      };
+      idProfessor: {
+        _id: string;
+        name: string;
+        ciNumber: string;
+      } | null;
+      createdAt: string;
+      updatedAt: string;
+    }>;
+  }>;
+}
+
+interface EnrollmentDetail {
+  _id: string;
+  planId: {
+    _id: string;
+    name: string;
+    weeklyClasses?: number;
+    weeks?: number;
+    planType?: number;
+  };
+  enrollmentType: string;
+  alias?: string | null;
+  language: string;
+  scheduledDays: Array<{ _id?: string; day: string }>;
+  purchaseDate: string;
+  startDate: string;
+  endDate: string;
+  monthlyClasses: number;
+  status: number;
+  professorId?: {
+    _id: string;
+    name: string;
+    email: string;
+  } | string;
+  classCalculationType?: number;
+}
+
 export default function StudentDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
   const studentId = params.id as string;
 
+  // Detectar rol del usuario
+  const userRole = user?.role?.toLowerCase();
+  const isProfessor = userRole === "professor";
+  const isStudent = userRole === "student";
+
   const [student, setStudent] = useState<Student | null>(null);
+  const [studentInfo, setStudentInfo] = useState<StudentInfo | null>(null);
+  const [selectedEnrollment, setSelectedEnrollment] = useState<EnrollmentDetail | null>(null);
+  const [isEnrollmentModalOpen, setIsEnrollmentModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -91,7 +257,6 @@ export default function StudentDetailPage() {
       setIsLoading(true);
       setError(null);
       const data = await apiClient(`api/students/${studentId}`);
-      console.log("EL DATA", data);
       setStudent(data);
       setFormData({
         ...data,
@@ -101,6 +266,30 @@ export default function StudentDetailPage() {
           date: note.date ? extractDatePart(note.date) : "",
         })) || [],
       });
+
+      // Si es estudiante o admin, también obtener información de balance y enrollments
+      // Admin: userRole !== "professor" && userRole !== "student"
+      // Estudiante: userRole === "student"
+      if (isStudent || (!isProfessor && userRole !== "student")) {
+        try {
+          const infoResponse = await apiClient(`api/students/info/${studentId}`);
+          const studentInfoData: StudentInfo = {
+            student: infoResponse.student,
+            totalAvailableBalance: infoResponse.totalAvailableBalance,
+            enrollmentDetails: infoResponse.enrollmentDetails || [],
+            rescheduleTime: infoResponse.rescheduleTime,
+            rescheduleClasses: infoResponse.rescheduleClasses,
+            viewedClasses: infoResponse.viewedClasses,
+            pendingClasses: infoResponse.pendingClasses,
+            lostClasses: infoResponse.lostClasses, // Solo admin
+            noShowClasses: infoResponse.noShowClasses, // Solo admin y professor
+            incomeHistory: infoResponse.incomeHistory, // Solo student y admin
+          };
+          setStudentInfo(studentInfoData);
+        } catch (infoErr) {
+          console.warn("Could not fetch student info:", infoErr);
+        }
+      }
     } catch (err: unknown) {
       const errorMessage = getFriendlyErrorMessage(
         err,
@@ -110,7 +299,7 @@ export default function StudentDetailPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [studentId]);
+  }, [studentId, isStudent, isProfessor, userRole]);
 
   useEffect(() => {
     if (studentId) {
@@ -235,16 +424,28 @@ export default function StudentDetailPage() {
     );
   }
 
+  const handleViewEnrollment = async (enrollmentId: string) => {
+    try {
+      const enrollmentData = await apiClient(`api/enrollments/${enrollmentId}/detail`);
+      if (enrollmentData.enrollments && enrollmentData.enrollments.length > 0) {
+        setSelectedEnrollment(enrollmentData.enrollments[0]);
+        setIsEnrollmentModalOpen(true);
+      }
+    } catch (err) {
+      console.error("Failed to load enrollment details:", err);
+    }
+  };
+
   if (error || !student) {
     return (
       <div className="space-y-4">
         <Button
           variant="outline"
-          onClick={() => router.push("/students")}
+          onClick={() => router.back()}
           className="mb-4"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Students
+          Go Back
         </Button>
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center gap-2">
           <AlertCircle className="h-5 w-5 shrink-0" />
@@ -261,25 +462,217 @@ export default function StudentDetailPage() {
         <div className="flex items-center gap-4">
           <Button
             variant="outline"
-            onClick={() => router.push("/students")}
+            onClick={() => router.back()}
           >
-            <ArrowLeft className="h-4 w-4 " />
+            <ArrowLeft className="h-4 w-4" />
           </Button>
           <h1 className="text-3xl font-bold">{student.name}</h1>
         </div>
       </div>
 
-      {/* Tabs */}
-      <Tabs defaultValue="details" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="details">Student Details</TabsTrigger>
-          <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
-          <TabsTrigger value="attendance">Attendance</TabsTrigger>
-          <TabsTrigger value="notifications">Notifications</TabsTrigger>
-        </TabsList>
+      {/* Renderizado condicional según rol */}
+      {isProfessor ? (
+        // Vista de Profesor: Sin tabs, toda la información en una tarjeta
+        <Card>
+          <CardContent className="pt-6">
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                <div>
+                  <Label className="font-semibold">Student Code</Label>
+                  <p className="text-sm font-semibold">
+                    {student.studentCode}
+                  </p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Full Name</Label>
+                  <p className="text-sm font-semibold">{student.name}</p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Date of Birth</Label>
+                  <p className="text-sm">
+                    {student.dob
+                      ? formatDateForDisplay(student.dob)
+                      : "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Gender</Label>
+                  <p className="text-sm">{student.gender || "N/A"}</p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Representative</Label>
+                  <p className="text-sm">
+                    {student.representativeName || "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Occupation</Label>
+                  <p className="text-sm">{student.occupation || "N/A"}</p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Email</Label>
+                  <p className="text-sm">{student.email}</p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Phone</Label>
+                  <p className="text-sm">{student.phone}</p>
+                </div>
+                <div className="md:col-span-2">
+                  <Label className="font-semibold">Address</Label>
+                  <p className="text-sm">{student.address}</p>
+                </div>
+                <div>
+                  <Label className="font-semibold">City</Label>
+                  <p className="text-sm">{student.city}</p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Country</Label>
+                  <p className="text-sm">{student.country}</p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Status</Label>
+                  <span
+                    className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                      student.status === 1
+                        ? "bg-secondary/20 text-secondary"
+                        : student.status === 0
+                        ? "bg-accent-1/20 text-accent-1"
+                        : "bg-yellow-100 text-yellow-800"
+                    }`}
+                  >
+                    {student.status === 1
+                      ? "Active"
+                      : "Inactive"}
+                  </span>
+                </div>
+              </div>
 
-        {/* Tab: Student Details */}
-        <TabsContent value="details">
+              {student.notes && student.notes.length > 0 && (
+                <div className="space-y-4 mt-6">
+                  <h3 className="text-lg font-medium">Notes</h3>
+                  {student.notes.map((note, index) => (
+                    <div
+                      key={note._id || index}
+                      className="border p-4 rounded-md"
+                    >
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <Label className="text-sm text-muted-foreground">
+                            Date
+                          </Label>
+                          <p className="text-sm font-semibold">
+                            {note.date
+                              ? formatDateForDisplay(note.date)
+                              : "N/A"}
+                          </p>
+                        </div>
+                        <div className="md:col-span-2">
+                          <Label className="text-sm text-muted-foreground">
+                            Note
+                          </Label>
+                          <p className="text-sm">{note.text}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        // Vista de Admin o Estudiante: Con tabs
+        <Tabs 
+          defaultValue={isStudent ? "profile" : "details"} 
+          className="space-y-4"
+        >
+          <TabsList>
+            {isStudent ? (
+              <>
+                <TabsTrigger value="profile">Profile</TabsTrigger>
+                <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
+                <TabsTrigger value="attendance">Attendance</TabsTrigger>
+                <TabsTrigger value="notifications">Notifications</TabsTrigger>
+              </>
+            ) : (
+              <>
+                <TabsTrigger value="details">Student Details</TabsTrigger>
+                <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
+                <TabsTrigger value="attendance">Attendance</TabsTrigger>
+                <TabsTrigger value="notifications">Notifications</TabsTrigger>
+              </>
+            )}
+          </TabsList>
+
+        {/* Tab: Profile (Estudiante) */}
+        {isStudent && (
+          <TabsContent value="profile">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Profile Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label className="font-semibold">Name</Label>
+                      <p className="text-sm">{student.name}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="font-semibold">Email</Label>
+                      <p className="text-sm">{student.email}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="font-semibold">Phone</Label>
+                      <p className="text-sm">{student.phone}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="font-semibold">Date of Birth</Label>
+                      <p className="text-sm">
+                        {student.dob
+                          ? formatDateForDisplay(student.dob)
+                          : "N/A"}
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="font-semibold">Gender</Label>
+                      <p className="text-sm">{student.gender || "N/A"}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="font-semibold">Occupation</Label>
+                      <p className="text-sm">{student.occupation || "N/A"}</p>
+                    </div>
+                    {student.representativeName && (
+                      <div className="space-y-2">
+                        <Label className="font-semibold">Representative</Label>
+                        <p className="text-sm">{student.representativeName}</p>
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      <Label className="font-semibold">Address</Label>
+                      <p className="text-sm">
+                        {student.address}, {student.city}, {student.country}
+                      </p>
+                    </div>
+                    {student.disenrollmentReason && (
+                      <div className="space-y-2 md:col-span-2">
+                        <Label className="font-semibold">Disenrollment Reason</Label>
+                        <p className="text-sm">{student.disenrollmentReason}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        {/* Tab: Student Details (Admin) */}
+        {!isStudent && (
+          <TabsContent value="details">
           <Card>
             <CardContent>
               {!isEditing ? (
@@ -359,9 +752,7 @@ export default function StudentDetailPage() {
                       >
                         {student.status === 1
                           ? "Active"
-                          : student.status === 0
-                          ? "Inactive"
-                          : "Paused"}
+                          : "Inactive"}
                       </span>
                     </div>
                   </div>
@@ -498,7 +889,6 @@ export default function StudentDetailPage() {
                           <SelectContent>
                             <SelectItem value="1">Active</SelectItem>
                             <SelectItem value="0">Inactive</SelectItem>
-                            <SelectItem value="2">Paused</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -607,39 +997,256 @@ export default function StudentDetailPage() {
             </CardContent>
           </Card>
         </TabsContent>
+        )}
 
         {/* Tab: Enrollments */}
         <TabsContent value="enrollments">
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-muted-foreground">
-                Enrollments section - Coming soon
-              </p>
-            </CardContent>
-          </Card>
+          {isStudent ? (
+            // Vista de Estudiante: Balance + Enrollments activos
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BookOpen className="h-5 w-5" />
+                  Enrollments & Balance
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Balance Total */}
+                {studentInfo && (
+                  <div className="bg-secondary/10 p-4 rounded-lg">
+                    <Label className="text-sm text-muted-foreground">
+                      Total Available Balance
+                    </Label>
+                    <p className="text-3xl font-bold text-secondary">
+                      ${studentInfo.totalAvailableBalance.toFixed(2)}
+                    </p>
+                  </div>
+                )}
+
+                {/* Lista de Enrollments */}
+                {studentInfo && studentInfo.enrollmentDetails.length > 0 ? (
+                  <div className="space-y-4">
+                    <Label className="text-lg font-semibold">Active Enrollments</Label>
+                    {studentInfo.enrollmentDetails.map((enrollment) => (
+                      <Card key={enrollment.enrollmentId}>
+                        <CardContent className="pt-4">
+                          <div className="flex items-start justify-between">
+                            <div className="space-y-2 flex-1">
+                              <div className="flex items-center gap-2">
+                                <BookOpen className="h-4 w-4 text-muted-foreground" />
+                                <Label className="font-semibold">
+                                  {enrollment.planName}
+                                </Label>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                                <div className="flex items-center gap-1">
+                                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                                  <span>
+                                    {formatDateForDisplay(enrollment.startDate)} -{" "}
+                                    {formatDateForDisplay(enrollment.endDate)}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="capitalize">
+                                    {enrollment.enrollmentType}
+                                  </span>
+                                </div>
+                                <div>
+                                  <Label className="text-muted-foreground">
+                                    Available Balance
+                                  </Label>
+                                  <p className="font-semibold text-secondary">
+                                    ${enrollment.amount.toFixed(2)}
+                                  </p>
+                                </div>
+                                {enrollment.rescheduleHours > 0 && (
+                                  <div>
+                                    <Label className="text-muted-foreground">
+                                      Reschedule Hours
+                                    </Label>
+                                    <p>{enrollment.rescheduleHours} hours</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleViewEnrollment(enrollment.enrollmentId)}
+                              className="ml-4"
+                            >
+                              <Eye className="h-4 w-4 mr-2" />
+                              View Details
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-center py-8">
+                    No active enrollments found.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            // Vista de Admin: Balance + Enrollments activos
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BookOpen className="h-5 w-5" />
+                  Enrollments & Balance
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Balance Total */}
+                {studentInfo && (
+                  <div className="bg-secondary/10 p-4 rounded-lg">
+                    <Label className="text-sm text-muted-foreground">
+                      Total Available Balance
+                    </Label>
+                    <p className="text-3xl font-bold text-secondary">
+                      ${studentInfo.totalAvailableBalance.toFixed(2)}
+                    </p>
+                  </div>
+                )}
+
+                {/* Lista de Enrollments */}
+                {studentInfo && studentInfo.enrollmentDetails.length > 0 ? (
+                  <div className="space-y-4">
+                    <Label className="text-lg font-semibold">Active Enrollments</Label>
+                    {studentInfo.enrollmentDetails.map((enrollment) => (
+                      <Card key={enrollment.enrollmentId}>
+                        <CardContent className="pt-4">
+                          <div className="flex items-start justify-between">
+                            <div className="space-y-2 flex-1">
+                              <div className="flex items-center gap-2">
+                                <BookOpen className="h-4 w-4 text-muted-foreground" />
+                                <Label className="font-semibold">
+                                  {enrollment.planName}
+                                </Label>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                                <div className="flex items-center gap-1">
+                                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                                  <span>
+                                    {formatDateForDisplay(enrollment.startDate)} -{" "}
+                                    {formatDateForDisplay(enrollment.endDate)}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="capitalize">
+                                    {enrollment.enrollmentType}
+                                  </span>
+                                </div>
+                                <div>
+                                  <Label className="text-muted-foreground">
+                                    Available Balance
+                                  </Label>
+                                  <p className="font-semibold text-secondary">
+                                    ${enrollment.amount.toFixed(2)}
+                                  </p>
+                                </div>
+                                {enrollment.rescheduleHours > 0 && (
+                                  <div>
+                                    <Label className="text-muted-foreground">
+                                      Reschedule Hours
+                                    </Label>
+                                    <p>{enrollment.rescheduleHours} hours</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleViewEnrollment(enrollment.enrollmentId)}
+                              className="ml-4"
+                            >
+                              <Eye className="h-4 w-4 mr-2" />
+                              View Details
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-center py-8">
+                    {studentInfo 
+                      ? "No active enrollments found."
+                      : "Loading enrollment information..."}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* Tab: Attendance */}
         <TabsContent value="attendance">
           <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Calendar className="h-5 w-5" />
+                Attendance Statistics
+              </CardTitle>
+            </CardHeader>
             <CardContent className="pt-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="font-semibold">Classes Attended</Label>
-                  <p className="text-2xl font-bold">-</p>
+                  <p className="text-2xl font-bold text-secondary">
+                    {studentInfo?.viewedClasses?.total ?? 0}
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label className="font-semibold">Classes Remaining</Label>
-                  <p className="text-2xl font-bold">-</p>
+                  <p className="text-2xl font-bold">
+                    {studentInfo?.pendingClasses?.total ?? 0}
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label className="font-semibold">Reschedule Hours Available</Label>
-                  <p className="text-2xl font-bold">-</p>
+                  <p className="text-2xl font-bold">
+                    {studentInfo?.rescheduleTime?.totalAvailableHours 
+                      ? `${studentInfo.rescheduleTime.totalAvailableHours.toFixed(2)} hrs`
+                      : "0 hrs"}
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label className="font-semibold">Available Balance</Label>
-                  <p className="text-2xl font-bold">-</p>
+                  <p className="text-2xl font-bold text-secondary">
+                    {studentInfo 
+                      ? `$${studentInfo.totalAvailableBalance.toFixed(2)}`
+                      : "$0.00"}
+                  </p>
                 </div>
+                {studentInfo?.rescheduleClasses && studentInfo.rescheduleClasses.total > 0 && (
+                  <div className="space-y-2">
+                    <Label className="font-semibold">Classes in Reschedule</Label>
+                    <p className="text-2xl font-bold">
+                      {studentInfo.rescheduleClasses.total}
+                    </p>
+                  </div>
+                )}
+                {!isStudent && studentInfo?.lostClasses && (
+                  <div className="space-y-2">
+                    <Label className="font-semibold text-red-600">Lost Classes</Label>
+                    <p className="text-2xl font-bold text-red-600">
+                      {studentInfo.lostClasses.total}
+                    </p>
+                  </div>
+                )}
+                {!isStudent && studentInfo?.noShowClasses && (
+                  <div className="space-y-2">
+                    <Label className="font-semibold text-orange-600">No Show Classes</Label>
+                    <p className="text-2xl font-bold text-orange-600">
+                      {studentInfo.noShowClasses.total}
+                    </p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -656,6 +1263,98 @@ export default function StudentDetailPage() {
           </Card>
         </TabsContent>
       </Tabs>
+      )}
+
+      {/* Modal de Detalle de Enrollment */}
+      <Dialog open={isEnrollmentModalOpen} onOpenChange={setIsEnrollmentModalOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5" />
+              Enrollment Details
+            </DialogTitle>
+            <DialogDescription>
+              Complete information about this enrollment
+            </DialogDescription>
+          </DialogHeader>
+          {selectedEnrollment && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">Plan Name</Label>
+                  <p className="font-medium">{selectedEnrollment.planId.name}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Enrollment Type</Label>
+                  <p className="font-medium capitalize">
+                    {selectedEnrollment.enrollmentType}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Language</Label>
+                  <p className="font-medium">{selectedEnrollment.language}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Status</Label>
+                  <p className="font-medium">
+                    {selectedEnrollment.status === 1 ? "Active" : "Inactive"}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Start Date</Label>
+                  <p className="font-medium">
+                    {formatDateForDisplay(selectedEnrollment.startDate)}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">End Date</Label>
+                  <p className="font-medium">
+                    {formatDateForDisplay(selectedEnrollment.endDate)}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Purchase Date</Label>
+                  <p className="font-medium">
+                    {formatDateForDisplay(selectedEnrollment.purchaseDate)}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Monthly Classes</Label>
+                  <p className="font-medium">{selectedEnrollment.monthlyClasses}</p>
+                </div>
+                {selectedEnrollment.planId.weeklyClasses && (
+                  <div>
+                    <Label className="text-muted-foreground">Weekly Classes</Label>
+                    <p className="font-medium">
+                      {selectedEnrollment.planId.weeklyClasses}
+                    </p>
+                  </div>
+                )}
+                {selectedEnrollment.planId.weeks && (
+                  <div>
+                    <Label className="text-muted-foreground">Weeks</Label>
+                    <p className="font-medium">{selectedEnrollment.planId.weeks}</p>
+                  </div>
+                )}
+                {selectedEnrollment.scheduledDays && selectedEnrollment.scheduledDays.length > 0 && (
+                  <div className="md:col-span-2">
+                    <Label className="text-muted-foreground">Scheduled Days</Label>
+                    <p className="font-medium">
+                      {selectedEnrollment.scheduledDays.map((day) => day.day).join(", ")}
+                    </p>
+                  </div>
+                )}
+                {selectedEnrollment.alias && (
+                  <div className="md:col-span-2">
+                    <Label className="text-muted-foreground">Alias</Label>
+                    <p className="font-medium">{selectedEnrollment.alias}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

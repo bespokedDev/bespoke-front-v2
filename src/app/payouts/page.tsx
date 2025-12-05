@@ -358,7 +358,7 @@ export default function PayoutsPage() {
       setIsEnrollmentsLoading(true);
       try {
         const enrollmentsData = await apiClient(
-          `api/enrollments/professor/${formData.professorId}`
+          `api/professors/${formData.professorId}/enrollments`
         );
         const professorData = await apiClient(
           `api/professors/${formData.professorId}`
