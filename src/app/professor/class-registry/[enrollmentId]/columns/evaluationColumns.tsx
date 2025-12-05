@@ -157,6 +157,7 @@ export const useEvaluationColumns = ({
           return (
             <div className="space-y-2">
               {currentValue && (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={currentValue}
                   alt="Test screenshot"
@@ -187,6 +188,7 @@ export const useEvaluationColumns = ({
         }
         
         return evaluation.capturePrueba ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={evaluation.capturePrueba}
             alt="Test screenshot"

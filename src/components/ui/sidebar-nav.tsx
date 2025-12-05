@@ -27,7 +27,6 @@ import {
   GraduationCap, // Icono para Class Types
   Tags, // Icono para Income Categories
   FolderTree, // Icono para Class Categories
-  ClipboardList, // Icono para Class Registry
   User, // Icono para Profile
 } from "lucide-react";
 
