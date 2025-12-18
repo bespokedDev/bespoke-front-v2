@@ -7,12 +7,12 @@ import { getFriendlyErrorMessage } from "@/lib/errorHandler";
 import { formatDateForDisplay } from "@/lib/dateUtils";
 import { PageHeader } from "@/components/ui/page-header";
 import { SummaryCard } from "@/components/dashboard/SummaryCard";
+import { WelcomeBanner } from "@/components/dashboard/WelcomeBanner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
   Loader2,
   AlertCircle,
-  DollarSign,
   BookOpen,
   Calendar,
   Clock,
@@ -58,6 +58,7 @@ export default function StudentDashboardPage() {
         totalAvailableBalance: response.totalAvailableBalance,
         enrollmentDetails: response.enrollmentDetails || [],
       };
+      console.log("data: ", data);
       setStudentInfo(data);
     } catch (err: unknown) {
       console.error("Error fetching student info:", err);
@@ -94,7 +95,7 @@ export default function StudentDashboardPage() {
   if (error || !studentInfo) {
     return (
       <div className="space-y-4">
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center gap-2">
+        <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-4 py-3 rounded flex items-center gap-2">
           <AlertCircle className="h-5 w-5 shrink-0" />
           <span>{error || "Student information not found"}</span>
         </div>
@@ -113,16 +114,19 @@ export default function StudentDashboardPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Dashboard" />
-      <p className="text-muted-foreground">
-        Welcome back, {studentInfo.student.name}!
-      </p>
+      <WelcomeBanner userName={studentInfo.student.name} fallbackName="Student" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <SummaryCard
-          title="Available Balance"
-          count={studentInfo.totalAvailableBalance}
-          color="secondary"
-        />
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm text-muted-foreground">Available Balance</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-secondary">
+              ${studentInfo.totalAvailableBalance.toFixed(2)}
+            </p>
+          </CardContent>
+        </Card>
         <SummaryCard
           title="Active Enrollments"
           count={activeEnrollments.length}
@@ -136,30 +140,6 @@ export default function StudentDashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5" />
-                Balance Overview
-              </CardTitle>
-              <Button asChild variant="outline" size="sm">
-                <Link href="/student/profile?tab=balance">View Details</Link>
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center p-6 bg-secondary/10 rounded-lg">
-              <Label className="text-sm text-muted-foreground">
-                Total Available Balance
-              </Label>
-              <p className="text-4xl font-bold text-secondary mt-2">
-                ${studentInfo.totalAvailableBalance.toFixed(2)}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -182,17 +162,17 @@ export default function StudentDashboardPage() {
                 {activeEnrollments.slice(0, 3).map((enrollment) => (
                   <div
                     key={enrollment.enrollmentId}
-                    className="flex items-start justify-between p-3 border rounded-lg"
+                    className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3 border rounded-lg"
                   >
-                    <div className="space-y-1 flex-1">
-                      <Label className="font-semibold">
+                    <div className="space-y-1 flex-1 min-w-0">
+                      <Label className="font-semibold break-words">
                         {enrollment.planName}
                       </Label>
-                      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 text-sm text-muted-foreground">
                         <div className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          <span>
-                            {formatDateForDisplay(enrollment.startDate)} -{" "}
+                          <Calendar className="h-3 w-3 shrink-0" />
+                          <span className="break-words">
+                            {formatDateForDisplay(enrollment.startDate)} /{" "}
                             {formatDateForDisplay(enrollment.endDate)}
                           </span>
                         </div>
@@ -201,7 +181,7 @@ export default function StudentDashboardPage() {
                         </span>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-left sm:text-right shrink-0">
                       <p className="text-sm font-semibold text-secondary">
                         ${enrollment.amount.toFixed(2)}
                       </p>
@@ -212,31 +192,31 @@ export default function StudentDashboardPage() {
             )}
           </CardContent>
         </Card>
-      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5" />
-            Quick Actions
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-3">
-            <Button asChild>
-              <Link href="/student/profile">View Profile</Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/student/profile?tab=balance">View Balance</Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/student/profile?tab=enrollments">
-                View Enrollments
-              </Link>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              Quick Actions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col sm:flex-row flex-wrap gap-3">
+              <Button asChild>
+                <Link href="/student/profile">View Profile</Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/student/profile?tab=balance">View Balance</Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/student/profile?tab=enrollments">
+                  View Enrollments
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

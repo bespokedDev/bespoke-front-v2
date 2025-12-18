@@ -11,6 +11,9 @@ export interface Enrollment {
       studentCode: string;
       name: string;
       email: string;
+      dob?: string; // Fecha de nacimiento
+      photo?: string | null; // Imagen/foto del estudiante (base64 o URL)
+      representativeName?: string | null; // Nombre del representante
     };
   }>;
   enrollmentType: string;

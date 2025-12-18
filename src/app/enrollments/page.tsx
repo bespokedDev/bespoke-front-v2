@@ -837,14 +837,14 @@ export default function EnrollmentsPage() {
         </div>
       )}
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center justify-between gap-2">
+        <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-4 py-3 rounded flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <AlertCircle className="h-5 w-5 shrink-0" />
             <span>{error}</span>
           </div>
           <button
             onClick={() => setError(null)}
-            className="text-red-700 hover:text-red-900"
+            className="text-destructive hover:opacity-80 dark:text-destructive-foreground"
             aria-label="Close error message"
           >
             <X className="h-4 w-4" />
@@ -1313,7 +1313,7 @@ export default function EnrollmentsPage() {
                               substituteProfessor: null,
                             }))
                           }
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          className="text-destructive hover:opacity-80"
                         >
                           <Trash2 className="h-4 w-4 mr-1" />
                           Remove
@@ -1460,7 +1460,7 @@ export default function EnrollmentsPage() {
                 <span className="text-red-500">*</span> Campos obligatorios
               </div>
               {dialogError && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm flex items-center gap-2">
+                <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-3 py-2 rounded text-sm flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   <span>{dialogError}</span>
                 </div>
@@ -1673,13 +1673,13 @@ export default function EnrollmentsPage() {
             {selectedEnrollment?.status === 1 ? "deactivate" : "activate"} this
             enrollment?
             {selectedEnrollment?.status === 0 && (
-              <span className="text-red-600">
+              <span className="text-destructive">
                 {" "}
                 This enrollment is dissolved and cannot be changed.
               </span>
             )}
             {selectedEnrollment?.status === 3 && (
-              <span className="text-yellow-600">
+              <span className="text-accent-2">
                 {" "}
                 This enrollment is paused. Please edit the enrollment to change its status.
               </span>

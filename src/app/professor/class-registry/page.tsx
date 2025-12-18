@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { apiClient } from "@/lib/api";
 import { getFriendlyErrorMessage } from "@/lib/errorHandler";
 import { PageHeader } from "@/components/ui/page-header";
@@ -53,22 +54,23 @@ interface ProfessorEnrollmentsResponse {
 }
 
 export default function ProfessorClassRegistryPage() {
-  // ID de profesor hardcodeado por los momentos
-  const PROFESSOR_ID = "685a11a76c566777c1b5dc36";
+  const { user, isLoading: isAuthLoading } = useAuth();
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchEnrollments();
-  }, []);
-
   const fetchEnrollments = async () => {
+    if (!user?.id) {
+      setError("User ID not found. Please log in again.");
+      setIsLoading(false);
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError(null);
       const response: ProfessorEnrollmentsResponse = await apiClient(
-        `api/professors/${PROFESSOR_ID}/enrollments`
+        `api/professors/${user.id}/enrollments`
       );
       console.log("response: ", response);
       setEnrollments(response.enrollments || []);
@@ -82,6 +84,17 @@ export default function ProfessorClassRegistryPage() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    // Solo hacer fetch si el usuario está autenticado y es profesor
+    if (!isAuthLoading && user?.id && user?.role?.toLowerCase() === "professor") {
+      fetchEnrollments();
+    } else if (!isAuthLoading && (!user || user?.role?.toLowerCase() !== "professor")) {
+      setError("You must be logged in as a professor to view enrollments.");
+      setIsLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, isAuthLoading]);
 
   const stringLocaleSort =
     (locale = "es") =>
@@ -97,7 +110,46 @@ export default function ProfessorClassRegistryPage() {
 
   const columns: ColumnDef<Enrollment>[] = [
     {
-      accessorKey: "planId.name",
+      id: "students",
+      accessorFn: (row) => {
+        // Función para extraer los nombres de estudiantes como string para búsqueda
+        return row.studentIds.map((s) => s.studentId.name).join(" ");
+      },
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="flex items-center gap-1"
+        >
+          Students
+          <ArrowUpDown className="h-4 w-4" />
+        </Button>
+      ),
+      sortingFn: stringLocaleSort(),
+      cell: ({ row }) => {
+        const studentNames = row.original.studentIds.map(
+          (s) => s.studentId.name
+        );
+        return (
+          <div className="flex flex-wrap items-center gap-1">
+            {studentNames.map((name, index) => (
+              <span key={index} className="text-sm font-semibold text-foreground">
+                {name}
+                {index < studentNames.length - 1 && (
+                  <span className="text-foreground">, </span>
+                )}
+              </span>
+            ))}
+          </div>
+        );
+      },
+    },
+    {
+      id: "plan",
+      accessorFn: (row) => {
+        // Función para extraer el nombre del plan como string para búsqueda
+        return row.planId?.name || "";
+      },
       header: ({ column }) => (
         <Button
           variant="ghost"
@@ -110,29 +162,8 @@ export default function ProfessorClassRegistryPage() {
       ),
       sortingFn: stringLocaleSort(),
       cell: ({ row }) => (
-        <span className="font-medium">{row.original.planId.name}</span>
+        <span className="text-sm text-muted-foreground">{row.original.planId.name}</span>
       ),
-    },
-    {
-      id: "students",
-      header: "Students",
-      cell: ({ row }) => {
-        const studentNames = row.original.studentIds.map(
-          (s) => s.studentId.name
-        );
-        return (
-          <div className="flex flex-wrap items-center gap-1">
-            {studentNames.map((name, index) => (
-              <span key={index} className="text-sm">
-                {name}
-                {index < studentNames.length - 1 && (
-                  <span className="text-muted-foreground">, </span>
-                )}
-              </span>
-            ))}
-          </div>
-        );
-      },
     },
     {
       id: "actions",
@@ -180,7 +211,7 @@ export default function ProfessorClassRegistryPage() {
       )}
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center justify-between gap-2">
+        <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-4 py-3 rounded flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <AlertCircle className="h-5 w-5 shrink-0" />
             <span>{error}</span>
@@ -201,8 +232,8 @@ export default function ProfessorClassRegistryPage() {
             <DataTable
               columns={columns}
               data={enrollments}
-              searchKeys={["planId.name", "language"]}
-              searchPlaceholder="Search by plan name or language..."
+              searchKeys={["students", "plan"]}
+              searchPlaceholder="Search by student name or plan..."
             />
           </CardContent>
         </Card>

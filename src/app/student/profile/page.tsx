@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
 import { apiClient } from "@/lib/api";
 import { getFriendlyErrorMessage } from "@/lib/errorHandler";
 import { formatDateForDisplay } from "@/lib/dateUtils";
@@ -20,8 +22,6 @@ import {
   BookOpen,
   Calendar,
 } from "lucide-react";
-
-const STUDENT_ID = "6858c84b1b114315ccdf65cd";
 
 interface Note {
   _id?: string;
@@ -71,22 +71,39 @@ interface StudentInfo {
 }
 
 export default function StudentProfilePage() {
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const [activeTab, setActiveTab] = useState<string>(tabParam || "profile");
   const [student, setStudent] = useState<Student | null>(null);
   const [studentInfo, setStudentInfo] = useState<StudentInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Actualizar el tab activo cuando cambie el query parameter
+  useEffect(() => {
+    if (tabParam && ["profile", "balance", "enrollments"].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
+
   const fetchStudent = useCallback(async () => {
+    if (!user?.id) {
+      setError("User ID not found. Please log in again.");
+      setIsLoading(false);
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError(null);
       // Fetch student data from /api/students/:id
-      const studentData = await apiClient(`api/students/${STUDENT_ID}`);
+      const studentData = await apiClient(`api/students/${user.id}`);
       setStudent(studentData);
       
       // Also fetch student info for balance and enrollments
       try {
-        const infoResponse = await apiClient(`api/students/info/${STUDENT_ID}`);
+        const infoResponse = await apiClient(`api/students/info/${user.id}`);
         const data: StudentInfo = {
           student: infoResponse.student,
           totalAvailableBalance: infoResponse.totalAvailableBalance,
@@ -104,7 +121,7 @@ export default function StudentProfilePage() {
       // Si es un 404, el endpoint o el ID no existe
       if (error.statusCode === 404) {
         setError(
-          `Student with ID ${STUDENT_ID} not found. Please verify the student ID exists in the database.`
+          "Student information not found. Please contact support."
         );
       } else {
         const errorMessage = getFriendlyErrorMessage(
@@ -116,11 +133,17 @@ export default function StudentProfilePage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
-    fetchStudent();
-  }, [fetchStudent]);
+    // Solo hacer fetch si el usuario está autenticado y es estudiante
+    if (!isAuthLoading && user?.id && user?.role?.toLowerCase() === "student") {
+      fetchStudent();
+    } else if (!isAuthLoading && (!user || user?.role?.toLowerCase() !== "student")) {
+      setError("You must be logged in as a student to view your profile.");
+      setIsLoading(false);
+    }
+  }, [user, isAuthLoading, fetchStudent]);
 
   if (isLoading) {
     return (
@@ -133,7 +156,7 @@ export default function StudentProfilePage() {
   if (error || !student) {
     return (
       <div className="space-y-4">
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center gap-2">
+        <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-4 py-3 rounded flex items-center gap-2">
           <AlertCircle className="h-5 w-5 shrink-0" />
           <span>{error || "Student information not found"}</span>
         </div>
@@ -152,7 +175,7 @@ export default function StudentProfilePage() {
         </div>
       </div>
 
-      <Tabs defaultValue="profile" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
         <TabsTrigger value="profile" className="flex items-center gap-2">
             <User className="h-4 w-4" />

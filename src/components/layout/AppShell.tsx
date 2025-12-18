@@ -28,9 +28,9 @@ export function AppShell({ children }: AppShellProps) {
       <AuthGuard>
         <div className="flex min-h-screen">
           <SidebarNav />
-          <div className="flex flex-1 flex-col">
+          <div className="flex flex-1 flex-col min-w-0 overflow-x-hidden">
             <Topbar />
-            <main className="flex-1 space-y-6 p-6">{children}</main>
+            <main className="flex-1 space-y-6 p-4 sm:p-6">{children}</main>
           </div>
         </div>
       </AuthGuard>

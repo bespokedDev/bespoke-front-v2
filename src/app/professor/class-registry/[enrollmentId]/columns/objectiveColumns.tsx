@@ -168,27 +168,49 @@ export const useObjectiveColumns = ({
         const objective = row.original;
         const isEditing = editingObjectiveId === objective._id;
         const initialData = initialEditingData[objective._id];
-        
-        if (isEditing && initialData) {
-          return (
+
+        const currentValue =
+          (isEditing && initialData
+            ? initialData.objectiveAchieved
+            : objective.objectiveAchieved) ?? false;
+
+        return (
+          <div className="flex items-center justify-center">
             <EditableAchievedCell
               key={`achieved-${objective._id}`}
-              initialValue={initialData.objectiveAchieved}
-              onUpdate={(newValue) => {
-                if (editingDataRef.current[objective._id]) {
+              initialValue={currentValue}
+              onUpdate={async (newValue) => {
+                // Asegurar que el ref tenga datos base
+                if (!editingDataRef.current[objective._id]) {
+                  editingDataRef.current[objective._id] = {
+                    category: objective.category._id,
+                    objective: objective.objective || "",
+                    objectiveDate: extractDatePart(objective.objectiveDate),
+                    teachersNote: objective.teachersNote || "",
+                    objectiveAchieved: newValue,
+                  };
+                } else {
                   editingDataRef.current[objective._id].objectiveAchieved = newValue;
+                }
+
+                // Actualizar modelo local inmediatamente
+                if (initialEditingData[objective._id]) {
+                  initialEditingData[objective._id].objectiveAchieved = newValue;
+                }
+
+                // Para objetivos ya persistidos, llamar al endpoint de actualización inmediatamente
+                if (!objective._id.startsWith("temp-")) {
+                  const editData = editingDataRef.current[objective._id];
+                  await handleUpdateObjective(objective._id, {
+                    category: editData.category,
+                    objective: editData.objective,
+                    objectiveDate: dateStringToISO(editData.objectiveDate),
+                    teachersNote: editData.teachersNote || null,
+                    objectiveAchieved: newValue,
+                  });
                 }
               }}
             />
-          );
-        }
-        return (
-          <div className="flex items-center justify-center">
-            {objective.objectiveAchieved ? (
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
-            ) : (
-              <X className="h-5 w-5 text-gray-400" />
-            )}
           </div>
         );
       },

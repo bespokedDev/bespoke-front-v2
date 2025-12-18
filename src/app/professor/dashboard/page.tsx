@@ -6,6 +6,7 @@ import { apiClient } from "@/lib/api";
 import { getFriendlyErrorMessage } from "@/lib/errorHandler";
 import { PageHeader } from "@/components/ui/page-header";
 import { SummaryCard } from "@/components/dashboard/SummaryCard";
+import { WelcomeBanner } from "@/components/dashboard/WelcomeBanner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
@@ -100,7 +101,7 @@ export default function ProfessorDashboardPage() {
   if (error) {
     return (
       <div className="space-y-4">
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center gap-2">
+        <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-4 py-3 rounded flex items-center gap-2">
           <AlertCircle className="h-5 w-5 shrink-0" />
           <span>{error}</span>
         </div>
@@ -111,9 +112,7 @@ export default function ProfessorDashboardPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Dashboard" />
-      <p className="text-muted-foreground">
-        Welcome back, {user?.name || "Professor"}!
-      </p>
+      <WelcomeBanner fallbackName="Professor" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <SummaryCard
@@ -136,7 +135,7 @@ export default function ProfessorDashboardPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-primary">
               <BookOpen className="h-5 w-5" />
               My Enrollments
             </CardTitle>
@@ -156,31 +155,45 @@ export default function ProfessorDashboardPage() {
             <div className="space-y-4">
               {enrollments.slice(0, 5).map((enrollment) => (
                 <Card key={enrollment._id}>
-                  <CardContent className="pt-4">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-2 flex-1">
-                        <div className="flex items-center gap-2">
-                          <BookOpen className="h-4 w-4 text-muted-foreground" />
-                          <Label className="font-semibold">
+                  <CardContent>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                      <div className="space-y-3 flex-1 min-w-0">
+                        {/* Estudiantes - Más prominente */}
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Users className="h-5 w-5 text-foreground shrink-0" />
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {enrollment.studentIds.map((s, index) => (
+                                <span key={s.studentId._id}>
+                                  <Link
+                                    href={`/students/${s.studentId._id}`}
+                                    className="text-base sm:text-lg font-semibold text-primary hover:underline break-words"
+                                  >
+                                    {s.studentId.name}
+                                  </Link>
+                                  {index < enrollment.studentIds.length - 1 && (
+                                    <span className="text-base sm:text-lg font-semibold text-foreground mx-1">
+                                      ,
+                                    </span>
+                                  )}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="text-sm text-foreground pl-7">
+                            {enrollment.studentIds.length} student
+                            {enrollment.studentIds.length !== 1 ? "s" : ""}
+                          </div>
+                        </div>
+                        {/* Plan - Menos prominente */}
+                        <div className="flex items-center gap-2 pt-1">
+                          <BookOpen className="h-3.5 w-3.5 text-primary shrink-0" />
+                          <Label className="text-xs text-foreground font-normal break-words">
                             {enrollment.planId.name}
                           </Label>
                         </div>
-                        <div className="flex items-center gap-4 text-sm">
-                          <div className="flex items-center gap-1">
-                            <Users className="h-4 w-4 text-muted-foreground" />
-                            <span>
-                              {enrollment.studentIds.length} student
-                              {enrollment.studentIds.length !== 1 ? "s" : ""}
-                            </span>
-                          </div>
-                          <div className="text-muted-foreground">
-                            {enrollment.studentIds
-                              .map((s) => s.studentId.name)
-                              .join(", ")}
-                          </div>
-                        </div>
                       </div>
-                      <Button asChild variant="outline" size="sm">
+                      <Button asChild variant="outline" size="sm" className="w-full sm:w-auto shrink-0">
                         <Link href={`/professor/class-registry/${enrollment._id}`}>
                           View Registry
                         </Link>

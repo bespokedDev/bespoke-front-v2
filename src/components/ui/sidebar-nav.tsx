@@ -75,7 +75,8 @@ const allNavItems = [
 export function SidebarNav() {
   const pathname = usePathname();
   const { user } = useAuth();
-  const [collapsed, setCollapsed] = useState(false);
+  // Sidebar colapsado por defecto
+  const [collapsed, setCollapsed] = useState(true);
   // Estado para manejar los submenús abiertos
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({
     Accounting: false,
@@ -104,7 +105,7 @@ export function SidebarNav() {
   return (
     <aside
       className={cn(
-        "min-h-screen border-r border-light-border dark:border-dark-border bg-light-sidebar dark:bg-dark-sidebar transition-all duration-300",
+        "hidden md:block min-h-screen border-r border-light-border dark:border-dark-border bg-light-sidebar dark:bg-dark-sidebar transition-all duration-300",
         collapsed ? "w-16" : "w-64"
       )}
     >

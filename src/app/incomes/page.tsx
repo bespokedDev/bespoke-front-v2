@@ -695,14 +695,14 @@ export default function IncomesPage() {
         </div>
       )}
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center justify-between gap-2">
+        <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-4 py-3 rounded flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <AlertCircle className="h-5 w-5 shrink-0" />
             <span>{error}</span>
           </div>
           <button
             onClick={() => setError(null)}
-            className="text-red-700 hover:text-red-900"
+            className="text-destructive hover:opacity-80 dark:text-destructive-foreground"
             aria-label="Close error message"
           >
             <X className="h-4 w-4" />
@@ -776,7 +776,7 @@ export default function IncomesPage() {
                   required
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>
                     Amount <span className="text-red-500">*</span>
@@ -822,7 +822,7 @@ export default function IncomesPage() {
                     selectedDivisa.name.toLowerCase() === "dólar");
 
                 return !isDollar && selectedDivisa ? (
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>
                         Tasa de cambio ({selectedDivisa.name} → USD)
@@ -1037,7 +1037,7 @@ export default function IncomesPage() {
               Select a date range to generate the PDF report.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-4 py-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="summary-start-date">Start Date</Label>
               <Input

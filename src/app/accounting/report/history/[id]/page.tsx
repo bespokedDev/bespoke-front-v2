@@ -371,14 +371,14 @@ export default function ViewReportPage() {
     );
   if (error)
     return (
-      <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center justify-between gap-2 m-8">
+      <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-4 py-3 rounded flex items-center justify-between gap-2 m-8">
         <div className="flex items-center gap-2">
           <AlertCircle className="h-5 w-5 shrink-0" />
           <span>{error}</span>
         </div>
         <button
           onClick={() => setError(null)}
-          className="text-red-700 hover:text-red-900"
+          className="text-destructive hover:opacity-80 dark:text-destructive-foreground"
           aria-label="Close error message"
         >
           <X className="h-4 w-4" />
@@ -431,7 +431,7 @@ export default function ViewReportPage() {
 
       <div
         id="report-to-print"
-        className="space-y-8 bg-white p-4 sm:p-6 rounded-lg"
+        className="space-y-8 bg-card p-4 sm:p-6 rounded-lg"
       >
         {professorReports.map((profReport) => (
           <Card key={profReport.professorId}>
@@ -500,7 +500,7 @@ export default function ViewReportPage() {
                       <TableCell className="text-right font-bold text-base">
                         ${profReport.subtotals.totalBespoke.toFixed(2)}
                       </TableCell>
-                      <TableCell className="text-right font-bold text-base text-blue-600">
+                      <TableCell className="text-right font-bold text-base text-primary">
                         ${profReport.subtotals.balanceRemaining.toFixed(2)}
                       </TableCell>
                     </TableRow>
@@ -570,7 +570,7 @@ export default function ViewReportPage() {
                       <TableCell className="text-right font-bold text-base">
                         ${specialProfessorReport.subtotal.total.toFixed(2)}
                       </TableCell>
-                      <TableCell className="text-right font-bold text-base text-blue-600">
+                      <TableCell className="text-right font-bold text-base text-primary">
                         $
                         {specialProfessorReport.subtotal.balanceRemaining.toFixed(
                           2
@@ -621,7 +621,7 @@ export default function ViewReportPage() {
           </CardFooter>
         </Card>
 
-        <Card className="max-w-md ml-auto">
+        <Card className="max-w-md w-full ml-auto">
           <CardHeader>
             <CardTitle>Final Summary</CardTitle>
           </CardHeader>
@@ -642,7 +642,7 @@ export default function ViewReportPage() {
                 className={`text-lg font-bold ${
                   summary.difference !== 0
                     ? "text-destructive"
-                    : "text-green-600"
+                    : "text-secondary"
                 }`}
               >
                 ${summary.difference.toFixed(2)}

@@ -200,7 +200,7 @@ export default function EnrollmentDetailPage() {
           const enrollmentWithStats: EnrollmentWithStatistics = await apiClient(
             `api/students/${firstStudentId}/enrollment/${enrollmentId}`
           );
-
+          console.log("enrollmentWithStats", enrollmentWithStats);
           if (enrollmentWithStats.statistics) {
             setStatistics(enrollmentWithStats.statistics);
           }
@@ -231,7 +231,7 @@ export default function EnrollmentDetailPage() {
   if (error) {
     return (
       <div className="space-y-4">
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center gap-2">
+        <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-4 py-3 rounded flex items-center gap-2">
           <AlertCircle className="h-5 w-5 shrink-0" />
           <span>{error}</span>
         </div>
@@ -319,12 +319,12 @@ export default function EnrollmentDetailPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label className="text-muted-foreground text-sm">
                     Classes Viewed
                   </Label>
-                  <p className="text-2xl font-bold text-green-600">
+                  <p className="text-2xl font-bold text-secondary">
                     {stats.viewed}
                   </p>
                 </div>
@@ -332,28 +332,23 @@ export default function EnrollmentDetailPage() {
                   <Label className="text-muted-foreground text-sm">
                     Classes Pending
                   </Label>
-                  <p className="text-2xl font-bold text-yellow-600">
+                  <p className="text-2xl font-bold text-accent-2">
                     {stats.pending}
                   </p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-muted-foreground text-sm">
-                    Reschedules
+                    Reschedule hours
                   </Label>
-                  <p className="text-2xl font-bold text-blue-600">
-                    {stats.reschedules}
+                  <p className="text-2xl font-bold text-primary">
+                  {stats.rescheduleTime.hours.toFixed(2)}
                   </p>
-                  {statistics && stats.rescheduleTime.hours > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      {stats.rescheduleTime.hours.toFixed(2)} horas disponibles
-                    </p>
-                  )}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-muted-foreground text-sm">
                     No Shows
                   </Label>
-                  <p className="text-2xl font-bold text-orange-600">
+                  <p className="text-2xl font-bold text-accent-1">
                     {stats.noShows}
                   </p>
                 </div>
@@ -361,7 +356,7 @@ export default function EnrollmentDetailPage() {
                   <Label className="text-muted-foreground text-sm">
                     Lost Classes
                   </Label>
-                  <p className="text-2xl font-bold text-red-600">
+                  <p className="text-2xl font-bold text-destructive">
                     {stats.lost}
                   </p>
                 </div>

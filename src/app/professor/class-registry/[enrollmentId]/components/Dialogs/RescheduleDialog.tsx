@@ -58,7 +58,7 @@ export const RescheduleDialog = ({
         </DialogHeader>
         <div className="space-y-4 py-4">
           {errorMessage && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center gap-2">
+            <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-4 py-3 rounded flex items-center gap-2">
               <span>{errorMessage}</span>
             </div>
           )}

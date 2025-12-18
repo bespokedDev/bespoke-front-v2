@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
+import Image from "next/image";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -116,65 +117,84 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-lightBackground dark:bg-darkBackground">
-      <Card className="w-full max-w-sm bg-lightCard dark:bg-darkCard border-lightBorder dark:border-darkBorder">
-        <CardHeader>
-          <CardTitle className="text-2xl text-lightText dark:text-darkText">
-            Login
-          </CardTitle>
-          <CardDescription className="text-lightSubtext dark:text-darkSubtext">
-            Enter your username below to login to your account.
-          </CardDescription>
-        </CardHeader>
-        <form onSubmit={handleSubmit}>
-          <CardContent className="grid gap-4">
-            <div className="grid gap-2">
-              <Label
-                htmlFor="email"
-                className="text-lightText dark:text-darkText"
-              >
-                User
-              </Label>
-              <Input
-                id="email"
-                type="text"
-                placeholder="username"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={isLoading}
-                className="bg-transparent text-lightText dark:text-darkText border-lightBorder dark:border-darkBorder placeholder:text-lightSubtext/70 focus-visible:ring-primary"
+    <div className="flex items-center justify-center min-h-screen bg-lightBackground dark:bg-darkBackground p-4">
+      <Card className="w-full max-w-3xl bg-white dark:bg-darkCard border-lightBorder dark:border-darkBorder overflow-hidden p-1 shadow-[0_10px_40px_rgba(76,84,158,0.3)] dark:shadow-[0_10px_40px_rgba(76,84,158,0.2)]">
+        <div className="grid grid-cols-1 md:grid-cols-2 md:items-stretch">
+          {/* Lado izquierdo: Imagen */}
+          <div className="hidden md:block relative p-2">
+            <div className="relative w-full h-full rounded-lg overflow-hidden">
+              <Image
+                src="/art.jpg"
+                alt="Login illustration"
+                fill
+                className="object-cover"
+                priority
+                sizes="(max-width: 768px) 0vw, 50vw"
               />
             </div>
-            <div className="grid gap-2">
-              <Label
-                htmlFor="password"
-                className="text-lightText dark:text-darkText"
-              >
-                Password
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={isLoading}
-                className="bg-transparent text-lightText dark:text-darkText border-lightBorder dark:border-darkBorder placeholder:text-lightSubtext/70 focus-visible:ring-primary"
-              />
-            </div>
-            {error && <p className="text-sm text-accent1">{error}</p>}
-          </CardContent>
-          <CardFooter>
-            <Button
-              className="w-full bg-primary text-white hover:bg-primary/90"
-              type="submit"
-              disabled={isLoading}
-            >
-              {isLoading ? "Signing in..." : "Sign in"}
-            </Button>
-          </CardFooter>
-        </form>
+          </div>
+
+          {/* Lado derecho: Formulario de login */}
+          <div className="flex flex-col justify-center p-6 md:p-8">
+            <CardHeader className="px-0 pt-0 pb-10">
+              <CardTitle className="text-2xl text-lightText dark:text-darkText">
+                Welcome!
+              </CardTitle>
+              <CardDescription className="text-lightSubtext dark:text-darkSubtext">
+                Enter your username below to login to your account.
+              </CardDescription>
+            </CardHeader>
+            <form onSubmit={handleSubmit}>
+              <CardContent className="grid gap-4 px-0">
+                <div className="grid gap-2">
+                  <Label
+                    htmlFor="email"
+                    className="text-lightText dark:text-darkText"
+                  >
+                    User
+                  </Label>
+                  <Input
+                    id="email"
+                    type="text"
+                    placeholder="username"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    disabled={isLoading}
+                    className="bg-transparent text-lightText dark:text-darkText border-lightBorder dark:border-darkBorder placeholder:text-lightSubtext/70 focus-visible:ring-primary"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label
+                    htmlFor="password"
+                    className="text-lightText dark:text-darkText"
+                  >
+                    Password
+                  </Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={isLoading}
+                    className="bg-transparent text-lightText dark:text-darkText border-lightBorder dark:border-darkBorder placeholder:text-lightSubtext/70 focus-visible:ring-primary"
+                  />
+                </div>
+                {error && <p className="text-sm text-accent1">{error}</p>}
+              </CardContent>
+              <CardFooter className="px-0 pb-0 pt-2">
+                <Button
+                  className="w-full bg-primary text-white hover:bg-primary/90"
+                  type="submit"
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Signing in..." : "Sign in"}
+                </Button>
+              </CardFooter>
+            </form>
+          </div>
+        </div>
       </Card>
     </div>
   );

@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { formatDateForDisplay } from "@/lib/dateUtils";
+import { formatDateForDisplay, extractDatePart } from "@/lib/dateUtils";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Loader2,
   AlertCircle,
-  
   ArrowLeft,
   CheckCircle2,
   ChevronsUpDown,
@@ -16,6 +16,7 @@ import {
   Calendar,
   MoreVertical,
   ClipboardList,
+  Save,
 } from "lucide-react";
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import {
@@ -51,6 +52,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/contexts/AuthContext";
 import type {
   ClassRegistry,
   EvaluationWithClassDate,
@@ -79,6 +81,8 @@ export default function ClassRegistryDetailPage() {
   const params = useParams();
   const router = useRouter();
   const enrollmentId = params.enrollmentId as string;
+  const { user } = useAuth();
+  const isProfessor = user?.role?.toLowerCase() === "professor";
 
   // Estado local para el tab activo (necesario para useEvaluations)
   const [activeTab, setActiveTab] = useState("classes");
@@ -132,8 +136,6 @@ export default function ClassRegistryDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classRegistriesHook.classRegistries.length]);
 
-  // Componente inline para campo Objective con estado local
-
   const objectiveColumns = useObjectiveColumns({
     editingObjectiveId: objectivesHook.editingObjectiveId,
     initialEditingData: objectivesHook.initialEditingData,
@@ -145,244 +147,6 @@ export default function ClassRegistryDetailPage() {
     setEditingObjectiveId: objectivesHook.setEditingObjectiveId,
   });
 
-  // Old definition removed - now using hook
-  /* const objectiveColumns: ColumnDef<ClassObjective>[] = useMemo(() => [
-    {
-      id: "objective",
-      header: "Objective",
-      cell: ({ row }) => {
-        const objective = row.original;
-        const isEditing = editingObjectiveId === objective._id;
-        const initialData = initialEditingData[objective._id];
-        
-        if (isEditing && initialData) {
-          return (
-            <EditableObjectiveCell
-              key={`objective-${objective._id}`}
-              objectiveId={objective._id}
-              initialValue={initialData.objective}
-              onUpdate={(newValue) => {
-                if (editingDataRef.current[objective._id]) {
-                  editingDataRef.current[objective._id].objective = newValue;
-                }
-              }}
-            />
-          );
-        }
-        return <span className="text-sm">{objective.objective || "-"}</span>;
-      },
-    },
-    {
-      id: "category",
-      header: "Category",
-      cell: ({ row }) => {
-        const objective = row.original;
-        const isEditing = editingObjectiveId === objective._id;
-        const initialData = initialEditingData[objective._id];
-        
-        if (isEditing && initialData) {
-          return (
-            <EditableCategoryCell
-              key={`category-${objective._id}`}
-              objectiveId={objective._id}
-              initialValue={initialData.category}
-              contentClasses={contentClasses}
-              onUpdate={(newValue) => {
-                if (editingDataRef.current[objective._id]) {
-                  editingDataRef.current[objective._id].category = newValue;
-                }
-              }}
-            />
-          );
-        }
-        return <span className="text-sm">{objective.category.name}</span>;
-      },
-    },
-    {
-      id: "teachersNote",
-      header: "Teacher's Note",
-      cell: ({ row }) => {
-        const objective = row.original;
-        const isEditing = editingObjectiveId === objective._id;
-        const initialData = initialEditingData[objective._id];
-        
-        if (isEditing && initialData) {
-          return (
-            <EditableTeachersNoteCell
-              key={`teachersNote-${objective._id}`}
-              objectiveId={objective._id}
-              initialValue={initialData.teachersNote}
-              onUpdate={(newValue) => {
-                if (editingDataRef.current[objective._id]) {
-                  editingDataRef.current[objective._id].teachersNote = newValue;
-                }
-              }}
-            />
-          );
-        }
-        return <span className="text-sm">{objective.teachersNote || "-"}</span>;
-      },
-    },
-    {
-      id: "objectiveDate",
-      header: "Objective Date",
-      cell: ({ row }) => {
-        const objective = row.original;
-        const isEditing = editingObjectiveId === objective._id;
-        const initialData = initialEditingData[objective._id];
-        
-        if (isEditing && initialData) {
-          return (
-            <EditableObjectiveDateCell
-              key={`objectiveDate-${objective._id}`}
-              objectiveId={objective._id}
-              initialValue={initialData.objectiveDate}
-              onUpdate={(newValue) => {
-                if (editingDataRef.current[objective._id]) {
-                  editingDataRef.current[objective._id].objectiveDate = newValue;
-                }
-              }}
-            />
-          );
-        }
-        return (
-          <span className="text-sm">
-            {formatDateForDisplay(objective.objectiveDate)}
-          </span>
-        );
-      },
-    },
-    {
-      id: "achieved",
-      header: "Achieved",
-      cell: ({ row }) => {
-        const objective = row.original;
-        const isEditing = editingObjectiveId === objective._id;
-        const initialData = initialEditingData[objective._id];
-        
-        if (isEditing && initialData) {
-          return (
-            <EditableAchievedCell
-              key={`achieved-${objective._id}`}
-              objectiveId={objective._id}
-              initialValue={initialData.objectiveAchieved}
-              onUpdate={(newValue) => {
-                if (editingDataRef.current[objective._id]) {
-                  editingDataRef.current[objective._id].objectiveAchieved = newValue;
-                }
-              }}
-            />
-          );
-        }
-        return (
-          <div className="flex items-center justify-center">
-            {objective.objectiveAchieved ? (
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
-            ) : (
-              <X className="h-5 w-5 text-gray-400" />
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      id: "actions",
-      header: "Actions",
-      cell: ({ row }) => {
-        const objective = row.original;
-        const isEditing = editingObjectiveId === objective._id;
-        
-        if (isEditing) {
-          return (
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  const editData = editingDataRef.current[objective._id];
-                  if (editData) {
-                    const success = await handleUpdateObjective(objective._id, {
-                      category: editData.category,
-                      objective: editData.objective,
-                      objectiveDate: dateStringToISO(editData.objectiveDate),
-                      teachersNote: editData.teachersNote || null,
-                      objectiveAchieved: editData.objectiveAchieved,
-                    });
-                    if (success) {
-                      delete editingDataRef.current[objective._id];
-                      setInitialEditingData((prev) => {
-                      const newData = { ...prev };
-                      delete newData[objective._id];
-                      return newData;
-                    });
-                  setEditingObjectiveId(null);
-                    }
-                  }
-                }}
-                disabled={savingObjectiveId === objective._id}
-                title="Save"
-              >
-                {savingObjectiveId === objective._id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  delete editingDataRef.current[objective._id];
-                  setInitialEditingData((prev) => {
-                    const newData = { ...prev };
-                    delete newData[objective._id];
-                    return newData;
-                  });
-                  setEditingObjectiveId(null);
-                }}
-                title="Cancel"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          );
-        }
-        
-        return (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              const initialData = {
-                  category: objective.category._id,
-                objective: objective.objective || "",
-                  objectiveDate: extractDatePart(objective.objectiveDate),
-                  teachersNote: objective.teachersNote || "",
-                  objectiveAchieved: objective.objectiveAchieved,
-              };
-              
-              // Inicializar el ref y el estado inicial
-              editingDataRef.current[objective._id] = { ...initialData };
-              setInitialEditingData((prev) => ({
-                ...prev,
-                [objective._id]: initialData,
-              }));
-              setEditingObjectiveId(objective._id);
-            }}
-            title="Edit"
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-        );
-      },
-    },
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [editingObjectiveId, contentClasses, handleUpdateObjective, savingObjectiveId]); */
-
-  // Componentes inline para campos editables de registros (evitar pérdida de foco)
-  // Los refs y estados están ahora en los hooks
-
-
   // Columnas de Evaluaciones
   const evaluationColumns = useEvaluationColumns({
     editingEvaluationId: evaluationsHook.editingEvaluationId,
@@ -390,8 +154,6 @@ export default function ClassRegistryDetailPage() {
     handleUpdateEvaluation: evaluationsHook.handleUpdateEvaluation,
     setEditingEvaluationId: evaluationsHook.setEditingEvaluationId,
   });
-
-  // Old evaluationColumns definition removed - now using hook
 
   // Componente EvaluationsTable
   const EvaluationsTable = ({ evaluations }: {
@@ -463,12 +225,195 @@ export default function ClassRegistryDetailPage() {
     );
   };
 
+  // Función helper para sincronizar el ref al estado para un registro específico
+  const syncRefToState = useCallback((registryId: string) => {
+    const refData = classRegistriesHook.editingRegistryDataRef.current[registryId];
+    if (refData) {
+      classRegistriesHook.setEditingRegistryData((prev) => ({
+        ...prev,
+        [registryId]: refData,
+      }));
+    }
+  }, [classRegistriesHook]);
+
+  // Guardar un registro individual con validaciones y reglas por rol
+  const handleSaveRegistry = useCallback(
+    async (registry: ClassRegistry) => {
+      const registryId = registry._id;
+
+      // Obtener datos de edición actuales (ref > estado > valor original)
+      const editDataRef =
+        classRegistriesHook.editingRegistryDataRef.current[registryId];
+      const editDataState =
+        classRegistriesHook.editingRegistryData[registryId];
+
+      const isReschedule = registry.originalClassId !== null && registry.originalClassId !== undefined;
+      
+      const base = editDataRef || editDataState || {
+        minutesViewed: registry.minutesViewed?.toString() || "",
+        classType: registry.classType.map((t) => t._id),
+        contentType: registry.contentType.map((t) => t._id),
+        vocabularyContent: registry.vocabularyContent || "",
+        studentMood: registry.studentMood || "",
+        note: registry.note || null,
+        homework: registry.homework || "",
+        reschedule: registry.reschedule,
+        classViewed: registry.classViewed,
+        ...(isReschedule && { classDate: extractDatePart(registry.classDate) }),
+      };
+
+      const minutesNumber =
+        base.minutesViewed === "" ? 0 : Number(base.minutesViewed);
+      const rescheduleValue = base.reschedule ?? registry.reschedule;
+      const classViewedValue = base.classViewed ?? registry.classViewed ?? 0;
+
+      // Validación: si minutos < 60 y no hay reschedule
+      if (minutesNumber < 60 && rescheduleValue === 0) {
+        window.alert(
+          "This class has less than 60 minutes and no reschedule. Please create a reschedule before saving."
+        );
+        return;
+      }
+
+      // Validación: class viewed debe ser distinto de 0
+      if (!classViewedValue || classViewedValue === 0) {
+        window.alert(
+          "Class Viewed cannot be 0. Please mark the class as viewed before saving."
+        );
+        return;
+      }
+
+      // Confirmación para profesores: después de guardar no podrá editar (porque classViewed será diferente de 0)
+      if (isProfessor) {
+        const confirmed = window.confirm(
+          "After saving this class registry, you will not be able to edit it again because the class will be marked as viewed. Do you want to continue?"
+        );
+        if (!confirmed) {
+          return;
+        }
+      }
+
+      try {
+        const updatePayload: {
+    minutesViewed: number | null;
+    classType: string[];
+    contentType: string[];
+    vocabularyContent: string | null;
+    studentMood: string | null;
+    note: {
+      content: string | null;
+      visible: {
+        admin: number;
+        student: number;
+        professor: number;
+      };
+    } | null;
+    homework: string | null;
+          classViewed: number;
+          classDate?: string;
+        } = {
+          minutesViewed:
+            base.minutesViewed === "" ? null : Number(base.minutesViewed),
+          classType: base.classType,
+          contentType: base.contentType,
+          vocabularyContent: base.vocabularyContent || null,
+          studentMood: base.studentMood || null,
+          note: base.note,
+          homework: base.homework || null,
+          classViewed: classViewedValue,
+        };
+        
+        // Incluir classDate si es un reschedule y existe en el ref
+        if (isReschedule && base.classDate) {
+          updatePayload.classDate = base.classDate;
+        }
+        
+        await classRegistriesHook.handleUpdateRegistry(registryId, updatePayload);
+        
+        // Después de guardar exitosamente, los datos ya se refrescaron desde el servidor
+        // El useEffect en useClassRegistries reinicializará editingRegistryData con los valores actualizados
+        // incluyendo el nuevo classViewed, lo que hará que los campos dejen de ser editables
+      } catch {
+        // El propio hook ya maneja y muestra el error apropiado
+      }
+    },
+    [classRegistriesHook, isProfessor]
+  );
+
   const registryColumns: ColumnDef<ClassRegistry>[] = useMemo(() => [
     {
       accessorKey: "classDate",
       header: "Class Date",
       cell: ({ row }) => {
         const registry = row.original;
+        const isReschedule = registry.originalClassId !== null && registry.originalClassId !== undefined;
+        
+        if (isReschedule) {
+          // Para reschedules, hacer la fecha editable
+          const editData = classRegistriesHook.editingRegistryData[registry._id];
+          const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
+          
+          if (isLocked) {
+          return (
+              <span className="text-sm font-medium">
+                {formatDateForDisplay(registry.classDate)}
+              </span>
+            );
+          }
+          
+          const dateValue = editData?.classDate ?? extractDatePart(registry.classDate);
+          
+          // Inicializar el ref si no existe
+          if (!classRegistriesHook.editingRegistryDataRef.current[registry._id]) {
+            classRegistriesHook.editingRegistryDataRef.current[registry._id] = {
+              minutesViewed: registry.minutesViewed?.toString() || "",
+              classType: registry.classType.map((t) => t._id),
+              contentType: registry.contentType.map((t) => t._id),
+              vocabularyContent: registry.vocabularyContent || "",
+              studentMood: registry.studentMood || "",
+              note: registry.note || null,
+              homework: registry.homework || "",
+              reschedule: registry.reschedule,
+              classViewed: registry.classViewed,
+              classDate: extractDatePart(registry.classDate),
+            };
+          }
+          
+          return (
+            <Input
+              type="date"
+              value={dateValue}
+              onChange={(e) => {
+                const newDate = e.target.value;
+                if (classRegistriesHook.editingRegistryDataRef.current[registry._id]) {
+                  classRegistriesHook.editingRegistryDataRef.current[registry._id].classDate = newDate;
+                }
+                // Actualizar el estado para reflejar el cambio
+                classRegistriesHook.setEditingRegistryData((prev) => ({
+                  ...prev,
+                  [registry._id]: {
+                    ...(prev[registry._id] || {
+                      minutesViewed: registry.minutesViewed?.toString() || "",
+                      classType: registry.classType.map((t) => t._id),
+                      contentType: registry.contentType.map((t) => t._id),
+                      vocabularyContent: registry.vocabularyContent || "",
+                      studentMood: registry.studentMood || "",
+                      note: registry.note || null,
+                      homework: registry.homework || "",
+                      reschedule: registry.reschedule,
+                      classViewed: registry.classViewed,
+                      classDate: extractDatePart(registry.classDate),
+                    }),
+                    classDate: newDate,
+                  },
+                }));
+              }}
+              className={`w-auto min-w-[140px] border-0 border-b border-input focus-visible:ring-0 focus-visible:ring-offset-0 rounded-none ${isReschedule ? "bg-white" : "bg-transparent"}`}
+            />
+          );
+        }
+        
+        // Para clases normales, mostrar solo texto
         return (
           <span className="text-sm font-medium">
             {formatDateForDisplay(registry.classDate)}
@@ -499,6 +444,17 @@ export default function ClassRegistryDetailPage() {
           };
         }
         
+        const isReschedule = registry.originalClassId !== null && registry.originalClassId !== undefined;
+        const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
+        
+        if (isLocked) {
+          return (
+            <span className="text-sm font-medium">
+              {registry.minutesViewed ?? "—"}
+            </span>
+          );
+        }
+        
         return (
           <EditableMinutesViewedField
             registryId={registry._id}
@@ -508,6 +464,7 @@ export default function ClassRegistryDetailPage() {
                 classRegistriesHook.editingRegistryDataRef.current[registry._id].minutesViewed = newValue;
               }
             }}
+            isReschedule={isReschedule}
           />
         );
       },
@@ -538,14 +495,22 @@ export default function ClassRegistryDetailPage() {
         const popoverKey = `classType-${registry._id}`;
         const open = classRegistriesHook.openPopovers[popoverKey]?.classType || false;
         
-        // Obtener los nombres de los tipos seleccionados
-        const selectedNames = selectedIds
-          .map((id) => classTypes.find((t) => t._id === id)?.name)
-          .filter((name): name is string => name !== undefined);
+        // Obtener el nombre del tipo seleccionado (solo uno)
+        const selectedTypeId = selectedIds[0];
+        const selectedName =
+          classTypes.find((t) => t._id === selectedTypeId)?.name || "";
         
-        const displayText = selectedNames.length > 0
-          ? selectedNames.join(", ")
-          : "Select...";
+        const displayText = selectedName || "Select...";
+        const isReschedule = registry.originalClassId !== null && registry.originalClassId !== undefined;
+        const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
+        
+        if (isLocked) {
+          return (
+            <span className="text-sm font-medium">
+              {displayText}
+            </span>
+          );
+        }
         
         return (
           <Popover 
@@ -562,7 +527,7 @@ export default function ClassRegistryDetailPage() {
                 variant="outline"
                 role="combobox"
                 aria-expanded={open}
-                className="w-full justify-between"
+                className={`w-full justify-between ${isReschedule ? "bg-white" : ""}`}
               >
                 <span className="truncate text-left flex-1">{displayText}</span>
                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -578,9 +543,8 @@ export default function ClassRegistryDetailPage() {
                       key={type._id}
                       value={type._id}
                       onSelect={() => {
-                        const newSelectedIds = selectedIds.includes(type._id)
-                            ? selectedIds.filter((id: string) => id !== type._id)
-                          : [...selectedIds, type._id];
+                        // Solo un tipo seleccionado a la vez
+                        const newSelectedIds = [type._id];
                         
                         // Inicializar el ref si no existe
                         if (!classRegistriesHook.editingRegistryDataRef.current[registry._id]) {
@@ -594,7 +558,7 @@ export default function ClassRegistryDetailPage() {
                             homework: registry.homework || "",
                             reschedule: registry.reschedule,
                             classViewed: registry.classViewed,
-                          };
+                            };
                         }
                         
                         // Actualizar el ref
@@ -618,11 +582,17 @@ export default function ClassRegistryDetailPage() {
                             classType: newSelectedIds,
                           },
                         }));
+                        
+                        // Cerrar el popover después de seleccionar
+                        classRegistriesHook.setOpenPopovers((prev: Record<string, { classType: boolean; contentType: boolean }>) => ({
+                          ...prev,
+                          [popoverKey]: { ...(prev[popoverKey] || { classType: false, contentType: false }), classType: false },
+                        }));
                       }}
                     >
                       <CheckCircle2
                         className={`mr-2 h-4 w-4 ${
-                          selectedIds.includes(type._id)
+                          selectedTypeId === type._id
                             ? "opacity-100"
                             : "opacity-0"
                         }`}
@@ -671,6 +641,16 @@ export default function ClassRegistryDetailPage() {
         const displayText = selectedNames.length > 0
           ? selectedNames.join(", ")
           : "Select...";
+        const isReschedule = registry.originalClassId !== null && registry.originalClassId !== undefined;
+        const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
+        
+        if (isLocked) {
+          return (
+            <span className="text-sm font-medium">
+              {displayText}
+            </span>
+          );
+        }
         
         return (
           <Popover 
@@ -687,7 +667,7 @@ export default function ClassRegistryDetailPage() {
                 variant="outline"
                 role="combobox"
                 aria-expanded={open}
-                className="w-full justify-between"
+                className={`w-full justify-between ${isReschedule ? "bg-white" : ""}`}
               >
                 <span className="truncate text-left flex-1">{displayText}</span>
                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -719,7 +699,7 @@ export default function ClassRegistryDetailPage() {
                             homework: registry.homework || "",
                             reschedule: registry.reschedule,
                             classViewed: registry.classViewed,
-                          };
+                            };
                         }
                         
                         // Actualizar el ref
@@ -764,7 +744,7 @@ export default function ClassRegistryDetailPage() {
     },
     {
       id: "vocabularyContent",
-      header: "Vocabulary Content",
+      header: "Class Content",
       cell: ({ row }) => {
         const registry = row.original;
         const editData = classRegistriesHook.editingRegistryData[registry._id];
@@ -785,6 +765,17 @@ export default function ClassRegistryDetailPage() {
           };
         }
         
+        const isReschedule = registry.originalClassId !== null && registry.originalClassId !== undefined;
+        const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
+        
+        if (isLocked) {
+          return (
+            <span className="text-sm font-medium">
+              {registry.vocabularyContent || "—"}
+            </span>
+          );
+        }
+        
         return (
           <EditableVocabularyContentField
             registryId={registry._id}
@@ -794,6 +785,7 @@ export default function ClassRegistryDetailPage() {
                 classRegistriesHook.editingRegistryDataRef.current[registry._id].vocabularyContent = newValue;
               }
             }}
+            isReschedule={isReschedule}
           />
         );
       },
@@ -821,6 +813,17 @@ export default function ClassRegistryDetailPage() {
           };
         }
         
+        const isReschedule = registry.originalClassId !== null && registry.originalClassId !== undefined;
+        const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
+        
+        if (isLocked) {
+          return (
+            <span className="text-sm font-medium">
+              {registry.studentMood || "—"}
+            </span>
+          );
+        }
+        
         return (
           <EditableStudentMoodField
             registryId={registry._id}
@@ -830,6 +833,7 @@ export default function ClassRegistryDetailPage() {
                 classRegistriesHook.editingRegistryDataRef.current[registry._id].studentMood = newValue;
               }
             }}
+            isReschedule={isReschedule}
           />
         );
       },
@@ -839,7 +843,12 @@ export default function ClassRegistryDetailPage() {
       header: "Note",
       cell: ({ row }) => {
         const registry = row.original;
-        const noteContent = registry.note?.content || "";
+        const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
+        
+        // Leer la nota del estado local primero, luego del registro original
+        const editData = classRegistriesHook.editingRegistryData[registry._id];
+        const noteFromState = editData?.note || classRegistriesHook.editingRegistryDataRef.current[registry._id]?.note;
+        const noteContent = noteFromState?.content || registry.note?.content || "";
         const hasNote = noteContent.trim().length > 0;
         const truncatedNote = noteContent.length > 50 
           ? `${noteContent.substring(0, 50)}...` 
@@ -855,31 +864,39 @@ export default function ClassRegistryDetailPage() {
                 >
                   {truncatedNote}
                 </span>
+                {!isLocked && (
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => {
-                    classRegistriesHook.setNoteModalData({
-                      content: registry.note?.content || "",
+                      syncRefToState(registry._id);
+                      const currentNote = classRegistriesHook.editingRegistryData[registry._id]?.note || 
+                                         classRegistriesHook.editingRegistryDataRef.current[registry._id]?.note ||
+                                         registry.note;
+                      classRegistriesHook.setNoteModalData({
+                        content: currentNote?.content || "",
                       visible: {
-                        admin: (registry.note?.visible.admin || 0) === 1,
-                        student: (registry.note?.visible.student || 0) === 1,
-                        professor: true, // Always visible to professor
+                          admin: true, // Always visible to admin
+                          student: (currentNote?.visible?.student || 0) === 1,
+                          professor: true, // Always visible to professor
                       },
                     });
-                    classRegistriesHook.setEditingNoteRegistryId(registry._id);
+                      classRegistriesHook.setEditingNoteRegistryId(registry._id);
                   }}
                   className="h-8 w-8 p-0 shrink-0"
                 >
                   <Pencil className="h-4 w-4" />
                 </Button>
+                )}
               </>
             ) : (
+              !isLocked && (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  classRegistriesHook.setNoteModalData({
+                    syncRefToState(registry._id);
+                    classRegistriesHook.setNoteModalData({
                     content: "",
                     visible: {
                       admin: true,
@@ -887,12 +904,16 @@ export default function ClassRegistryDetailPage() {
                       professor: true,
                     },
                   });
-                  classRegistriesHook.setEditingNoteRegistryId(registry._id);
+                    classRegistriesHook.setEditingNoteRegistryId(registry._id);
                 }}
                 className="h-8 text-xs"
               >
                 + Add Note
               </Button>
+              )
+            )}
+            {!hasNote && isLocked && (
+              <span className="text-sm text-muted-foreground">—</span>
             )}
           </div>
         );
@@ -921,6 +942,17 @@ export default function ClassRegistryDetailPage() {
           };
         }
         
+        const isReschedule = registry.originalClassId !== null && registry.originalClassId !== undefined;
+        const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
+        
+        if (isLocked) {
+          return (
+            <span className="text-sm font-medium">
+              {registry.homework || "—"}
+            </span>
+          );
+        }
+        
         return (
           <EditableHomeworkField
             registryId={registry._id}
@@ -930,20 +962,21 @@ export default function ClassRegistryDetailPage() {
                 classRegistriesHook.editingRegistryDataRef.current[registry._id].homework = newValue;
               }
             }}
+            isReschedule={isReschedule}
           />
         );
       },
     },
     {
       id: "reschedule",
-      header: "Reschedule Made",
+      header: "Reschedule Status",
       cell: ({ row }) => {
         const registry = row.original;
         const rescheduleValue = registry.reschedule;
         
         let displayText: string;
         if (rescheduleValue === 0) {
-          displayText = "Normal";
+          displayText = "Not made";
         } else if (rescheduleValue === 1) {
           displayText = "In reschedule";
         } else if (rescheduleValue === 2) {
@@ -959,7 +992,7 @@ export default function ClassRegistryDetailPage() {
     },
     {
       id: "classViewed",
-      header: "Class Viewed",
+      header: "Class Status",
       cell: ({ row }) => {
         const registry = row.original;
         const editData = classRegistriesHook.editingRegistryData[registry._id];
@@ -980,6 +1013,23 @@ export default function ClassRegistryDetailPage() {
           };
         }
         
+        const isReschedule = registry.originalClassId !== null && registry.originalClassId !== undefined;
+        const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
+        
+        if (isLocked) {
+          const classViewedLabels: Record<number, string> = {
+            0: "Pending",
+            1: "Viewed",
+            2: "Partially Viewed",
+            3: "No Show",
+          };
+          return (
+            <span className="text-sm font-medium">
+              {classViewedLabels[registry.classViewed] || "—"}
+            </span>
+          );
+        }
+        
         return (
           <EditableClassViewedField
             registryId={registry._id}
@@ -989,6 +1039,7 @@ export default function ClassRegistryDetailPage() {
                 classRegistriesHook.editingRegistryDataRef.current[registry._id].classViewed = newValue;
               }
             }}
+            isReschedule={isReschedule}
           />
         );
       },
@@ -1001,16 +1052,14 @@ export default function ClassRegistryDetailPage() {
         const canReschedule = registry.reschedule === 0;
         const hasEvaluationInCache = evaluationsHook.evaluationCache[registry._id] ?? false;
         const isMenuOpen = evaluationsHook.openMenuRegistryId === registry._id;
+        // Un registro está bloqueado si es profesor y classViewed es diferente de 0
+        const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
         
         return (
           <DropdownMenu 
             open={isMenuOpen} 
             onOpenChange={async (open) => {
               evaluationsHook.setOpenMenuRegistryId(open ? registry._id : null);
-              
-              // Verificar evaluación cuando se abre el menú si no está en cache
-              // El cache se actualiza desde fetchClassRegistries, así que solo verificamos si existe
-              // No necesitamos hacer una llamada adicional aquí
             }}
           >
             <DropdownMenuTrigger asChild>
@@ -1022,14 +1071,27 @@ export default function ClassRegistryDetailPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() => {
+                  syncRefToState(registry._id);
+                  void handleSaveRegistry(registry);
+                  evaluationsHook.setOpenMenuRegistryId(null);
+                }}
+                disabled={isLocked}
+              >
+                <Save className="h-4 w-4 mr-2" />
+                Save changes
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               {canReschedule && (
                 <DropdownMenuItem
                   onClick={() => {
+                    syncRefToState(registry._id);
                     classRegistriesHook.setRescheduleRegistryId(registry._id);
                     classRegistriesHook.setRescheduleDate("");
                     evaluationsHook.setOpenMenuRegistryId(null);
-                  }}
-                >
+            }}
+          >
                   <Calendar className="h-4 w-4 mr-2" />
                   Create Reschedule
                 </DropdownMenuItem>
@@ -1039,6 +1101,7 @@ export default function ClassRegistryDetailPage() {
               )}
               <DropdownMenuItem
                 onClick={() => {
+                  syncRefToState(registry._id);
                   evaluationsHook.setSelectedClassRegistryForEvaluation(registry);
                   evaluationsHook.setEvaluationFormData({
                     fecha: new Date().toISOString().split("T")[0],
@@ -1064,12 +1127,15 @@ export default function ClassRegistryDetailPage() {
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [
+    syncRefToState,
     classRegistriesHook.editingRegistryData,
     classRegistriesHook.openPopovers,
     evaluationsHook.evaluationCache,
     evaluationsHook.openMenuRegistryId,
     classTypes,
     contentClasses,
+    isProfessor,
+    handleSaveRegistry,
   ]);
 
   if (isLoadingEnrollment) {
@@ -1091,7 +1157,7 @@ export default function ClassRegistryDetailPage() {
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Enrollments
         </Button>
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center gap-2">
+        <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-4 py-3 rounded flex items-center gap-2">
           <AlertCircle className="h-5 w-5 shrink-0" />
           <span>{error || "Enrollment not found"}</span>
         </div>
@@ -1126,12 +1192,13 @@ export default function ClassRegistryDetailPage() {
           {/* Objectives Section */}
           <ObjectivesSection
             objectives={objectivesHook.objectives}
-            columns={objectiveColumns}
+                  columns={objectiveColumns}
             contentClasses={contentClasses}
             objectiveSuccessMessage={objectivesHook.objectiveSuccessMessage}
             objectiveErrorMessage={objectivesHook.objectiveErrorMessage}
             onDismissSuccess={() => objectivesHook.setObjectiveSuccessMessage(null)}
             onDismissError={() => objectivesHook.setObjectiveErrorMessage(null)}
+            onAddObjective={objectivesHook.addNewObjective}
           />
 
           {/* Class Registries Table */}
@@ -1145,10 +1212,8 @@ export default function ClassRegistryDetailPage() {
             registrySuccessMessage={classRegistriesHook.registrySuccessMessage}
             registryErrorMessage={classRegistriesHook.registryErrorMessage}
             isLoadingEvaluations={evaluationsHook.isLoadingEvaluations}
-            savingAllRegistries={classRegistriesHook.savingAllRegistries}
             onDismissSuccess={() => classRegistriesHook.setRegistrySuccessMessage(null)}
             onDismissError={() => classRegistriesHook.setRegistryErrorMessage(null)}
-            onSaveAll={classRegistriesHook.handleSaveAllRegistries}
           />
         </div>
       </div>
@@ -1177,53 +1242,62 @@ export default function ClassRegistryDetailPage() {
           if (!isOpen) {
             classRegistriesHook.setEditingNoteRegistryId(null);
             classRegistriesHook.setNoteModalData({
-              content: "",
-              visible: {
-                admin: true,
-                student: false,
-                professor: true,
-              },
-            });
+                  content: "",
+                  visible: {
+                    admin: true,
+                    student: false,
+                    professor: true,
+                  },
+                });
           }
-        }}
+              }}
         registryId={classRegistriesHook.editingNoteRegistryId}
         classRegistries={classRegistriesHook.classRegistries}
         noteData={classRegistriesHook.noteModalData}
         onNoteDataChange={classRegistriesHook.setNoteModalData}
         onSave={async (registryId, noteObject) => {
           const registry = classRegistriesHook.classRegistries.find(r => r._id === registryId);
-          if (!registry) return;
+                if (!registry) return;
 
-          const editData = classRegistriesHook.editingRegistryData[registryId];
-          
-          // Update the editing data
+          // Sincronizar ref a estado primero para tener todos los datos actualizados
+          syncRefToState(registryId);
+                
+          // Update the editing data (estado)
           classRegistriesHook.setEditingRegistryData((prev) => ({
-            ...prev,
+                  ...prev,
             [registryId]: {
               ...(prev[registryId] || {
-                minutesViewed: registry.minutesViewed?.toString() || "",
-                classType: registry.classType.map((t) => t._id),
-                contentType: registry.contentType.map((t) => t._id),
-                vocabularyContent: registry.vocabularyContent || "",
-                studentMood: registry.studentMood || "",
-                homework: registry.homework || "",
-                reschedule: registry.reschedule,
-                classViewed: registry.classViewed,
-              }),
-              note: noteObject,
-            },
-          }));
+                      minutesViewed: registry.minutesViewed?.toString() || "",
+                      classType: registry.classType.map((t) => t._id),
+                      contentType: registry.contentType.map((t) => t._id),
+                      vocabularyContent: registry.vocabularyContent || "",
+                      studentMood: registry.studentMood || "",
+                      homework: registry.homework || "",
+                      reschedule: registry.reschedule,
+                      classViewed: registry.classViewed,
+                    }),
+                    note: noteObject,
+                  },
+                }));
 
-          // Save to API
-          await classRegistriesHook.handleUpdateRegistry(registryId, {
-            minutesViewed: editData?.minutesViewed === "" ? null : Number(editData?.minutesViewed || registry.minutesViewed || 0),
-            classType: editData?.classType || registry.classType.map((t) => t._id),
-            contentType: editData?.contentType || registry.contentType.map((t) => t._id),
-            vocabularyContent: editData?.vocabularyContent || registry.vocabularyContent || null,
-            studentMood: editData?.studentMood || registry.studentMood || null,
-            note: noteObject,
-            homework: editData?.homework || registry.homework || null,
-          });
+          // Update the ref también
+          if (classRegistriesHook.editingRegistryDataRef.current[registryId]) {
+            classRegistriesHook.editingRegistryDataRef.current[registryId].note = noteObject;
+          } else {
+            classRegistriesHook.editingRegistryDataRef.current[registryId] = {
+              minutesViewed: registry.minutesViewed?.toString() || "",
+              classType: registry.classType.map((t) => t._id),
+              contentType: registry.contentType.map((t) => t._id),
+              vocabularyContent: registry.vocabularyContent || "",
+              studentMood: registry.studentMood || "",
+              homework: registry.homework || "",
+              reschedule: registry.reschedule,
+              classViewed: registry.classViewed,
+                  note: noteObject,
+            };
+          }
+
+          // NO llamar al endpoint aquí - la nota se guardará cuando se guarde el registro completo
         }}
       />
 

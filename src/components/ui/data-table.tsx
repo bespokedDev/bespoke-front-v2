@@ -99,7 +99,7 @@ export function DataTable<TData, TValue>({
       )}
 
       {/* --- TABLA --- */}
-      <div className="rounded-md border">
+      <div className="rounded-md border overflow-x-auto">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -151,13 +151,14 @@ export function DataTable<TData, TValue>({
       </div>
 
       {/* --- CONTROLES DE PAGINACIÓN --- */}
-      <div className="flex items-center justify-between space-x-2 py-4">
-        <div className="flex-1 text-sm text-muted-foreground">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 py-4">
+        <div className="text-sm text-muted-foreground">
           Showing {table.getRowModel().rows.length} of {data.length} row(s).
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
           <div className="flex items-center gap-2">
-            <p className="text-sm font-medium">Rows per page</p>
+            <p className="text-sm font-medium hidden sm:block">Rows per page</p>
+            <p className="text-sm font-medium sm:hidden">Rows</p>
             <Select
               value={`${table.getState().pagination.pageSize}`}
               onValueChange={(value) => {

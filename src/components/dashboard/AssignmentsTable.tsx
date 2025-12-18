@@ -3,16 +3,17 @@ export function AssignmentsTable() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Últimas Asignaciones</CardTitle>
+        <CardTitle>Recent Assignments</CardTitle>
       </CardHeader>
       <CardContent>
-        <table className="w-full text-sm text-left">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left min-w-[600px]">
           <thead className="bg-muted text-muted-foreground">
             <tr>
-              <th className="px-4 py-2">Estudiante</th>
+              <th className="px-4 py-2">Student</th>
               <th className="px-4 py-2">Plan</th>
-              <th className="px-4 py-2">Profesor</th>
-              <th className="px-4 py-2">Fecha</th>
+              <th className="px-4 py-2">Professor</th>
+              <th className="px-4 py-2">Date</th>
             </tr>
           </thead>
           <tbody>
@@ -30,6 +31,7 @@ export function AssignmentsTable() {
             </tr>
           </tbody>
         </table>
+        </div>
       </CardContent>
     </Card>
   );

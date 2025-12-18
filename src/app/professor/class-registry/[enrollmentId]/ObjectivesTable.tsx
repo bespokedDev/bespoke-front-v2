@@ -44,7 +44,7 @@ export function ObjectivesTable<TData, TValue>({
   });
 
   return (
-    <div className="rounded-md border">
+    <div className="rounded-md border overflow-x-auto">
       <Table>
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
@@ -85,7 +85,7 @@ export function ObjectivesTable<TData, TValue>({
                 colSpan={columns.length}
                 className="h-24 text-center"
               >
-                No results.
+                There are no objectives yet
               </TableCell>
             </TableRow>
           )}

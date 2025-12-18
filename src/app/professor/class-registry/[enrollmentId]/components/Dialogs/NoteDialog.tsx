@@ -71,7 +71,7 @@ export const NoteDialog = ({
     const noteObject = {
       content: noteData.content.trim() || null,
       visible: {
-        admin: noteData.visible.admin ? 1 : 0,
+        admin: 1, // Always visible to admin
         student: noteData.visible.student ? 1 : 0,
         professor: 1, // Always visible to professor
       },
@@ -118,16 +118,9 @@ export const NoteDialog = ({
                 <input
                   type="checkbox"
                   id="visible-admin"
-                  checked={noteData.visible.admin}
-                  onChange={(e) =>
-                    onNoteDataChange({
-                      ...noteData,
-                      visible: {
-                        ...noteData.visible,
-                        admin: e.target.checked,
-                      },
-                    })
-                  }
+                  checked={true}
+                  disabled={true}
+                  readOnly={true}
                   className="rounded"
                 />
                 <Label htmlFor="visible-admin" className="font-normal cursor-pointer">

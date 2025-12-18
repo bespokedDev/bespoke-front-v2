@@ -3,10 +3,10 @@ export function AnalyticsChart() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Evolución de Inscripciones</CardTitle>
+        <CardTitle>Enrollment Evolution</CardTitle>
       </CardHeader>
       <CardContent className="h-48 flex items-center justify-center text-muted-foreground">
-        [Gráfica de inscripciones (mock)]
+        [Enrollment chart (mock)]
       </CardContent>
     </Card>
   );

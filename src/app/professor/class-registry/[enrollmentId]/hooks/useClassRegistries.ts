@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { apiClient } from "@/lib/api";
 import { getFriendlyErrorMessage } from "@/lib/errorHandler";
-import { dateStringToISO } from "@/lib/dateUtils";
+import { extractDatePart } from "@/lib/dateUtils";
 import type { ClassRegistry } from "../types";
 
 interface UseClassRegistriesReturn {
@@ -25,6 +25,7 @@ interface UseClassRegistriesReturn {
     homework: string;
     reschedule: number;
     classViewed: number;
+    classDate?: string;
   }>;
   registrySuccessMessage: string | null;
   registryErrorMessage: string | null;
@@ -59,6 +60,7 @@ interface UseClassRegistriesReturn {
     homework: string;
     reschedule: number;
     classViewed: number;
+    classDate?: string;
   }>>;
   setEditingRegistryData: React.Dispatch<React.SetStateAction<Record<string, {
     minutesViewed: string;
@@ -77,6 +79,7 @@ interface UseClassRegistriesReturn {
     homework: string;
     reschedule: number;
     classViewed: number;
+    classDate?: string;
   }>>>;
   setRegistrySuccessMessage: React.Dispatch<React.SetStateAction<string | null>>;
   setRegistryErrorMessage: React.Dispatch<React.SetStateAction<string | null>>;
@@ -186,6 +189,7 @@ export function useClassRegistries(
       const response = await apiClient(
         `api/class-registry?enrollmentId=${enrollmentId}`
       );
+      console.log("response class registries", response);
       const registries = response.classes || [];
       setClassRegistries(registries);
       
@@ -221,10 +225,30 @@ export function useClassRegistries(
       homework: string;
       reschedule: number;
       classViewed: number;
+      classDate?: string;
     }> = {};
     
     classRegistries.forEach((registry) => {
-      const registryData = {
+      const isReschedule = registry.originalClassId !== null && registry.originalClassId !== undefined;
+      const registryData: {
+        minutesViewed: string;
+        classType: string[];
+        contentType: string[];
+        vocabularyContent: string;
+        studentMood: string;
+        note: {
+          content: string | null;
+          visible: {
+            admin: number;
+            student: number;
+            professor: number;
+          };
+        } | null;
+        homework: string;
+        reschedule: number;
+        classViewed: number;
+        classDate?: string;
+      } = {
         minutesViewed: registry.minutesViewed?.toString() || "",
         classType: registry.classType.map((t) => t._id),
         contentType: registry.contentType.map((t) => t._id),
@@ -235,6 +259,11 @@ export function useClassRegistries(
         reschedule: registry.reschedule,
         classViewed: registry.classViewed,
       };
+      
+      // Solo agregar classDate para reschedules
+      if (isReschedule) {
+        registryData.classDate = extractDatePart(registry.classDate);
+      }
       
       initialData[registry._id] = registryData;
       // También inicializar el ref
@@ -296,31 +325,57 @@ export function useClassRegistries(
     } | null;
     homework: string | null;
     classViewed?: number;
+    classDate?: string;
   }) => {
     try {
+      // Preparar el payload, incluyendo classDate si está presente
+      const payload: {
+        minutesViewed: number | null;
+        classType: string[];
+        contentType: string[];
+        vocabularyContent: string | null;
+        studentMood: string | null;
+        note: {
+          content: string | null;
+          visible: {
+            admin: number;
+            student: number;
+            professor: number;
+          };
+        } | null;
+        homework: string | null;
+        classViewed?: number;
+        classDate?: string;
+      } = {
+        minutesViewed: data.minutesViewed,
+        classType: data.classType,
+        contentType: data.contentType,
+        vocabularyContent: data.vocabularyContent,
+        studentMood: data.studentMood,
+        note: data.note,
+        homework: data.homework,
+      };
+      
+      if (data.classViewed !== undefined) {
+        payload.classViewed = data.classViewed;
+      }
+      
+      // Si hay classDate, convertirla a formato YYYY/MM/DD para el backend
+      if (data.classDate) {
+        payload.classDate = data.classDate.replace(/-/g, "/");
+      }
+      
       await apiClient(`api/class-registry/${registryId}`, {
         method: "PUT",
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
         skipAutoRedirect: true,
       });
       
-      // Actualizar el estado local
-      setEditingRegistryData((prev) => ({
-        ...prev,
-        [registryId]: {
-          minutesViewed: data.minutesViewed?.toString() || "",
-          classType: data.classType,
-          contentType: data.contentType,
-          vocabularyContent: data.vocabularyContent || "",
-          studentMood: data.studentMood || "",
-          note: data.note,
-          homework: data.homework || "",
-          reschedule: prev[registryId]?.reschedule ?? 0,
-          classViewed: data.classViewed ?? prev[registryId]?.classViewed ?? 0,
-        },
-      }));
-      
+      // Refrescar los datos desde el servidor primero
       await fetchClassRegistries();
+      
+      // El useEffect (líneas 208-274) reinicializará editingRegistryData con los valores actualizados del servidor
+      // incluyendo el nuevo classViewed, lo que hará que los campos dejen de ser editables
     } catch (err: unknown) {
       const errorObj = err as Error & { statusCode?: number; apiMessage?: string };
       const errorMessageText = errorObj.message || errorObj.apiMessage || "";
@@ -457,7 +512,8 @@ export function useClassRegistries(
       await apiClient(`api/class-registry/${registryId}/reschedule`, {
         method: "POST",
         body: JSON.stringify({
-          classDate: dateStringToISO(classDate),
+          // El backend espera formato YYYY-MM-DD (ej: 2024-01-22)
+          classDate,
         }),
         skipAutoRedirect: true,
       });

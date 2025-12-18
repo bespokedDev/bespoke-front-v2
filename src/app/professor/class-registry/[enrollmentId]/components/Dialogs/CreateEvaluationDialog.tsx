@@ -90,7 +90,7 @@ export const CreateEvaluationDialog = ({
           </DialogDescription>
         </DialogHeader>
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center gap-2">
+          <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-4 py-3 rounded flex items-center gap-2">
             <AlertCircle className="h-5 w-5 shrink-0" />
             <span>{error}</span>
           </div>

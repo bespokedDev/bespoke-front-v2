@@ -1,9 +1,8 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { CheckCircle2, AlertCircle, X, Loader2, Save } from "lucide-react";
+import { CheckCircle2, AlertCircle, X, Loader2 } from "lucide-react";
 import { RegistriesTable } from "../../RegistriesTable";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { ClassRegistry, EvaluationWithClassDate } from "../../types";
@@ -18,10 +17,8 @@ interface ClassRegistriesSectionProps {
   registrySuccessMessage: string | null;
   registryErrorMessage: string | null;
   isLoadingEvaluations: boolean;
-  savingAllRegistries: boolean;
   onDismissSuccess: () => void;
   onDismissError: () => void;
-  onSaveAll: () => void;
 }
 
 export function ClassRegistriesSection({
@@ -34,10 +31,8 @@ export function ClassRegistriesSection({
   registrySuccessMessage,
   registryErrorMessage,
   isLoadingEvaluations,
-  savingAllRegistries,
   onDismissSuccess,
   onDismissError,
-  onSaveAll,
 }: ClassRegistriesSectionProps) {
   return (
     <Card>
@@ -46,14 +41,14 @@ export function ClassRegistriesSection({
       </CardHeader>
       <CardContent>
         {registrySuccessMessage && (
-          <div className="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded flex items-center justify-between gap-2">
+          <div className="mb-4 bg-secondary/10 border border-secondary/20 text-secondary dark:text-secondary-foreground px-4 py-3 rounded flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5 shrink-0" />
               <span>{registrySuccessMessage}</span>
             </div>
             <button
               onClick={onDismissSuccess}
-              className="text-green-700 hover:text-green-900"
+              className="text-secondary hover:opacity-80 dark:text-secondary-foreground"
               aria-label="Close success message"
             >
               <X className="h-4 w-4" />
@@ -61,14 +56,14 @@ export function ClassRegistriesSection({
           </div>
         )}
         {registryErrorMessage && (
-          <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center justify-between gap-2">
+          <div className="mb-4 bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-4 py-3 rounded flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 shrink-0" />
               <span>{registryErrorMessage}</span>
             </div>
             <button
               onClick={onDismissError}
-              className="text-red-700 hover:text-red-900"
+              className="text-destructive hover:opacity-80 dark:text-destructive-foreground"
               aria-label="Close error message"
             >
               <X className="h-4 w-4" />
@@ -85,25 +80,6 @@ export function ClassRegistriesSection({
               columns={registryColumns}
               data={classRegistries}
             />
-            <div className="mt-4 flex justify-end">
-              <Button
-                onClick={onSaveAll}
-                disabled={savingAllRegistries || classRegistries.length === 0}
-                className="min-w-[120px]"
-              >
-                {savingAllRegistries ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Guardando...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Guardar Todo
-                  </>
-                )}
-              </Button>
-            </div>
           </TabsContent>
           <TabsContent value="evaluations" className="space-y-4">
             {isLoadingEvaluations ? (

@@ -25,6 +25,7 @@ export function useEnrollmentData(enrollmentId: string): UseEnrollmentDataReturn
   const fetchEnrollmentDetail = useCallback(async () => {
     try {
       const response = await apiClient(`api/enrollments/${enrollmentId}/detail`);
+      console.log("response enrollment detail", response);
       setEnrollment(response.enrollments?.[0] || response);
     } catch (err: unknown) {
       const errorMessage = getFriendlyErrorMessage(

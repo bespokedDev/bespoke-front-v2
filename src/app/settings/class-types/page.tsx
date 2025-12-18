@@ -400,7 +400,7 @@ export default function ClassTypesPage() {
             <Button
               size="icon"
               variant="outline"
-              className="text-red-600 border-red-600/50 hover:bg-red-600/10"
+              className="text-destructive border-destructive/50 hover:bg-destructive/10"
               onClick={() => handleOpen("toggle-status", row.original)}
             >
               <Ban className="h-4 w-4" />
@@ -409,7 +409,7 @@ export default function ClassTypesPage() {
             <Button
               size="icon"
               variant="outline"
-              className="text-green-600 border-green-600/50 hover:bg-green-600/10"
+              className="text-secondary border-secondary/50 hover:bg-secondary/10"
               onClick={() => handleOpen("toggle-status", row.original)}
               disabled={isSubmitting}
             >
@@ -436,14 +436,14 @@ export default function ClassTypesPage() {
         </div>
       )}
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center justify-between gap-2">
+        <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-4 py-3 rounded flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <AlertCircle className="h-5 w-5 shrink-0" />
             <span>{error}</span>
           </div>
           <button
             onClick={() => setError(null)}
-            className="text-red-700 hover:text-red-900"
+            className="text-destructive hover:opacity-80 dark:text-destructive-foreground"
             aria-label="Close error message"
           >
             <X className="h-4 w-4" />
@@ -451,14 +451,14 @@ export default function ClassTypesPage() {
         </div>
       )}
       {successMessage && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded flex items-center justify-between gap-2">
+        <div className="bg-secondary/10 border border-secondary/20 text-secondary dark:text-secondary-foreground px-4 py-3 rounded flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="h-5 w-5 shrink-0" />
             <span>{successMessage}</span>
           </div>
           <button
             onClick={() => setSuccessMessage(null)}
-            className="text-green-700 hover:text-green-900"
+            className="text-secondary hover:opacity-80 dark:text-secondary-foreground"
             aria-label="Close success message"
           >
             <X className="h-4 w-4" />
@@ -550,7 +550,7 @@ export default function ClassTypesPage() {
           {((openDialog === "create" || openDialog === "edit") &&
             formErrors.general) ||
           (openDialog === "toggle-status" && dialogError) ? (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm flex items-center gap-2">
+            <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-3 py-2 rounded text-sm flex items-center gap-2">
               <AlertCircle className="h-4 w-4 shrink-0" />
               <span>
                 {openDialog === "toggle-status"
