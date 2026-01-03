@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api";
 import { getFriendlyErrorMessage } from "@/lib/errorHandler";
 import { formatDateForDisplay } from "@/lib/dateUtils";
+import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -110,9 +111,9 @@ interface EnrollmentStatistics {
     total: number;
     details: Array<{
       classRegistryId: string;
-  classDate: string;
+      classDate: string;
       classTime: string | null;
-  reschedule: number;
+      reschedule: number;
     }>;
   };
   viewedClasses: {
@@ -159,7 +160,9 @@ interface EnrollmentWithStatistics {
 export default function EnrollmentDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
   const enrollmentId = params.id as string;
+  const isAdmin = user?.role?.toLowerCase() === "admin";
 
   const [enrollment, setEnrollment] = useState<EnrollmentDetail | null>(null);
   const [statistics, setStatistics] = useState<EnrollmentStatistics | null>(
@@ -199,11 +202,11 @@ export default function EnrollmentDetailPage() {
         try {
           const enrollmentWithStats: EnrollmentWithStatistics = await apiClient(
             `api/students/${firstStudentId}/enrollment/${enrollmentId}`
-        );
+          );
           console.log("enrollmentWithStats", enrollmentWithStats);
           if (enrollmentWithStats.statistics) {
             setStatistics(enrollmentWithStats.statistics);
-        }
+          }
         } catch (statsErr) {
           console.warn("Could not fetch enrollment statistics:", statsErr);
           // Continuar sin estadísticas si falla
@@ -235,7 +238,7 @@ export default function EnrollmentDetailPage() {
           <AlertCircle className="h-5 w-5 shrink-0" />
           <span>{error}</span>
         </div>
-        <Button onClick={() => router.back()} variant="outline">
+        <Button onClick={() => router.push("/enrollments")} variant="outline">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Go Back
         </Button>
@@ -249,14 +252,15 @@ export default function EnrollmentDetailPage() {
 
   const enrollmentTypeLabels: Record<string, string> = {
     single: "Individual",
-    couple: "Pareja",
-    group: "Grupo",
+    couple: "Couple",
+    group: "Group",
   };
 
   const statusLabels: Record<number, string> = {
     1: "Active",
     2: "Inactive",
     0: "Disolved",
+    3: "Paused",
   };
 
   const planTypeLabels: Record<number, string> = {
@@ -287,14 +291,14 @@ export default function EnrollmentDetailPage() {
           hours: 0,
           minutes: 0,
         },
-  };
+      };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center">
         <Button
           className="mr-8"
-          onClick={() => router.back()}
+          onClick={() => router.push("/enrollments")}
           variant="outline"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -343,7 +347,7 @@ export default function EnrollmentDetailPage() {
                     Reschedule hours
                   </Label>
                   <p className="text-2xl font-bold text-primary">
-                  {stats.rescheduleTime.hours.toFixed(2)}h
+                    {stats.rescheduleTime.hours.toFixed(2)}h
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -397,9 +401,7 @@ export default function EnrollmentDetailPage() {
                         <p>{studentInfo.studentId.studentCode}</p>
                       </div>
                       <div>
-                        <Label className="text-muted-foreground">
-                          Email
-                        </Label>
+                        <Label className="text-muted-foreground">Email</Label>
                         <p>{studentInfo.studentId.email}</p>
                       </div>
                       {studentInfo.languageLevel && (
@@ -408,30 +410,6 @@ export default function EnrollmentDetailPage() {
                             Language Level
                           </Label>
                           <p>{studentInfo.languageLevel}</p>
-                        </div>
-                      )}
-                      {studentInfo.learningType && (
-                        <div>
-                          <Label className="text-muted-foreground">
-                            Learning Type
-                          </Label>
-                          <p>{studentInfo.learningType}</p>
-                        </div>
-                      )}
-                      {studentInfo.goals && (
-                        <div className="md:col-span-2">
-                          <Label className="text-muted-foreground">
-                            Goals
-                          </Label>
-                          <p>{studentInfo.goals}</p>
-                        </div>
-                      )}
-                      {studentInfo.preferences && (
-                        <div className="md:col-span-2">
-                          <Label className="text-muted-foreground">
-                            Preferences
-                          </Label>
-                          <p>{studentInfo.preferences}</p>
                         </div>
                       )}
                     </div>
@@ -557,6 +535,14 @@ export default function EnrollmentDetailPage() {
                   View Class Registry
                 </Link>
               </Button>
+              {isAdmin && (
+                <Button variant="outline" className="w-full" asChild>
+                  <Link href="/enrollments">
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Back to Enrollments
+                  </Link>
+                </Button>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -564,3 +550,4 @@ export default function EnrollmentDetailPage() {
     </div>
   );
 }
+

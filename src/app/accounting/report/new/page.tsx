@@ -6,15 +6,9 @@ import { apiClient } from "@/lib/api";
 import { handleApiError, getFriendlyErrorMessage } from "@/lib/errorHandler";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardFooter,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -24,29 +18,7 @@ import {
   TableRow,
   TableFooter,
 } from "@/components/ui/table";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Loader2,
-  FileDown,
-  PlusCircle,
-  Trash2,
-  ArrowLeft,
-  UserPlus,
-  X,
-  AlertCircle,
-} from "lucide-react";
+import { Loader2, FileDown, ArrowLeft, X, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -74,6 +46,17 @@ interface ReportDetail {
   bonusReason?: string;
 }
 
+interface ProfessorBonusDetail {
+  bonusId: string;
+  amount: number;
+  description: string;
+  bonusDate: string;
+  month: string;
+  userId: string;
+  userName: string;
+  createdAt: string;
+}
+
 interface ProfessorReport {
   professorId: string;
   professorName: string;
@@ -84,10 +67,12 @@ interface ProfessorReport {
     group: number;
   };
   details: ReportDetail[];
-  subtotals: {
-    totalTeacher: number;
-    totalBespoke: number;
-    balanceRemaining: number;
+  totalTeacher: number;
+  totalBespoke: number;
+  totalBalanceRemaining: number;
+  abonos?: {
+    total: number;
+    details: ProfessorBonusDetail[];
   };
 }
 
@@ -124,6 +109,10 @@ interface SpecialProfessorReport {
     total: number;
     balanceRemaining: number;
   };
+  abonos?: {
+    total: number;
+    details: ProfessorBonusDetail[];
+  };
 }
 
 interface ExcedentDetail {
@@ -139,11 +128,44 @@ interface ExcedentDetail {
   createdAt: string;
 }
 
+interface ClassNotViewedDetail {
+  enrollmentId: string;
+  enrollmentAlias: string | null;
+  studentNames: string;
+  plan: string;
+  numberOfClasses: number;
+  pricePerHour: number;
+  excedente: number;
+  classesNotViewed: any[]; // Array de ClassRegistry objects
+}
+
+interface BonusDetail {
+  bonusId: string;
+  professorId: string;
+  professorName: string;
+  professorCiNumber: string;
+  amount: number;
+  negativeAmount: number;
+  description: string;
+  bonusDate: string;
+  month: string;
+  userId: string;
+  userName: string;
+  createdAt: string;
+}
+
 interface ExcedentReport {
   reportDateRange: string;
   totalExcedente: number;
+  totalExcedenteIncomes: number;
+  totalExcedenteClasses: number;
+  totalBonuses: number;
   numberOfIncomes: number;
-  details: ExcedentDetail[];
+  numberOfClassesNotViewed: number;
+  numberOfBonuses: number;
+  incomeDetails: ExcedentDetail[];
+  classNotViewedDetails: ClassNotViewedDetail[];
+  bonusDetails: BonusDetail[];
 }
 
 interface ExcedentRow {
@@ -176,10 +198,31 @@ interface EnrollmentBalance {
   remaining: number;
 }
 
+interface Totals {
+  subtotals: {
+    normalProfessors: {
+      totalTeacher: number;
+      totalBespoke: number;
+      balanceRemaining: number;
+    };
+    specialProfessor: {
+      total: number;
+      balanceRemaining: number;
+    };
+    excedents: {
+      totalExcedente: number;
+    };
+  };
+  grandTotal: {
+    balanceRemaining: number;
+  };
+}
+
 interface ReportState {
   general: ProfessorReport[];
   special: SpecialProfessorReport | null;
   excedente: ExcedentReport | null;
+  totals?: Totals;
 }
 
 function NewReportComponent() {
@@ -198,9 +241,6 @@ function NewReportComponent() {
   const [enrollmentBalances, setEnrollmentBalances] = useState<
     EnrollmentBalance[]
   >([]);
-  const [openSelectors, setOpenSelectors] = useState<{
-    [key: string]: boolean;
-  }>({});
 
   const handleGenerateReport = async (reportMonth: string) => {
     setIsLoading(true);
@@ -213,39 +253,82 @@ function NewReportComponent() {
 
       console.log("response", response);
 
+      // Preservar todos los valores calculados que vienen de la API
       const initialGeneralReport = response.report.map((prof: any) => ({
         ...prof,
+        // Preservar abonos si viene de la API
+        abonos: prof.abonos || undefined,
+        // Preservar totalTeacher, totalBespoke, totalBalanceRemaining que vienen directamente del objeto prof
+        totalTeacher: prof.totalTeacher || 0,
+        totalBespoke: prof.totalBespoke || 0,
+        totalBalanceRemaining: prof.totalBalanceRemaining || 0,
+        // Preservar todos los campos calculados de cada detail
         details: prof.details.map((detail: any) => ({
           ...detail,
+          // Solo normalizar campos que realmente necesiten normalización
           amountInDollars: detail.amountInDollars || detail.amount || 0,
-          hoursSeen: null, // Inicializar como null en lugar de 0
-          balance: null, // Inicializar como null en lugar de 0
-          type: "normal", // Tipo por defecto para registros existentes
+          // Preservar type si viene, sino usar "normal" por defecto
+          type: detail.type || "normal",
         })),
-        subtotals: { totalTeacher: 0, totalBespoke: 0, balanceRemaining: 0 },
       }));
 
+      // Preservar todos los valores calculados que vienen de la API
       const initialSpecialReport = response.specialProfessorReport
         ? {
             ...response.specialProfessorReport,
+            // Preservar abonos si viene de la API
+            abonos: response.specialProfessorReport.abonos || undefined,
+            // Preservar subtotal que viene de la API
+            subtotal: response.specialProfessorReport.subtotal || {
+              total: 0,
+              balanceRemaining: 0,
+            },
+            // Preservar todos los campos calculados de cada detail
             details: response.specialProfessorReport.details.map(
               (detail: any) => ({
                 ...detail,
+                // Solo normalizar campos que realmente necesiten normalización
                 amountInDollars: detail.amountInDollars || detail.amount || 0,
-                hoursSeen: null, // Inicializar como null
-                oldBalance: null, // Inicializar como null
-                payment: null, // Inicializar como null
-                type: "normal", // Tipo por defecto para registros existentes
+                // Preservar type si viene, sino usar "normal" por defecto
+                type: detail.type || "normal",
               })
             ),
-            subtotal: { total: 0, balanceRemaining: 0 },
+          }
+        : null;
+
+      // Asegurar que excedents tenga la estructura correcta con campos opcionales
+      const excedenteData = response.excedents
+        ? {
+            ...response.excedents,
+            totalExcedenteIncomes:
+              response.excedents.totalExcedenteIncomes ?? 0,
+            totalExcedenteClasses:
+              response.excedents.totalExcedenteClasses ?? 0,
+            totalBonuses: response.excedents.totalBonuses ?? 0,
+            numberOfClassesNotViewed:
+              response.excedents.numberOfClassesNotViewed ?? 0,
+            numberOfBonuses: response.excedents.numberOfBonuses ?? 0,
+            incomeDetails: response.excedents.incomeDetails ?? [],
+            classNotViewedDetails:
+              response.excedents.classNotViewedDetails ?? [],
+            bonusDetails: response.excedents.bonusDetails ?? [],
+            // Mantener compatibilidad con estructura antigua
+            details:
+              response.excedents.incomeDetails ??
+              response.excedents.details ??
+              [],
+            numberOfIncomes:
+              response.excedents.numberOfIncomes ??
+              response.excedents.incomeDetails?.length ??
+              0,
           }
         : null;
 
       setReportData({
         general: initialGeneralReport,
         special: initialSpecialReport,
-        excedente: response.excedente || null,
+        excedente: excedenteData,
+        totals: response.totals || undefined,
       });
     } catch (err: unknown) {
       const errorMessage = getFriendlyErrorMessage(
@@ -259,9 +342,6 @@ function NewReportComponent() {
   };
 
   // Función helper para obtener el valor a mostrar
-  const getFieldValue = (value: number | null | undefined) => {
-    return value === null || value === undefined ? "" : value;
-  };
 
   // Función helper para obtener el indicador visual del tipo
   const getTypeIndicator = (type: "normal" | "substitute" | "bonus") => {
@@ -292,282 +372,9 @@ function NewReportComponent() {
   };
 
   // Función helper para obtener el balance disponible considerando suplencias previas (versión mejorada)
-  const getAvailableBalanceForSubstituteV2 = (
-    enrollmentId: string | null,
-    excludeCurrentSubstitute?: { profIndex: number; detailIndex: number }
-  ) => {
-    if (!enrollmentId || !reportData) return 0;
-    const enrollment = enrollments.find((e) => e._id === enrollmentId);
-    if (!enrollment) return 0;
+  // Funciones de edición eliminadas - el reporte es solo de visualización
 
-    // Obtener el balance remaining de la clase normal desde los datos originales
-    let baseBalance = 0;
 
-    // Buscar en reportes generales
-    if (reportData.general) {
-      reportData.general.forEach((prof) => {
-        prof.details.forEach((detail) => {
-          if (
-            detail.enrollmentId === enrollmentId &&
-            detail.type === "normal"
-          ) {
-            // Calcular el balance remaining basado en las horas vistas
-            const hoursSeen = detail.hoursSeen || 0;
-            const pricePerHour = detail.pricePerHour || 0;
-            const amountInDollars = detail.amountInDollars || 0;
-            const balance = detail.balance || 0;
-
-            // Balance remaining = amount + balance - (hoursSeen * pricePerHour)
-            baseBalance = amountInDollars + balance - hoursSeen * pricePerHour;
-          }
-        });
-      });
-    }
-
-    // Buscar en reporte especial
-    if (reportData.special) {
-      reportData.special.details.forEach((detail) => {
-        if (detail.enrollmentId === enrollmentId && detail.type === "normal") {
-          const amountInDollars = detail.amountInDollars || 0;
-          const payment = detail.payment || 0;
-          baseBalance = amountInDollars - payment;
-        }
-      });
-    }
-
-    // Si no se encuentra, usar el balance inicial del enrollment
-    if (baseBalance === 0) {
-      baseBalance = enrollment.initialBalance || 0;
-    }
-
-    // Restar todas las suplencias previas del mismo enrollment
-    if (reportData.general) {
-      reportData.general.forEach((prof, profIndex) => {
-        prof.details.forEach((detail, detailIndex) => {
-          if (
-            detail.enrollmentId === enrollmentId &&
-            detail.type === "substitute" &&
-            !(
-              excludeCurrentSubstitute &&
-              excludeCurrentSubstitute.profIndex === profIndex &&
-              excludeCurrentSubstitute.detailIndex === detailIndex
-            )
-          ) {
-            // Restar el total de la suplencia (hoursSeen * pricePerHour)
-            const substituteTotal =
-              (detail.hoursSeen || 0) * (detail.pricePerHour || 0);
-            baseBalance -= substituteTotal;
-          }
-        });
-      });
-    }
-
-    if (reportData.special) {
-      reportData.special.details.forEach((detail, detailIndex) => {
-        if (
-          detail.enrollmentId === enrollmentId &&
-          detail.type === "substitute" &&
-          !(
-            excludeCurrentSubstitute &&
-            excludeCurrentSubstitute.profIndex === -1 &&
-            excludeCurrentSubstitute.detailIndex === detailIndex
-          )
-        ) {
-          // Restar el total de la suplencia (payment)
-          const substituteTotal = detail.payment || 0;
-          baseBalance -= substituteTotal;
-        }
-      });
-    }
-
-    return Math.max(0, baseBalance); // No permitir balance negativo
-  };
-
-  // Función helper para obtener el pPerHour del profesor actual basado en el tipo de enrollment
-  const getCurrentProfessorPayPerHour = (
-    profIndex: number,
-    enrollmentId: string | null,
-    isSpecial: boolean = false
-  ) => {
-    if (!enrollmentId) return 0;
-
-    // Obtener el enrollment para saber su tipo
-    const enrollment = enrollments.find((e) => e._id === enrollmentId);
-    if (!enrollment) return 0;
-
-    if (isSpecial) {
-      // Para el profesor especial, usar los rates del reporte especial
-      if (reportData?.special?.rates) {
-        return reportData.special.rates[enrollment.enrollmentType] || 0;
-      }
-    } else {
-      // Para profesores generales, usar los rates del profesor específico
-      if (reportData?.general && reportData.general[profIndex]?.rates) {
-        return (
-          reportData.general[profIndex].rates[enrollment.enrollmentType] || 0
-        );
-      }
-    }
-    return 0;
-  };
-
-  // Función helper para manejar el selector editable
-  const handleEnrollmentSelect = (
-    enrollmentId: string,
-    profIndex: number,
-    detailIndex: number,
-    isSpecial: boolean = false
-  ) => {
-    const selectedEnrollment = enrollments.find((e) => e._id === enrollmentId);
-    if (!selectedEnrollment) return;
-
-    // Buscar el enrollment en los datos del reporte para obtener la información completa
-    let enrollmentData: any = null;
-
-    // Buscar en reportes generales
-    if (reportData?.general) {
-      reportData.general.forEach((prof) => {
-        prof.details.forEach((detail) => {
-          if (
-            detail.enrollmentId === enrollmentId &&
-            detail.type === "normal"
-          ) {
-            enrollmentData = detail;
-          }
-        });
-      });
-    }
-
-    // Buscar en reporte especial
-    if (!enrollmentData && reportData?.special) {
-      reportData.special.details.forEach((detail) => {
-        if (detail.enrollmentId === enrollmentId && detail.type === "normal") {
-          enrollmentData = detail;
-        }
-      });
-    }
-
-    if (isSpecial) {
-      updateSpecialDetailField(
-        detailIndex,
-        "enrollmentId" as any,
-        enrollmentId
-      );
-      updateSpecialDetailField(
-        detailIndex,
-        "studentName" as any,
-        formatEnrollmentName(selectedEnrollment)
-      );
-      updateSpecialDetailField(
-        detailIndex,
-        "plan" as any,
-        selectedEnrollment.planId.name
-      );
-
-      // Llenar campos específicos de suplencia si encontramos los datos del enrollment
-      if (enrollmentData) {
-        updateSpecialDetailField(
-          detailIndex,
-          "totalHours" as any,
-          enrollmentData.totalHours
-        );
-        updateSpecialDetailField(
-          detailIndex,
-          "pricePerHour" as any,
-          enrollmentData.pricePerHour
-        );
-        // pPerHour del profesor especial basado en el tipo de enrollment
-        updateSpecialDetailField(
-          detailIndex,
-          "pPerHour" as any,
-          getCurrentProfessorPayPerHour(profIndex, enrollmentId, true)
-        );
-        // amountInDollars no se llena (las suplencias no dependen de ingresos)
-        // balance se llena con el balance disponible considerando suplencias previas
-        updateSpecialDetailField(
-          detailIndex,
-          "balance" as any,
-          getAvailableBalanceForSubstituteV2(enrollmentId, {
-            profIndex: -1,
-            detailIndex,
-          })
-        );
-      }
-    } else {
-      updateDetailField(profIndex, detailIndex, "enrollmentId", enrollmentId);
-      updateDetailField(
-        profIndex,
-        detailIndex,
-        "studentName",
-        formatEnrollmentName(selectedEnrollment)
-      );
-      updateDetailField(
-        profIndex,
-        detailIndex,
-        "plan",
-        selectedEnrollment.planId.name
-      );
-
-      // Llenar campos específicos de suplencia si encontramos los datos del enrollment
-      if (enrollmentData) {
-        updateDetailField(
-          profIndex,
-          detailIndex,
-          "totalHours",
-          enrollmentData.totalHours
-        );
-        updateDetailField(
-          profIndex,
-          detailIndex,
-          "pricePerHour",
-          enrollmentData.pricePerHour
-        );
-        // pPerHour del profesor actual que está haciendo la suplencia basado en el tipo de enrollment
-        updateDetailField(
-          profIndex,
-          detailIndex,
-          "pPerHour",
-          getCurrentProfessorPayPerHour(profIndex, enrollmentId, false)
-        );
-        // amountInDollars no se llena (las suplencias no dependen de ingresos)
-        // balance se llena con el balance disponible considerando suplencias previas
-        updateDetailField(
-          profIndex,
-          detailIndex,
-          "balance",
-          getAvailableBalanceForSubstituteV2(enrollmentId, {
-            profIndex,
-            detailIndex,
-          })
-        );
-      }
-    }
-  };
-
-  // Función helper para manejar onChange de inputs numéricos
-  const handleNumberInputChange = (
-    profIndex: number,
-    detailIndex: number,
-    field: keyof ReportDetail,
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const value = e.target.value;
-    const numValue = value === "" ? null : Number(value);
-
-    updateDetailField(profIndex, detailIndex, field, numValue);
-  };
-
-  // Función helper para manejar onChange de inputs numéricos del reporte especial
-  const handleSpecialNumberInputChange = (
-    detailIndex: number,
-    field: keyof SpecialReportDetail,
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const value = e.target.value;
-    const numValue = value === "" ? null : Number(value);
-
-    updateSpecialDetailField(detailIndex, field, numValue);
-  };
 
   useEffect(() => {
     apiClient("api/enrollments").then(setEnrollments).catch(console.error);
@@ -650,263 +457,50 @@ function NewReportComponent() {
     }
   }, [reportData, excedents, enrollments]);
 
+  // Usar solo los valores que vienen de la API, sin recalcular
   const calculatedData = useMemo(() => {
     if (!reportData) return null;
 
-    let grandTotalTeacher = 0,
-      grandTotalBespoke = 0,
-      grandTotalBalanceRemaining = 0;
-
-    const updatedGeneralReport = reportData.general.map((profReport) => {
-      let subTotalTeacher = 0,
-        subTotalBespoke = 0,
-        subTotalBalanceRemaining = 0;
-      const updatedDetails = profReport.details.map((detail) => {
-        let totalTeacher = 0,
-          totalBespoke = 0,
-          balanceRemaining = 0;
-        if (detail.status === 1) {
-          totalTeacher = (detail.hoursSeen || 0) * detail.pPerHour;
-          totalBespoke =
-            detail.pricePerHour * (detail.hoursSeen || 0) - totalTeacher;
-          balanceRemaining =
-            (detail.amountInDollars || 0) +
-            (detail.balance || 0) -
-            totalTeacher -
-            totalBespoke;
-        } else {
-          totalTeacher = detail.amountInDollars || 0;
-          totalBespoke = 0;
-          balanceRemaining = 0;
-        }
-        subTotalTeacher += totalTeacher;
-        subTotalBespoke += totalBespoke;
-        subTotalBalanceRemaining += balanceRemaining;
-        return { ...detail, totalTeacher, totalBespoke, balanceRemaining };
-      });
-      grandTotalTeacher += subTotalTeacher;
-      grandTotalBespoke += subTotalBespoke;
-      grandTotalBalanceRemaining += subTotalBalanceRemaining;
-      return {
-        ...profReport,
-        details: updatedDetails,
-        subtotals: {
-          totalTeacher: subTotalTeacher,
-          totalBespoke: subTotalBespoke,
-          balanceRemaining: subTotalBalanceRemaining,
-        },
-      };
-    });
-
-    let updatedSpecialReport = null;
-    if (reportData.special) {
-      let subTotal = 0;
-      let subTotalBalanceRemaining = 0;
-
-      const updatedDetails = reportData.special.details.map((detail) => {
-        const total = detail.payment || 0;
-        const balanceRemaining =
-          (detail.amountInDollars || 0) - (detail.payment || 0);
-        subTotal += total;
-        subTotalBalanceRemaining += balanceRemaining;
-        return { ...detail, total, balanceRemaining };
-      });
-
-      updatedSpecialReport = {
-        ...reportData.special,
-        details: updatedDetails,
-        subtotal: {
-          total: subTotal,
-          balanceRemaining: subTotalBalanceRemaining,
-        },
-      };
-    }
+    // Usar los valores que vienen directamente de la API en totals.subtotals
+    const normalProfessorsTotals = reportData.totals?.subtotals
+      ?.normalProfessors || {
+      totalTeacher: 0,
+      totalBespoke: 0,
+      balanceRemaining: 0,
+    };
+    const grandTotal = reportData.totals?.grandTotal?.balanceRemaining || 0;
 
     const excedentsTotal = reportData.excedente?.totalExcedente || 0;
-
     const specialBalanceRemaining =
-      updatedSpecialReport?.subtotal.balanceRemaining || 0;
+      reportData.special?.subtotal?.balanceRemaining || 0;
+
+    // Para el systemTotal, usamos los valores de totals si están disponibles
     const systemTotal =
-      grandTotalBalanceRemaining + specialBalanceRemaining + excedentsTotal;
+      grandTotal ||
+      normalProfessorsTotals.balanceRemaining +
+        specialBalanceRemaining +
+        excedentsTotal;
+
+    // Usar los valores de totals para grandTotals
+    const grandTotals = {
+      grandTotalTeacher: normalProfessorsTotals.totalTeacher,
+      grandTotalBespoke: normalProfessorsTotals.totalBespoke,
+      grandTotalBalanceRemaining: normalProfessorsTotals.balanceRemaining,
+    };
 
     const difference = systemTotal - realTotal;
 
     return {
-      generalReport: updatedGeneralReport,
-      specialReport: updatedSpecialReport,
+      // Usar los datos directamente de la API, sin recalcular
+      generalReport: reportData.general,
+      specialReport: reportData.special,
       excedentsTotal,
-      grandTotals: {
-        grandTotalTeacher,
-        grandTotalBespoke,
-        grandTotalBalanceRemaining,
-      },
+      grandTotals,
       summary: { systemTotal, difference },
+      totals: reportData.totals,
     };
   }, [reportData, realTotal]);
 
-  const updateDetailField = <K extends keyof ReportDetail>(
-    profIndex: number,
-    detailIndex: number,
-    field: K,
-    value: ReportDetail[K]
-  ) => {
-    if (!reportData) return;
-    const newData = { ...reportData };
-    (newData.general[profIndex].details[detailIndex][field] as any) = value;
-    setReportData(newData);
-  };
-
-  const updateSpecialDetailField = <K extends keyof SpecialReportDetail>(
-    detailIndex: number,
-    field: K,
-    value: SpecialReportDetail[K]
-  ) => {
-    if (!reportData?.special) return;
-    const newReportData = { ...reportData };
-    if (newReportData.special) {
-      (newReportData.special.details[detailIndex][field] as any) = value;
-      setReportData(newReportData);
-    }
-  };
-
-  const addBonus = (profIndex: number) => {
-    if (!reportData) return;
-    const newData = { ...reportData };
-    const reportPeriod = newData.general[profIndex]?.reportDateRange || "N/A";
-    const periodWithoutYear = reportPeriod.replace(/\s\d{4}/g, "");
-    const newBonus: ReportDetail = {
-      enrollmentId: null,
-      period: periodWithoutYear,
-      plan: "N/A",
-      studentName: "Bono Manual",
-      amount: 0,
-      amountInDollars: 0,
-      totalHours: 0,
-      pricePerHour: 0,
-      pPerHour: 0,
-      hoursSeen: null,
-      balance: null,
-      totalTeacher: 0,
-      totalBespoke: 0,
-      balanceRemaining: 0,
-      status: 2,
-      type: "bonus",
-      bonusReason: "",
-    };
-    newData.general[profIndex].details.push(newBonus);
-    setReportData(newData);
-  };
-
-  const addSubstitute = (profIndex: number) => {
-    if (!reportData) return;
-    const newData = { ...reportData };
-    const reportPeriod = newData.general[profIndex]?.reportDateRange || "N/A";
-    const periodWithoutYear = reportPeriod.replace(/\s\d{4}/g, "");
-    const newSubstitute: ReportDetail = {
-      enrollmentId: "",
-      period: periodWithoutYear,
-      plan: "",
-      studentName: "",
-      amount: 0,
-      amountInDollars: 0,
-      totalHours: 0,
-      pricePerHour: 0,
-      pPerHour: 0,
-      hoursSeen: null,
-      balance: null,
-      totalTeacher: 0,
-      totalBespoke: 0,
-      balanceRemaining: 0,
-      status: 1,
-      type: "substitute",
-    };
-    newData.general[profIndex].details.push(newSubstitute);
-    setReportData(newData);
-  };
-
-  const removeBonus = (profIndex: number, detailIndex: number) => {
-    if (!reportData) return;
-    const newData = { ...reportData };
-    if (newData.general[profIndex]?.details) {
-      newData.general[profIndex].details.splice(detailIndex, 1);
-      setReportData(newData);
-    }
-  };
-
-  const addSpecialBonus = () => {
-    if (!reportData?.special) return;
-    const newData = { ...reportData };
-    const reportPeriod = newData.special?.reportDateRange || "N/A";
-    const periodWithoutYear = reportPeriod.replace(/\s\d{4}/g, "");
-    const newBonus: SpecialReportDetail = {
-      enrollmentId: null,
-      period: periodWithoutYear,
-      plan: "N/A",
-      studentName: "Bono Manual",
-      amount: 0,
-      amountInDollars: 0,
-      totalHours: 0,
-      pricePerHour: 0,
-      pPerHour: 0,
-      hoursSeen: null,
-      oldBalance: null,
-      payment: null,
-      total: 0,
-      balanceRemaining: 0,
-      type: "bonus",
-      bonusReason: "",
-    };
-    if (newData.special) {
-      newData.special.details.push(newBonus);
-    }
-    setReportData(newData);
-  };
-
-  const addSpecialSubstitute = () => {
-    if (!reportData?.special) return;
-    const newData = { ...reportData };
-    const reportPeriod = newData.special?.reportDateRange || "N/A";
-    const periodWithoutYear = reportPeriod.replace(/\s\d{4}/g, "");
-    const newSubstitute: SpecialReportDetail = {
-      enrollmentId: "",
-      period: periodWithoutYear,
-      plan: "",
-      studentName: "",
-      amount: 0,
-      amountInDollars: 0,
-      totalHours: 0,
-      pricePerHour: 0,
-      pPerHour: 0,
-      hoursSeen: null,
-      oldBalance: null,
-      payment: null,
-      total: 0,
-      balanceRemaining: 0,
-      type: "substitute",
-    };
-    if (newData.special) {
-      newData.special.details.push(newSubstitute);
-    }
-    setReportData(newData);
-  };
-
-  const removeSpecialBonus = (detailIndex: number) => {
-    if (!reportData?.special) return;
-    const newData = { ...reportData };
-    if (newData.special?.details) {
-      newData.special.details.splice(detailIndex, 1);
-      setReportData(newData);
-    }
-  };
-
-  const removeSpecialSubstitute = (detailIndex: number) => {
-    if (!reportData?.special) return;
-    const newData = { ...reportData };
-    if (newData.special?.details) {
-      newData.special.details.splice(detailIndex, 1);
-      setReportData(newData);
-    }
-  };
 
   const handleGeneratePdf = () => {
     if (!calculatedData || !month) {
@@ -950,7 +544,6 @@ function NewReportComponent() {
               "Hrs Seen",
               "Pay/Hr",
               "Balance",
-              "Type",
               "T. Teacher",
               "T. Bespoke",
               "Bal. Rem.",
@@ -966,11 +559,6 @@ function NewReportComponent() {
             d.hoursSeen || "",
             `$${d.pPerHour.toFixed(2)}`,
             `$${(d.balance || 0).toFixed(2)}`,
-            d.type === "normal"
-              ? "Normal"
-              : d.type === "substitute"
-              ? "Substitute"
-              : "Bonus",
             `$${d.totalTeacher.toFixed(2)}`,
             `$${d.totalBespoke.toFixed(2)}`,
             `$${d.balanceRemaining.toFixed(2)}`,
@@ -980,12 +568,12 @@ function NewReportComponent() {
               // MODIFICACIÓN: Se corrige 'textAlign' por 'halign'
               {
                 content: "Subtotals",
-                colSpan: 10,
+                colSpan: 9,
                 styles: { halign: "right", fontStyle: "bold" },
               },
-              `$${prof.subtotals.totalTeacher.toFixed(2)}`,
-              `$${prof.subtotals.totalBespoke.toFixed(2)}`,
-              `$${prof.subtotals.balanceRemaining.toFixed(2)}`,
+              `$${prof.totalTeacher.toFixed(2)}`,
+              `$${prof.totalBespoke.toFixed(2)}`,
+              `$${prof.totalBalanceRemaining.toFixed(2)}`,
             ],
           ],
           footStyles: {
@@ -1001,6 +589,47 @@ function NewReportComponent() {
           },
         });
         finalY = (doc as any).lastAutoTable.finalY + 10;
+
+        // Agregar tabla de abonos si existen
+        if (prof.abonos && prof.abonos.details.length > 0) {
+          finalY += 5;
+          doc.setFontSize(12);
+          doc.text("Bonuses", 14, finalY);
+          finalY += 6;
+
+          autoTable(doc, {
+            startY: finalY,
+            head: [["Date", "Description", "Month", "Amount"]],
+            body: prof.abonos.details.map((bonus) => [
+              formatDateForDisplay(bonus.bonusDate),
+              bonus.description,
+              bonus.month,
+              `$${bonus.amount.toFixed(2)}`,
+            ]),
+            foot: [
+              [
+                {
+                  content: "Total:",
+                  colSpan: 3,
+                  styles: { halign: "right", fontStyle: "bold" },
+                },
+                `$${prof.abonos.total.toFixed(2)}`,
+              ],
+            ],
+            footStyles: {
+              fontStyle: "bold",
+              fillColor: [240, 240, 240],
+              textColor: [0, 0, 0],
+            },
+            theme: "grid",
+            headStyles: { fillColor: [76, 84, 158] },
+            styles: { fontSize: 8 },
+            didDrawPage: (data) => {
+              finalY = data.cursor?.y || 0;
+            },
+          });
+          finalY = (doc as any).lastAutoTable.finalY + 10;
+        }
       });
 
       // --- Tabla de Profesor Especial ---
@@ -1026,7 +655,6 @@ function NewReportComponent() {
               "Hrs Seen",
               "Balance",
               "Payment",
-              "Type",
               "Total",
               "Bal. Rem.",
             ],
@@ -1040,11 +668,6 @@ function NewReportComponent() {
             d.hoursSeen || "",
             `$${(d.oldBalance || 0).toFixed(2)}`,
             `$${(d.payment || 0).toFixed(2)}`,
-            d.type === "normal"
-              ? "Normal"
-              : d.type === "substitute"
-              ? "Substitute"
-              : "Bonus",
             `$${d.total.toFixed(2)}`,
             `$${d.balanceRemaining.toFixed(2)}`,
           ]),
@@ -1053,7 +676,7 @@ function NewReportComponent() {
               // MODIFICACIÓN: Se corrige 'textAlign' por 'halign'
               {
                 content: "Subtotals",
-                colSpan: 9,
+                colSpan: 8,
                 styles: { halign: "right", fontStyle: "bold" },
               },
               `$${calculatedData.specialReport.subtotal.total.toFixed(2)}`,
@@ -1075,52 +698,260 @@ function NewReportComponent() {
           },
         });
         finalY = (doc as any).lastAutoTable.finalY + 10;
+
+        // Agregar tabla de abonos si existen
+        if (
+          calculatedData.specialReport.abonos &&
+          calculatedData.specialReport.abonos.details.length > 0
+        ) {
+          finalY += 5;
+          doc.setFontSize(12);
+          doc.text("Bonuses", 14, finalY);
+          finalY += 6;
+
+          autoTable(doc, {
+            startY: finalY,
+            head: [["Date", "Description", "Month", "Amount"]],
+            body: calculatedData.specialReport.abonos.details.map((bonus) => [
+              formatDateForDisplay(bonus.bonusDate),
+              bonus.description,
+              bonus.month,
+              `$${bonus.amount.toFixed(2)}`,
+            ]),
+            foot: [
+              [
+                {
+                  content: "Total:",
+                  colSpan: 3,
+                  styles: { halign: "right", fontStyle: "bold" },
+                },
+                `$${calculatedData.specialReport.abonos.total.toFixed(2)}`,
+              ],
+            ],
+            footStyles: {
+              fontStyle: "bold",
+              fillColor: [240, 240, 240],
+              textColor: [0, 0, 0],
+            },
+            theme: "grid",
+            headStyles: { fillColor: [81, 185, 162] },
+            styles: { fontSize: 8 },
+            didDrawPage: (data) => {
+              finalY = data.cursor?.y || 0;
+            },
+          });
+          finalY = (doc as any).lastAutoTable.finalY + 10;
+        }
       }
 
       // --- Tabla de Excedentes ---
-      if (excedents.length > 0) {
-        finalY += 5;
-        doc.setFontSize(14);
-        doc.text("Excedents", 14, finalY);
-        finalY += 8;
+      if (reportData?.excedente) {
+        const excedente = reportData.excedente;
+        let hasExcedents = false;
 
-        autoTable(doc, {
-          startY: finalY,
-          head: [
-            ["Student", "Amount", "Hrs Seen", "Price/Hr", "Total", "Notes"],
-          ],
-          body: excedents.map((e) => [
-            e.studentName,
-            `$${(e.amountInDollars || 0).toFixed(2)}`,
-            e.hoursSeen || "",
-            `$${(e.pricePerHour || 0).toFixed(2)}`,
-            `$${e.total.toFixed(2)}`,
-            e.notes,
-          ]),
-          foot: [
-            [
-              // MODIFICACIÓN: Se corrige 'textAlign' por 'halign'
-              {
-                content: "Total Excedents",
-                colSpan: 4,
-                styles: { halign: "right", fontStyle: "bold" },
-              },
-              `$${calculatedData.excedentsTotal.toFixed(2)}`,
-              "",
+        // Sección 1: Ingresos Excedentes
+        if (excedente.incomeDetails && excedente.incomeDetails.length > 0) {
+          hasExcedents = true;
+          finalY += 5;
+          doc.setFontSize(14);
+          doc.text("Excedent Incomes", 14, finalY);
+          finalY += 8;
+
+          autoTable(doc, {
+            startY: finalY,
+            head: [
+              [
+                "Date",
+                "Deposit Name",
+                "Amount",
+                "Currency",
+                "Amount (USD)",
+                "Payment Method",
+                "Note",
+              ],
             ],
-          ],
-          footStyles: {
-            fontStyle: "bold",
-            fillColor: [240, 240, 240],
-            textColor: [0, 0, 0],
-          },
-          theme: "grid",
-          styles: { fontSize: 8 },
-          didDrawPage: (data) => {
-            finalY = data.cursor?.y || 0;
-          },
-        });
-        finalY = (doc as any).lastAutoTable.finalY + 10;
+            body: excedente.incomeDetails.map((detail) => [
+              formatDateForDisplay(detail.income_date),
+              detail.deposit_name,
+              detail.amount.toFixed(2),
+              detail.divisa,
+              `$${detail.amountInDollars.toFixed(2)}`,
+              detail.paymentMethod,
+              detail.note || "N/A",
+            ]),
+            foot: [
+              [
+                {
+                  content: "Total:",
+                  colSpan: 6,
+                  styles: { halign: "right", fontStyle: "bold" },
+                },
+                `$${excedente.totalExcedenteIncomes.toFixed(2)}`,
+              ],
+            ],
+            footStyles: {
+              fontStyle: "bold",
+              fillColor: [240, 240, 240],
+              textColor: [0, 0, 0],
+            },
+            theme: "grid",
+            styles: { fontSize: 8 },
+            didDrawPage: (data) => {
+              finalY = data.cursor?.y || 0;
+            },
+          });
+          finalY = (doc as any).lastAutoTable.finalY + 10;
+        }
+
+        // Sección 2: Clases No Vistas
+        if (
+          excedente.classNotViewedDetails &&
+          excedente.classNotViewedDetails.length > 0
+        ) {
+          hasExcedents = true;
+          finalY += 5;
+          doc.setFontSize(14);
+          doc.text("Classes Not Viewed", 14, finalY);
+          finalY += 8;
+
+          autoTable(doc, {
+            startY: finalY,
+            head: [
+              [
+                "Enrollment",
+                "Students",
+                "Plan",
+                "Classes",
+                "Price/Hour",
+                "Excedent",
+              ],
+            ],
+            body: excedente.classNotViewedDetails.map((detail) => [
+              detail.enrollmentAlias || detail.enrollmentId,
+              detail.studentNames,
+              detail.plan,
+              detail.numberOfClasses.toString(),
+              `$${detail.pricePerHour.toFixed(2)}`,
+              `$${detail.excedente.toFixed(2)}`,
+            ]),
+            foot: [
+              [
+                {
+                  content: "Total:",
+                  colSpan: 5,
+                  styles: { halign: "right", fontStyle: "bold" },
+                },
+                `$${excedente.totalExcedenteClasses.toFixed(2)}`,
+              ],
+            ],
+            footStyles: {
+              fontStyle: "bold",
+              fillColor: [240, 240, 240],
+              textColor: [0, 0, 0],
+            },
+            theme: "grid",
+            styles: { fontSize: 8 },
+            didDrawPage: (data) => {
+              finalY = data.cursor?.y || 0;
+            },
+          });
+          finalY = (doc as any).lastAutoTable.finalY + 10;
+        }
+
+        // Sección 3: Bonos de Profesores
+        if (excedente.bonusDetails && excedente.bonusDetails.length > 0) {
+          hasExcedents = true;
+          finalY += 5;
+          doc.setFontSize(14);
+          doc.text("Professor Bonuses", 14, finalY);
+          finalY += 8;
+
+          autoTable(doc, {
+            startY: finalY,
+            head: [["Date", "Professor", "CI Number", "Description", "Amount"]],
+            body: excedente.bonusDetails.map((bonus) => [
+              formatDateForDisplay(bonus.bonusDate),
+              bonus.professorName,
+              bonus.professorCiNumber,
+              bonus.description,
+              {
+                content: `$${bonus.negativeAmount.toFixed(2)}`,
+                styles: { textColor: [255, 0, 0] }, // Rojo para valores negativos
+              },
+            ]),
+            foot: [
+              [
+                {
+                  content: "Total:",
+                  colSpan: 4,
+                  styles: { halign: "right", fontStyle: "bold" },
+                },
+                {
+                  content: `-$${excedente.totalBonuses.toFixed(2)}`,
+                  styles: { textColor: [255, 0, 0], fontStyle: "bold" },
+                },
+              ],
+            ],
+            footStyles: {
+              fontStyle: "bold",
+              fillColor: [240, 240, 240],
+              textColor: [0, 0, 0],
+            },
+            theme: "grid",
+            styles: { fontSize: 8 },
+            didDrawPage: (data) => {
+              finalY = data.cursor?.y || 0;
+            },
+          });
+          finalY = (doc as any).lastAutoTable.finalY + 10;
+        }
+
+        // Resumen Total de Excedentes
+        if (hasExcedents) {
+          finalY += 5;
+          doc.setFontSize(12);
+          doc.text("Excedents Summary", 14, finalY);
+          finalY += 8;
+
+          autoTable(doc, {
+            startY: finalY,
+            head: [["Concept", "Amount"]],
+            body: [
+              [
+                "Total Excedent Incomes",
+                `$${excedente.totalExcedenteIncomes.toFixed(2)}`,
+              ],
+              [
+                "Total Classes Not Viewed",
+                `$${excedente.totalExcedenteClasses.toFixed(2)}`,
+              ],
+              [
+                "Total Bonuses",
+                {
+                  content: `-$${excedente.totalBonuses.toFixed(2)}`,
+                  styles: { textColor: [255, 0, 0] },
+                },
+              ],
+              [
+                {
+                  content: "Grand Total:",
+                  styles: { fontStyle: "bold" },
+                },
+                {
+                  content: `$${excedente.totalExcedente.toFixed(2)}`,
+                  styles: { fontStyle: "bold" },
+                },
+              ],
+            ],
+            theme: "grid",
+            styles: { fontSize: 9 },
+            headStyles: { fillColor: [240, 240, 240], fontStyle: "bold" },
+            didDrawPage: (data) => {
+              finalY = data.cursor?.y || 0;
+            },
+          });
+          finalY = (doc as any).lastAutoTable.finalY + 10;
+        }
       }
 
       // --- Resumen Final ---
@@ -1249,7 +1080,7 @@ function NewReportComponent() {
         id="report-to-print"
         className="space-y-8 bg-card p-4 sm:p-6 rounded-lg"
       >
-        {calculatedData.generalReport.map((profReport, profIndex) => (
+        {calculatedData.generalReport.map((profReport) => (
           <Card key={profReport.professorId}>
             <CardHeader>
               <CardTitle className="text-lg">
@@ -1278,293 +1109,200 @@ function NewReportComponent() {
                         Total Bespoke
                       </TableHead>
                       <TableHead className="text-right">Balance Rem.</TableHead>
-                      <TableHead className="w-[50px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {profReport.details.map((detail, detailIndex) => (
-                      <TableRow
-                        key={detail.enrollmentId || `bonus-${detailIndex}`}
-                      >
-                        <TableCell className="px-3">{detail.period}</TableCell>
-                        <TableCell>
-                          {detail.type === "normal" ? (
+                    {profReport.details && profReport.details.length > 0 ? (
+                      profReport.details.map((detail, detailIndex) => (
+                        <TableRow
+                          key={detail.enrollmentId || `bonus-${detailIndex}`}
+                        >
+                          <TableCell className="px-3">
+                            {detail.period}
+                          </TableCell>
+                          <TableCell>
                             <span className="px-1">{detail.plan}</span>
-                          ) : (
-                            <Input
-                              value={detail.plan}
-                              onChange={(e) =>
-                                updateDetailField(
-                                  profIndex,
-                                  detailIndex,
-                                  "plan",
-                                  e.target.value
-                                )
-                              }
-                            />
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {detail.type === "normal" ? (
+                          </TableCell>
+                          <TableCell>
                             <span className="font-medium px-1">
-                              {detail.studentName}
+                              {detail.enrollmentId
+                                ? formatEnrollmentName(
+                                    enrollments.find(
+                                      (e) => e._id === detail.enrollmentId
+                                    )!
+                                  ) || detail.studentName
+                                : detail.studentName}
                             </span>
-                          ) : detail.type === "substitute" ? (
-                            <Popover
-                              open={
-                                openSelectors[
-                                  `general-${profIndex}-${detailIndex}`
-                                ] || false
-                              }
-                              onOpenChange={(open) =>
-                                setOpenSelectors((prev) => ({
-                                  ...prev,
-                                  [`general-${profIndex}-${detailIndex}`]: open,
-                                }))
-                              }
-                            >
-                              <PopoverTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  role="combobox"
-                                  aria-expanded={
-                                    openSelectors[
-                                      `general-${profIndex}-${detailIndex}`
-                                    ]
-                                  }
-                                  className="w-full justify-between"
-                                >
-                                  {detail.enrollmentId
-                                    ? formatEnrollmentName(
-                                        enrollments.find(
-                                          (e) => e._id === detail.enrollmentId
-                                        )!
-                                      )
-                                    : "Search student..."}
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-full p-0">
-                                <Command>
-                                  <CommandInput placeholder="Search student..." />
-                                  <CommandList>
-                                    <CommandEmpty>
-                                      No student found.
-                                    </CommandEmpty>
-                                    <CommandGroup>
-                                      {enrollments.map((enrollment) => (
-                                        <CommandItem
-                                          key={enrollment._id}
-                                          value={formatEnrollmentName(
-                                            enrollment
-                                          )}
-                                          onSelect={() => {
-                                            handleEnrollmentSelect(
-                                              enrollment._id,
-                                              profIndex,
-                                              detailIndex,
-                                              false
-                                            );
-                                            setOpenSelectors((prev) => ({
-                                              ...prev,
-                                              [`general-${profIndex}-${detailIndex}`]:
-                                                false,
-                                            }));
-                                          }}
-                                        >
-                                          {formatEnrollmentName(enrollment)}
-                                        </CommandItem>
-                                      ))}
-                                    </CommandGroup>
-                                  </CommandList>
-                                </Command>
-                              </PopoverContent>
-                            </Popover>
-                          ) : (
-                            <Input
-                              value={detail.studentName}
-                              onChange={(e) =>
-                                updateDetailField(
-                                  profIndex,
-                                  detailIndex,
-                                  "studentName",
-                                  e.target.value
-                                )
-                              }
-                            />
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            value={getFieldValue(detail.amountInDollars)}
-                            onChange={(e) =>
-                              handleNumberInputChange(
-                                profIndex,
-                                detailIndex,
-                                "amountInDollars",
-                                e
-                              )
-                            }
-                            placeholder="0.00"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            value={getFieldValue(detail.totalHours)}
-                            onChange={(e) =>
-                              handleNumberInputChange(
-                                profIndex,
-                                detailIndex,
-                                "totalHours",
-                                e
-                              )
-                            }
-                            placeholder="0"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            value={getFieldValue(detail.pricePerHour)}
-                            onChange={(e) =>
-                              handleNumberInputChange(
-                                profIndex,
-                                detailIndex,
-                                "pricePerHour",
-                                e
-                              )
-                            }
-                            placeholder="0.00"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            value={getFieldValue(detail.hoursSeen)}
-                            onChange={(e) =>
-                              handleNumberInputChange(
-                                profIndex,
-                                detailIndex,
-                                "hoursSeen",
-                                e
-                              )
-                            }
-                            placeholder="0"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            value={getFieldValue(detail.pPerHour)}
-                            onChange={(e) =>
-                              handleNumberInputChange(
-                                profIndex,
-                                detailIndex,
-                                "pPerHour",
-                                e
-                              )
-                            }
-                            placeholder="0.00"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            value={getFieldValue(detail.balance)}
-                            onChange={(e) =>
-                              handleNumberInputChange(
-                                profIndex,
-                                detailIndex,
-                                "balance",
-                                e
-                              )
-                            }
-                            placeholder="0.00"
-                          />
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span
-                            className="text-lg"
-                            title={
-                              detail.type === "normal"
-                                ? "Clase Normal"
-                                : detail.type === "substitute"
-                                ? "Suplencia"
-                                : "Bono Manual"
-                            }
-                          >
-                            {getTypeIndicator(detail.type)}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {detail.totalTeacher.toFixed(2)}
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {detail.totalBespoke.toFixed(2)}
-                        </TableCell>
-                        <TableCell className="text-right font-bold">
-                          {detail.balanceRemaining.toFixed(2)}
-                        </TableCell>
-                        <TableCell>
-                          {(detail.type === "bonus" ||
-                            detail.type === "substitute") && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={
-                                () =>
-                                  detail.type === "bonus"
-                                    ? removeBonus(profIndex, detailIndex)
-                                    : removeBonus(profIndex, detailIndex) // TODO: Crear removeSubstitute
+                          </TableCell>
+                          <TableCell>
+                            <span className="px-2">
+                              ${typeof detail.amountInDollars === "number" ? detail.amountInDollars.toFixed(2) : "0.00"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="px-2">
+                              {typeof detail.totalHours === "number" ? detail.totalHours : "0"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="px-2">
+                              ${typeof detail.pricePerHour === "number" ? detail.pricePerHour.toFixed(2) : "0.00"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="px-2">
+                              {typeof detail.hoursSeen === "number" ? detail.hoursSeen : "0"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="px-2">
+                              ${typeof detail.pPerHour === "number" ? detail.pPerHour.toFixed(2) : "0.00"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="px-2">
+                              ${typeof detail.balance === "number" ? detail.balance.toFixed(2) : "0.00"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span
+                              className="text-lg"
+                              title={
+                                detail.type === "normal"
+                                  ? "Clase Normal"
+                                  : detail.type === "substitute"
+                                  ? "Suplencia"
+                                  : "Bono Manual"
                               }
                             >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
+                              {getTypeIndicator(detail.type)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {detail.totalTeacher.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {detail.totalBespoke.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-right font-bold">
+                            {detail.balanceRemaining.toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell
+                          colSpan={13}
+                          className="text-center text-muted-foreground"
+                        >
+                          No details found
                         </TableCell>
                       </TableRow>
-                    ))}
+                    )}
                   </TableBody>
                   <TableFooter>
                     <TableRow>
-                      <TableCell colSpan={10}>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => addSubstitute(profIndex)}
-                          >
-                            <UserPlus className="h-4 w-4 mr-2" />
-                            Add Substitute
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => addBonus(profIndex)}
-                          >
-                            <PlusCircle className="h-4 w-4 mr-2" />
-                            Add Bonus
-                          </Button>
-                        </div>
+                      <TableCell colSpan={10}></TableCell>
+                      <TableCell className="text-right font-bold text-base">
+                        {profReport.totalTeacher.toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right font-bold text-base">
-                        {profReport.subtotals.totalTeacher.toFixed(2)}
-                      </TableCell>
-                      <TableCell className="text-right font-bold text-base">
-                        {profReport.subtotals.totalBespoke.toFixed(2)}
+                        {profReport.totalBespoke.toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right font-bold text-base text-primary">
-                        {profReport.subtotals.balanceRemaining.toFixed(2)}
+                        {profReport.totalBalanceRemaining.toFixed(2)}
                       </TableCell>
-                      <TableCell></TableCell>
                     </TableRow>
                   </TableFooter>
                 </Table>
               </div>
+
+              {/* Sección de Abonos */}
+              {profReport.abonos && profReport.abonos.details.length > 0 && (
+                <div className="mt-6 pt-6 border-t">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold">Bonuses</h3>
+                    <div className="text-lg font-bold">
+                      Total: ${profReport.abonos.total.toFixed(2)}
+                    </div>
+                  </div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Month</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {profReport.abonos.details.map((bonus) => (
+                        <TableRow key={bonus.bonusId}>
+                          <TableCell>
+                            {formatDateForDisplay(bonus.bonusDate)}
+                          </TableCell>
+                          <TableCell>{bonus.description}</TableCell>
+                          <TableCell>{bonus.month}</TableCell>
+                          <TableCell className="text-right font-medium">
+                            ${bonus.amount.toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
         ))}
+
+        {/* Subtotales de referencia para profesores normales */}
+        {reportData?.totals?.subtotals?.normalProfessors && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">
+                General Totals (Reference)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-6">
+                <div>
+                  <Label className="text-sm text-muted-foreground">
+                    Total Teacher
+                  </Label>
+                  <p className="text-2xl font-bold">
+                    $
+                    {reportData.totals.subtotals.normalProfessors.totalTeacher.toFixed(
+                      2
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground">
+                    Total Bespoke
+                  </Label>
+                  <p className="text-2xl font-bold">
+                    $
+                    {reportData.totals.subtotals.normalProfessors.totalBespoke.toFixed(
+                      2
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground">
+                    Balance Remaining
+                  </Label>
+                  <p className="text-2xl font-bold text-primary">
+                    $
+                    {reportData.totals.subtotals.normalProfessors.balanceRemaining.toFixed(
+                      2
+                    )}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {calculatedData.specialReport && (
           <Card key={calculatedData.specialReport.professorId}>
@@ -1589,249 +1327,93 @@ function NewReportComponent() {
                       <TableHead>Type</TableHead>
                       <TableHead>Total</TableHead>
                       <TableHead>Balance Rem.</TableHead>
-                      <TableHead className="w-[60px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {calculatedData.specialReport.details.map(
-                      (detail, detailIndex) => (
-                        <TableRow key={detail.enrollmentId}>
-                          <TableCell className="px-3">
-                            {detail.period}
-                          </TableCell>
-                          <TableCell>
-                            {detail.type === "normal" ? (
+                    {calculatedData.specialReport.details &&
+                    calculatedData.specialReport.details.length > 0 ? (
+                      calculatedData.specialReport.details.map(
+                        (detail) => (
+                          <TableRow key={detail.enrollmentId}>
+                            <TableCell className="px-3">
+                              {detail.period}
+                            </TableCell>
+                            <TableCell>
                               <span className="px-1">{detail.plan}</span>
-                            ) : (
-                              <Input
-                                value={detail.plan}
-                                onChange={(e) =>
-                                  handleSpecialNumberInputChange(
-                                    detailIndex,
-                                    "plan" as any,
-                                    e as any
-                                  )
-                                }
-                              />
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {detail.type === "normal" ? (
+                            </TableCell>
+                            <TableCell>
                               <span className="font-medium px-1">
-                                {detail.studentName}
+                                {detail.enrollmentId
+                                  ? formatEnrollmentName(
+                                      enrollments.find(
+                                        (e) => e._id === detail.enrollmentId
+                                      )!
+                                    ) || detail.studentName
+                                  : detail.studentName}
                               </span>
-                            ) : detail.type === "substitute" ? (
-                              <Popover
-                                open={
-                                  openSelectors[`special-${detailIndex}`] ||
-                                  false
-                                }
-                                onOpenChange={(open) =>
-                                  setOpenSelectors((prev) => ({
-                                    ...prev,
-                                    [`special-${detailIndex}`]: open,
-                                  }))
-                                }
-                              >
-                                <PopoverTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    role="combobox"
-                                    aria-expanded={
-                                      openSelectors[`special-${detailIndex}`]
-                                    }
-                                    className="w-full justify-between"
-                                  >
-                                    {detail.enrollmentId
-                                      ? formatEnrollmentName(
-                                          enrollments.find(
-                                            (e) => e._id === detail.enrollmentId
-                                          )!
-                                        )
-                                      : "Search student..."}
-                                  </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-full p-0">
-                                  <Command>
-                                    <CommandInput placeholder="Search student..." />
-                                    <CommandList>
-                                      <CommandEmpty>
-                                        No student found.
-                                      </CommandEmpty>
-                                      <CommandGroup>
-                                        {enrollments.map((enrollment) => (
-                                          <CommandItem
-                                            key={enrollment._id}
-                                            value={formatEnrollmentName(
-                                              enrollment
-                                            )}
-                                            onSelect={() => {
-                                              handleEnrollmentSelect(
-                                                enrollment._id,
-                                                0,
-                                                detailIndex,
-                                                true
-                                              );
-                                              setOpenSelectors((prev) => ({
-                                                ...prev,
-                                                [`special-${detailIndex}`]:
-                                                  false,
-                                              }));
-                                            }}
-                                          >
-                                            {formatEnrollmentName(enrollment)}
-                                          </CommandItem>
-                                        ))}
-                                      </CommandGroup>
-                                    </CommandList>
-                                  </Command>
-                                </PopoverContent>
-                              </Popover>
-                            ) : (
-                              <Input
-                                value={detail.studentName}
-                                onChange={(e) =>
-                                  handleSpecialNumberInputChange(
-                                    detailIndex,
-                                    "studentName" as any,
-                                    e as any
-                                  )
-                                }
-                              />
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              value={getFieldValue(detail.amountInDollars)}
-                              onChange={(e) =>
-                                handleSpecialNumberInputChange(
-                                  detailIndex,
-                                  "amountInDollars",
-                                  e
-                                )
-                              }
-                              placeholder="0.00"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              value={getFieldValue(detail.totalHours)}
-                              onChange={(e) =>
-                                handleSpecialNumberInputChange(
-                                  detailIndex,
-                                  "totalHours",
-                                  e
-                                )
-                              }
-                              placeholder="0"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              value={getFieldValue(detail.hoursSeen)}
-                              onChange={(e) =>
-                                handleSpecialNumberInputChange(
-                                  detailIndex,
-                                  "hoursSeen",
-                                  e
-                                )
-                              }
-                              placeholder="0"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              value={getFieldValue(detail.oldBalance)}
-                              onChange={(e) =>
-                                handleSpecialNumberInputChange(
-                                  detailIndex,
-                                  "oldBalance",
-                                  e
-                                )
-                              }
-                              placeholder="0.00"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              value={getFieldValue(detail.payment)}
-                              onChange={(e) =>
-                                handleSpecialNumberInputChange(
-                                  detailIndex,
-                                  "payment",
-                                  e
-                                )
-                              }
-                              placeholder="0.00"
-                            />
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span
-                              className="text-lg"
-                              title={
-                                detail.type === "normal"
-                                  ? "Clase Normal"
-                                  : detail.type === "substitute"
-                                  ? "Suplencia"
-                                  : "Bono Manual"
-                              }
-                            >
-                              {getTypeIndicator(detail.type)}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-right font-medium">
-                            ${detail.total.toFixed(2)}
-                          </TableCell>
-                          <TableCell className="text-right font-bold">
-                            {detail.balanceRemaining.toFixed(2)}
-                          </TableCell>
-                          <TableCell>
-                            {(detail.type === "bonus" ||
-                              detail.type === "substitute") && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() =>
-                                  detail.type === "bonus"
-                                    ? removeSpecialBonus(detailIndex)
-                                    : removeSpecialSubstitute(detailIndex)
+                            </TableCell>
+                            <TableCell>
+                              <span className="px-2">
+                                ${typeof detail.amountInDollars === "number" ? detail.amountInDollars.toFixed(2) : "0.00"}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <span className="px-2">
+                                {typeof detail.totalHours === "number" ? detail.totalHours : "0"}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <span className="px-2">
+                                {typeof detail.hoursSeen === "number" ? detail.hoursSeen : "0"}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <span className="px-2">
+                                ${typeof detail.oldBalance === "number" ? detail.oldBalance.toFixed(2) : "0.00"}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <span className="px-2">
+                                ${typeof detail.payment === "number" ? detail.payment.toFixed(2) : "0.00"}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span
+                                className="text-lg"
+                                title={
+                                  detail.type === "normal"
+                                    ? "Clase Normal"
+                                    : detail.type === "substitute"
+                                    ? "Suplencia"
+                                    : "Bono Manual"
                                 }
                               >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
+                                {getTypeIndicator(detail.type)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              ${detail.total.toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right font-bold">
+                              {detail.balanceRemaining.toFixed(2)}
+                            </TableCell>
+                          </TableRow>
+                        )
                       )
+                    ) : (
+                      <TableRow>
+                        <TableCell
+                          colSpan={11}
+                          className="text-center text-muted-foreground"
+                        >
+                          No details found
+                        </TableCell>
+                      </TableRow>
                     )}
                   </TableBody>
                   <TableFooter>
                     <TableRow>
-                      <TableCell colSpan={9}>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => addSpecialSubstitute()}
-                          >
-                            <UserPlus className="h-4 w-4 mr-2" />
-                            Add Substitute
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => addSpecialBonus()}
-                          >
-                            <PlusCircle className="h-4 w-4 mr-2" />
-                            Add Bonus
-                          </Button>
-                        </div>
-                      </TableCell>
+                      <TableCell colSpan={9}></TableCell>
                       <TableCell className="text-right font-bold text-base">
                         $
                         {calculatedData.specialReport.subtotal.total.toFixed(2)}
@@ -1842,7 +1424,6 @@ function NewReportComponent() {
                           2
                         )}
                       </TableCell>
-                      <TableCell></TableCell>
                     </TableRow>
                   </TableFooter>
                 </Table>
@@ -1851,52 +1432,211 @@ function NewReportComponent() {
           </Card>
         )}
 
+        {/* Tabla de Excedentes - Debajo del profesor especial */}
         {reportData?.excedente && (
           <Card>
             <CardHeader>
               <CardTitle>Excedents</CardTitle>
               <p className="text-sm text-muted-foreground">
-                {reportData.excedente.reportDateRange} -{" "}
-                {reportData.excedente.numberOfIncomes} incomes
+                {reportData.excedente.reportDateRange ||
+                  "No date range available"}
               </p>
             </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Deposit Name</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Currency</TableHead>
-                    <TableHead>Amount (USD)</TableHead>
-                    <TableHead>Payment Method</TableHead>
-                    <TableHead>Note</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {reportData.excedente.details.map((detail) => (
-                    <TableRow key={detail.incomeId}>
-                      <TableCell>
-                        {formatDateForDisplay(detail.income_date)}
-                      </TableCell>
-                      <TableCell>{detail.deposit_name}</TableCell>
-                      <TableCell>{detail.amount.toFixed(2)}</TableCell>
-                      <TableCell>{detail.divisa}</TableCell>
-                      <TableCell>
-                        ${detail.amountInDollars.toFixed(2)}
-                      </TableCell>
-                      <TableCell>{detail.paymentMethod}</TableCell>
-                      <TableCell>{detail.note}</TableCell>
+            <CardContent className="space-y-8">
+              {/* Sección 1: Excedent Incomes */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Excedent Incomes</h3>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Deposit Name</TableHead>
+                      <TableHead>Note</TableHead>
+                      <TableHead className="text-right">Amount (USD)</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {reportData.excedente.incomeDetails &&
+                    reportData.excedente.incomeDetails.length > 0 ? (
+                      reportData.excedente.incomeDetails.map((detail) => (
+                        <TableRow key={detail.incomeId}>
+                          <TableCell>
+                            {formatDateForDisplay(detail.income_date)}
+                          </TableCell>
+                          <TableCell>{detail.deposit_name}</TableCell>
+
+                          <TableCell>{detail.note || "N/A"}</TableCell>
+                          <TableCell className="text-right font-medium">
+                            ${detail.amountInDollars.toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell
+                          colSpan={4}
+                          className="text-center text-muted-foreground"
+                        >
+                          No excedent incomes found
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                  <TableFooter>
+                    <TableRow>
+                      <TableCell colSpan={2} className="text-right font-bold">
+                        Total:
+                      </TableCell>
+                      <TableCell className="text-right font-bold">
+                        $
+                        {(
+                          reportData.excedente.totalExcedenteIncomes || 0
+                        ).toFixed(2)}
+                      </TableCell>
+                      <TableCell></TableCell>
+                    </TableRow>
+                  </TableFooter>
+                </Table>
+              </div>
+
+              {/* Sección 2: Classes Not Viewed */}
+              <div className="border-t pt-6">
+                <h3 className="text-lg font-semibold mb-4">
+                  Classes Not Viewed
+                </h3>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Enrollment</TableHead>
+                      <TableHead>Student Names</TableHead>
+                      <TableHead>Plan</TableHead>
+                      <TableHead className="text-right">Classes</TableHead>
+                      <TableHead className="text-right">Price/Hour</TableHead>
+                      <TableHead className="text-right">Excedent</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {reportData.excedente.classNotViewedDetails &&
+                    reportData.excedente.classNotViewedDetails.length > 0 ? (
+                      reportData.excedente.classNotViewedDetails.map(
+                        (detail) => (
+                          <TableRow key={detail.enrollmentId}>
+                            <TableCell>
+                              {detail.enrollmentAlias || detail.enrollmentId}
+                            </TableCell>
+                            <TableCell>{detail.studentNames}</TableCell>
+                            <TableCell>{detail.plan}</TableCell>
+                            <TableCell className="text-right">
+                              {detail.numberOfClasses}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              ${detail.pricePerHour.toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              ${detail.excedente.toFixed(2)}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      )
+                    ) : (
+                      <TableRow>
+                        <TableCell
+                          colSpan={6}
+                          className="text-center text-muted-foreground"
+                        >
+                          No classes not viewed found
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                  <TableFooter>
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-right font-bold">
+                        Total:
+                      </TableCell>
+                      <TableCell className="text-right font-bold">
+                        $
+                        {(
+                          reportData.excedente.totalExcedenteClasses || 0
+                        ).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
+                  </TableFooter>
+                </Table>
+              </div>
+
+              {/* Sección 3: Professor Bonuses */}
+              <div className="border-t pt-6">
+                <h3 className="text-lg font-semibold mb-4">
+                  Professor Bonuses
+                </h3>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Professor</TableHead>
+                      <TableHead>CI Number</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {reportData.excedente.bonusDetails &&
+                    reportData.excedente.bonusDetails.length > 0 ? (
+                      reportData.excedente.bonusDetails.map((bonus) => (
+                        <TableRow key={bonus.bonusId}>
+                          <TableCell>
+                            {formatDateForDisplay(bonus.bonusDate)}
+                          </TableCell>
+                          <TableCell>{bonus.professorName}</TableCell>
+                          <TableCell>{bonus.professorCiNumber}</TableCell>
+                          <TableCell>{bonus.description}</TableCell>
+                          <TableCell className="text-right font-medium text-red-600">
+                            -${bonus.negativeAmount.toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell
+                          colSpan={5}
+                          className="text-center text-muted-foreground"
+                        >
+                          No professor bonuses found
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                  <TableFooter>
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-right font-bold">
+                        Total:
+                      </TableCell>
+                      <TableCell className="text-right font-bold text-red-600">
+                        -${(reportData.excedente.totalBonuses || 0).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
+                  </TableFooter>
+                </Table>
+              </div>
+
+              {/* Total General de Excedentes */}
+              <div className="border-t pt-6">
+                <div className="flex justify-end">
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground mb-1">
+                      Grand Total:
+                    </p>
+                    <p className="text-2xl font-bold">
+                      ${(reportData.excedente.totalExcedente || 0).toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </CardContent>
-            <CardFooter className="flex justify-end font-bold text-lg">
-              Total Excedents: ${reportData.excedente.totalExcedente.toFixed(2)}
-            </CardFooter>
           </Card>
         )}
+
         <Card className="max-w-md w-full ml-auto">
           <CardHeader>
             <CardTitle>Final Summary</CardTitle>
@@ -1924,7 +1664,7 @@ function NewReportComponent() {
               </span>
             </div>
             <div className="flex justify-between items-center">
-              <Label htmlFor="realTotal">Real Total (from bank):</Label>
+              <Label htmlFor="realTotal">Real Total (from wallets):</Label>
               <Input
                 id="realTotal"
                 type="number"

@@ -27,6 +27,7 @@ import {
   GraduationCap, // Icono para Class Types
   Tags, // Icono para Income Categories
   FolderTree, // Icono para Class Categories
+  Bell, // Icono para Category Notifications
   User, // Icono para Profile
 } from "lucide-react";
 
@@ -68,6 +69,7 @@ const allNavItems = [
       { title: "Class Types", href: "/settings/class-types", icon: GraduationCap },
       { title: "Income Categories", href: "/settings/category-money", icon: Tags },
       { title: "Class Categories", href: "/settings/category-class", icon: FolderTree },
+      { title: "Notification Categories", href: "/settings/category-notifications", icon: Bell },
     ],
   },
 ];
@@ -105,7 +107,7 @@ export function SidebarNav() {
   return (
     <aside
       className={cn(
-        "hidden md:block min-h-screen border-r border-light-border dark:border-dark-border bg-light-sidebar dark:bg-dark-sidebar transition-all duration-300",
+        "hidden md:block min-h-screen border-r border-light-border dark:border-dark-border bg-white dark:bg-white transition-all duration-300",
         collapsed ? "w-16" : "w-64"
       )}
     >

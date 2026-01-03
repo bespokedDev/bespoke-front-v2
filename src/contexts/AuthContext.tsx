@@ -15,6 +15,12 @@ interface User {
   name: string;
   email: string;
   role: string;
+  userType?: string; // "admin" | "professor" | "student"
+  idRol?: string; // ObjectId del rol en la colección roles
+  // Campos adicionales según tipo de usuario
+  ciNumber?: string; // Solo para professors
+  phone?: string; // Para professors y students
+  studentCode?: string; // Solo para students
 }
 
 interface AuthContextType {

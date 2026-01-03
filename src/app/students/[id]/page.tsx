@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiClient } from "@/lib/api";
@@ -11,6 +11,7 @@ import {
 } from "@/lib/dateUtils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,7 +46,26 @@ import {
   BookOpen,
   Calendar,
   User,
+  Mail,
+  Phone,
+  MapPin,
+  FileText,
+  ExternalLink,
+  Info,
+  StickyNote,
+  Hash,
+  DollarSign,
+  Upload,
+  X,
 } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 // --- DEFINICIONES DE TIPOS ---
 interface Note {
@@ -70,6 +90,9 @@ interface Student {
   status: number;
   isActive: boolean;
   notes: Note[];
+  canvaDocUrl?: string | null;
+  avatar?: string | null;
+  avatarPermission?: number;
   createdAt: string;
   updatedAt?: string;
   disenrollmentReason?: string | null;
@@ -239,6 +262,7 @@ export default function StudentDetailPage() {
   const userRole = user?.role?.toLowerCase();
   const isProfessor = userRole === "professor";
   const isStudent = userRole === "student";
+  const isAdmin = userRole === "admin";
 
   const [student, setStudent] = useState<Student | null>(null);
   const [studentInfo, setStudentInfo] = useState<StudentInfo | null>(null);
@@ -250,6 +274,8 @@ export default function StudentDetailPage() {
   const [formData, setFormData] = useState<Partial<StudentFormData>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
+  const [studentAvatar, setStudentAvatar] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // --- OBTENCIÓN DE DATOS ---
   const fetchStudent = useCallback(async () => {
@@ -257,7 +283,13 @@ export default function StudentDetailPage() {
       setIsLoading(true);
       setError(null);
       const data = await apiClient(`api/students/${studentId}`);
+      console.log("data", data);
       setStudent(data);
+      if (data.avatar) {
+        setStudentAvatar(data.avatar);
+      } else {
+        setStudentAvatar(null);
+      }
       setFormData({
         ...data,
         dob: data.dob ? extractDatePart(data.dob) : "",
@@ -265,6 +297,7 @@ export default function StudentDetailPage() {
           ...note,
           date: note.date ? extractDatePart(note.date) : "",
         })) || [],
+        avatar: data.avatar || null,
       });
 
       // Si es estudiante o admin, también obtener información de balance y enrollments
@@ -285,6 +318,7 @@ export default function StudentDetailPage() {
             noShowClasses: infoResponse.noShowClasses, // Solo admin y professor
             incomeHistory: infoResponse.incomeHistory, // Solo student y admin
           };
+          console.log("studentInfoData", studentInfoData);
           setStudentInfo(studentInfoData);
         } catch (infoErr) {
           console.warn("Could not fetch student info:", infoErr);
@@ -345,6 +379,64 @@ export default function StudentDetailPage() {
     setFormData((prev) => ({ ...prev, notes: newNotes }));
   };
 
+  // --- MANEJADORES DE AVATAR ---
+  const convertImageToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validar que sea una imagen
+    if (!file.type.startsWith("image/")) {
+      setDialogError("Please select a valid image file.");
+      return;
+    }
+
+    // Validar tamaño máximo (5MB)
+    const maxSize = 5 * 1024 * 1024; // 5MB en bytes
+    if (file.size > maxSize) {
+      setDialogError("Image size must be less than 5MB.");
+      return;
+    }
+
+    try {
+      const base64 = await convertImageToBase64(file);
+      setStudentAvatar(base64);
+      setFormData((prev) => ({ ...prev, avatar: base64 }));
+      setDialogError(null);
+    } catch {
+      setDialogError("Failed to process image. Please try again.");
+    }
+  };
+
+  const handleRemoveAvatar = () => {
+    setStudentAvatar(null);
+    setFormData((prev) => ({ ...prev, avatar: null }));
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  // Función helper para obtener iniciales del nombre
+  const getInitials = (name: string): string => {
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
   // --- ACCIONES DE LA API ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -359,6 +451,7 @@ export default function StudentDetailPage() {
           ...note,
           date: note.date || undefined,
         })),
+        avatar: formData.avatar || null,
       };
 
       const response = await apiClient(`api/students/${studentId}`, {
@@ -374,7 +467,12 @@ export default function StudentDetailPage() {
       }
 
       setStudent(updatedStudent);
-      // Actualizar también el formData con los datos actualizados
+      // Actualizar también el formData y el avatar con los datos actualizados
+      if (updatedStudent.avatar) {
+        setStudentAvatar(updatedStudent.avatar);
+      } else {
+        setStudentAvatar(null);
+      }
       setFormData({
         ...updatedStudent,
         dob: updatedStudent.dob ? extractDatePart(updatedStudent.dob) : "",
@@ -382,6 +480,7 @@ export default function StudentDetailPage() {
           ...note,
           date: note.date ? extractDatePart(note.date) : "",
         })) || [],
+        avatar: updatedStudent.avatar || null,
       });
       setIsEditing(false);
       setDialogError(null);
@@ -403,6 +502,11 @@ export default function StudentDetailPage() {
 
   const handleCancelEdit = () => {
     if (student) {
+      if (student.avatar) {
+        setStudentAvatar(student.avatar);
+      } else {
+        setStudentAvatar(null);
+      }
       setFormData({
         ...student,
         dob: student.dob ? extractDatePart(student.dob) : "",
@@ -410,7 +514,11 @@ export default function StudentDetailPage() {
           ...note,
           date: note.date ? extractDatePart(note.date) : "",
         })) || [],
+        avatar: student.avatar || null,
       });
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
     setIsEditing(false);
     setDialogError(null);
@@ -472,65 +580,138 @@ export default function StudentDetailPage() {
 
       {/* Renderizado condicional según rol */}
       {isProfessor ? (
-        // Vista de Profesor: Sin tabs, toda la información en una tarjeta
-        <Card>
-          <CardContent className="pt-6">
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                <div>
-                  <Label className="font-semibold">Student Code</Label>
+        // Vista de Profesor: Sin tabs, toda la información en tarjetas separadas
+        <div className="space-y-6">
+          {/* Personal Information */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-5 w-5 text-primary" />
+                Personal Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label className="font-semibold flex items-center gap-2">
+                    <User className="h-4 w-4 text-primary" />
+                    Full Name
+                  </Label>
+                  <p className="text-sm font-semibold">{student.name}</p>
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-semibold flex items-center gap-2">
+                    <Hash className="h-4 w-4 text-primary" />
+                    Student Code
+                  </Label>
                   <p className="text-sm font-semibold">
                     {student.studentCode}
                   </p>
                 </div>
-                <div>
-                  <Label className="font-semibold">Full Name</Label>
-                  <p className="text-sm font-semibold">{student.name}</p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Date of Birth</Label>
+                <div className="space-y-2">
+                  <Label className="font-semibold flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-primary" />
+                    Date of Birth
+                  </Label>
                   <p className="text-sm">
                     {student.dob
                       ? formatDateForDisplay(student.dob)
                       : "N/A"}
                   </p>
                 </div>
-                <div>
-                  <Label className="font-semibold">Gender</Label>
+                <div className="space-y-2">
+                  <Label className="font-semibold flex items-center gap-2">
+                    <User className="h-4 w-4 text-primary" />
+                    Gender
+                  </Label>
                   <p className="text-sm">{student.gender || "N/A"}</p>
                 </div>
-                <div>
-                  <Label className="font-semibold">Representative</Label>
-                  <p className="text-sm">
-                    {student.representativeName || "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Occupation</Label>
+                {student.representativeName && (
+                  <div className="space-y-2">
+                    <Label className="font-semibold flex items-center gap-2">
+                      <User className="h-4 w-4 text-primary" />
+                      Representative
+                    </Label>
+                    <p className="text-sm">
+                      {student.representativeName}
+                    </p>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label className="font-semibold flex items-center gap-2">
+                    <Info className="h-4 w-4 text-primary" />
+                    Occupation
+                  </Label>
                   <p className="text-sm">{student.occupation || "N/A"}</p>
                 </div>
-                <div>
-                  <Label className="font-semibold">Email</Label>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Contact Information */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Mail className="h-5 w-5 text-primary" />
+                Contact Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label className="font-semibold flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-primary" />
+                    Email
+                  </Label>
                   <p className="text-sm">{student.email}</p>
                 </div>
-                <div>
-                  <Label className="font-semibold">Phone</Label>
+                <div className="space-y-2">
+                  <Label className="font-semibold flex items-center gap-2">
+                    <Phone className="h-4 w-4 text-primary" />
+                    Phone
+                  </Label>
                   <p className="text-sm">{student.phone}</p>
                 </div>
-                <div className="md:col-span-2">
-                  <Label className="font-semibold">Address</Label>
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="font-semibold flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-primary" />
+                    Address
+                  </Label>
                   <p className="text-sm">{student.address}</p>
                 </div>
-                <div>
-                  <Label className="font-semibold">City</Label>
+                <div className="space-y-2">
+                  <Label className="font-semibold flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-primary" />
+                    City
+                  </Label>
                   <p className="text-sm">{student.city}</p>
                 </div>
-                <div>
-                  <Label className="font-semibold">Country</Label>
+                <div className="space-y-2">
+                  <Label className="font-semibold flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-primary" />
+                    Country
+                  </Label>
                   <p className="text-sm">{student.country}</p>
                 </div>
-                <div>
-                  <Label className="font-semibold">Status</Label>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Additional Information */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Info className="h-5 w-5 text-primary" />
+                Additional Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label className="font-semibold flex items-center gap-2">
+                    <Info className="h-4 w-4 text-primary" />
+                    Status
+                  </Label>
                   <span
                     className={`px-2 py-1 rounded-full text-xs font-semibold ${
                       student.status === 1
@@ -545,11 +726,42 @@ export default function StudentDetailPage() {
                       : "Inactive"}
                   </span>
                 </div>
+                <div className="space-y-2">
+                  <Label className="font-semibold flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-primary" />
+                    Canva & Doc
+                  </Label>
+                  {student.canvaDocUrl ? (
+                    <p className="text-sm">
+                      <a
+                        href={student.canvaDocUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline flex items-center gap-1"
+                      >
+                        {student.canvaDocUrl}
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">N/A</p>
+                  )}
+                </div>
               </div>
+            </CardContent>
+          </Card>
 
-              {student.notes && student.notes.length > 0 && (
-                <div className="space-y-4 mt-6">
-                  <h3 className="text-lg font-medium">Notes</h3>
+          {/* Notes */}
+          {student.notes && student.notes.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <StickyNote className="h-5 w-5 text-primary" />
+                  Notes
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
                   {student.notes.map((note, index) => (
                     <div
                       key={note._id || index}
@@ -576,10 +788,10 @@ export default function StudentDetailPage() {
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          )}
+        </div>
       ) : (
         // Vista de Admin o Estudiante: Con tabs
         <Tabs 
@@ -607,30 +819,29 @@ export default function StudentDetailPage() {
         {/* Tab: Profile (Estudiante) */}
         {isStudent && (
           <TabsContent value="profile">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <User className="h-5 w-5" />
-                  Profile Information
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
+            <div className="space-y-6">
+              {/* Personal Information */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <User className="h-5 w-5 text-primary" />
+                    Personal Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label className="font-semibold">Name</Label>
+                      <Label className="font-semibold flex items-center gap-2">
+                        <User className="h-4 w-4 text-primary" />
+                        Name
+                      </Label>
                       <p className="text-sm">{student.name}</p>
                     </div>
                     <div className="space-y-2">
-                      <Label className="font-semibold">Email</Label>
-                      <p className="text-sm">{student.email}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="font-semibold">Phone</Label>
-                      <p className="text-sm">{student.phone}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="font-semibold">Date of Birth</Label>
+                      <Label className="font-semibold flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-primary" />
+                        Date of Birth
+                      </Label>
                       <p className="text-sm">
                         {student.dob
                           ? formatDateForDisplay(student.dob)
@@ -638,156 +849,359 @@ export default function StudentDetailPage() {
                       </p>
                     </div>
                     <div className="space-y-2">
-                      <Label className="font-semibold">Gender</Label>
+                      <Label className="font-semibold flex items-center gap-2">
+                        <User className="h-4 w-4 text-primary" />
+                        Gender
+                      </Label>
                       <p className="text-sm">{student.gender || "N/A"}</p>
                     </div>
                     <div className="space-y-2">
-                      <Label className="font-semibold">Occupation</Label>
+                      <Label className="font-semibold flex items-center gap-2">
+                        <Info className="h-4 w-4 text-primary" />
+                        Occupation
+                      </Label>
                       <p className="text-sm">{student.occupation || "N/A"}</p>
                     </div>
                     {student.representativeName && (
                       <div className="space-y-2">
-                        <Label className="font-semibold">Representative</Label>
+                        <Label className="font-semibold flex items-center gap-2">
+                          <User className="h-4 w-4 text-primary" />
+                          Representative
+                        </Label>
                         <p className="text-sm">{student.representativeName}</p>
                       </div>
                     )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Contact Information */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Mail className="h-5 w-5 text-primary" />
+                    Contact Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label className="font-semibold">Address</Label>
+                      <Label className="font-semibold flex items-center gap-2">
+                        <Mail className="h-4 w-4 text-primary" />
+                        Email
+                      </Label>
+                      <p className="text-sm">{student.email}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="font-semibold flex items-center gap-2">
+                        <Phone className="h-4 w-4 text-primary" />
+                        Phone
+                      </Label>
+                      <p className="text-sm">{student.phone}</p>
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label className="font-semibold flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-primary" />
+                        Address
+                      </Label>
                       <p className="text-sm">
                         {student.address}, {student.city}, {student.country}
                       </p>
                     </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Additional Information */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-primary" />
+                    Additional Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label className="font-semibold flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-primary" />
+                        Canva & Doc
+                      </Label>
+                      {student.canvaDocUrl ? (
+                        <p className="text-sm">
+                          <a
+                            href={student.canvaDocUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline flex items-center gap-1"
+                          >
+                            {student.canvaDocUrl}
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        </p>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">N/A</p>
+                      )}
+                    </div>
                     {student.disenrollmentReason && (
-                      <div className="space-y-2 md:col-span-2">
-                        <Label className="font-semibold">Disenrollment Reason</Label>
+                      <div className="space-y-2">
+                        <Label className="font-semibold flex items-center gap-2">
+                          <AlertCircle className="h-4 w-4 text-primary" />
+                          Disenrollment Reason
+                        </Label>
                         <p className="text-sm">{student.disenrollmentReason}</p>
                       </div>
                     )}
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         )}
 
         {/* Tab: Student Details (Admin) */}
         {!isStudent && (
           <TabsContent value="details">
-          <Card>
-            <CardContent>
-              {!isEditing ? (
-                <div className="space-y-6">
-                  <div className="flex justify-end">
-                    <Button
-                      variant="outline"
-                      onClick={() => setIsEditing(true)}
-                    >
-                      <Pencil className="h-4 w-4 mr-2" />
-                      Edit
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                    <div>
-                      <Label className="font-semibold">Student Code</Label>
-                      <p className="text-sm font-semibold">
-                        {student.studentCode}
-                      </p>
-                    </div>
-                    <div>
-                      <Label className="font-semibold">Full Name</Label>
-                      <p className="text-sm font-semibold">{student.name}</p>
-                    </div>
-                    <div>
-                      <Label className="font-semibold">Date of Birth</Label>
-                      <p className="text-sm">
-                        {student.dob
-                          ? formatDateForDisplay(student.dob)
-                          : "N/A"}
-                      </p>
-                    </div>
-                    <div>
-                      <Label className="font-semibold">Gender</Label>
-                      <p className="text-sm">{student.gender || "N/A"}</p>
-                    </div>
-                    <div>
-                      <Label className="font-semibold">Representative</Label>
-                      <p className="text-sm">
-                        {student.representativeName || "N/A"}
-                      </p>
-                    </div>
-                    <div>
-                      <Label className="font-semibold">Occupation</Label>
-                      <p className="text-sm">{student.occupation || "N/A"}</p>
-                    </div>
-                    <div>
-                      <Label className="font-semibold">Email</Label>
-                      <p className="text-sm">{student.email}</p>
-                    </div>
-                    <div>
-                      <Label className="font-semibold">Phone</Label>
-                      <p className="text-sm">{student.phone}</p>
-                    </div>
-                    <div className="md:col-span-2">
-                      <Label className="font-semibold">Address</Label>
-                      <p className="text-sm">{student.address}</p>
-                    </div>
-                    <div>
-                      <Label className="font-semibold">City</Label>
-                      <p className="text-sm">{student.city}</p>
-                    </div>
-                    <div>
-                      <Label className="font-semibold">Country</Label>
-                      <p className="text-sm">{student.country}</p>
-                    </div>
-                    <div>
-                      <Label className="font-semibold">Status</Label>
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                          student.status === 1
-                            ? "bg-secondary/20 text-secondary"
-                            : student.status === 0
-                            ? "bg-accent-1/20 text-accent-1"
-                            : "bg-yellow-100 text-yellow-800"
-                        }`}
-                      >
-                        {student.status === 1
-                          ? "Active"
-                          : "Inactive"}
-                      </span>
-                    </div>
-                  </div>
+            <div className="space-y-6">
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsEditing(true)}
+                >
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Edit
+                </Button>
+              </div>
 
-                  {student.notes && student.notes.length > 0 && (
-                    <div className="space-y-4 mt-6">
-                      <h3 className="text-lg font-medium">Notes</h3>
-                      {student.notes.map((note, index) => (
-                        <div
-                          key={note._id || index}
-                          className="border p-4 rounded-md"
-                        >
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                              <Label className="text-sm text-muted-foreground">
-                                Date
-                              </Label>
-                              <p className="text-sm font-semibold">
-                                {note.date
-                                  ? formatDateForDisplay(note.date)
-                                  : "N/A"}
-                              </p>
-                            </div>
-                            <div className="md:col-span-2">
-                              <Label className="text-sm text-muted-foreground">
-                                Note
-                              </Label>
-                              <p className="text-sm">{note.text}</p>
-                            </div>
-                          </div>
+              {!isEditing ? (
+                <>
+                  {/* Personal Information */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <User className="h-5 w-5 text-primary" />
+                        Personal Information
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {/* Avatar Section */}
+                      <div className="flex items-center gap-4 mb-6 pb-6 border-b">
+                        <Avatar className="h-24 w-24">
+                          {studentAvatar ? (
+                            <AvatarImage src={studentAvatar} alt={student.name} />
+                          ) : null}
+                          <AvatarFallback className="text-lg">
+                            {getInitials(student.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <Label className="font-semibold text-base">Avatar</Label>
+                          <p className="text-sm text-muted-foreground">
+                            {studentAvatar ? "Avatar uploaded" : "No avatar set"}
+                          </p>
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <Label className="font-semibold flex items-center gap-2">
+                            <User className="h-4 w-4 text-primary" />
+                            Full Name
+                          </Label>
+                          <p className="text-sm font-semibold">{student.name}</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="font-semibold flex items-center gap-2">
+                            <Hash className="h-4 w-4 text-primary" />
+                            Student Code
+                          </Label>
+                          <p className="text-sm font-semibold">
+                            {student.studentCode}
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="font-semibold flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-primary" />
+                            Date of Birth
+                          </Label>
+                          <p className="text-sm">
+                            {student.dob
+                              ? formatDateForDisplay(student.dob)
+                              : "N/A"}
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="font-semibold flex items-center gap-2">
+                            <User className="h-4 w-4 text-primary" />
+                            Gender
+                          </Label>
+                          <p className="text-sm">{student.gender || "N/A"}</p>
+                        </div>
+                        {student.representativeName && (
+                          <div className="space-y-2">
+                            <Label className="font-semibold flex items-center gap-2">
+                              <User className="h-4 w-4 text-primary" />
+                              Representative
+                            </Label>
+                            <p className="text-sm">
+                              {student.representativeName}
+                            </p>
+                          </div>
+                        )}
+                        <div className="space-y-2">
+                          <Label className="font-semibold flex items-center gap-2">
+                            <Info className="h-4 w-4 text-primary" />
+                            Occupation
+                          </Label>
+                          <p className="text-sm">{student.occupation || "N/A"}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Contact Information */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Mail className="h-5 w-5 text-primary" />
+                        Contact Information
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <Label className="font-semibold flex items-center gap-2">
+                            <Mail className="h-4 w-4 text-primary" />
+                            Email
+                          </Label>
+                          <p className="text-sm">{student.email}</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="font-semibold flex items-center gap-2">
+                            <Phone className="h-4 w-4 text-primary" />
+                            Phone
+                          </Label>
+                          <p className="text-sm">{student.phone}</p>
+                        </div>
+                        <div className="space-y-2 md:col-span-2">
+                          <Label className="font-semibold flex items-center gap-2">
+                            <MapPin className="h-4 w-4 text-primary" />
+                            Address
+                          </Label>
+                          <p className="text-sm">{student.address}</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="font-semibold flex items-center gap-2">
+                            <MapPin className="h-4 w-4 text-primary" />
+                            City
+                          </Label>
+                          <p className="text-sm">{student.city}</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="font-semibold flex items-center gap-2">
+                            <MapPin className="h-4 w-4 text-primary" />
+                            Country
+                          </Label>
+                          <p className="text-sm">{student.country}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Additional Information */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Info className="h-5 w-5 text-primary" />
+                        Additional Information
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <Label className="font-semibold flex items-center gap-2">
+                            <Info className="h-4 w-4 text-primary" />
+                            Status
+                          </Label>
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                              student.status === 1
+                                ? "bg-secondary/20 text-secondary"
+                                : student.status === 0
+                                ? "bg-accent-1/20 text-accent-1"
+                                : "bg-yellow-100 text-yellow-800"
+                            }`}
+                          >
+                            {student.status === 1
+                              ? "Active"
+                              : "Inactive"}
+                          </span>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="font-semibold flex items-center gap-2">
+                            <FileText className="h-4 w-4 text-primary" />
+                            Canva & Doc
+                          </Label>
+                          {student.canvaDocUrl ? (
+                            <p className="text-sm">
+                              <a
+                                href={student.canvaDocUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline flex items-center gap-1"
+                              >
+                                {student.canvaDocUrl}
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                            </p>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">N/A</p>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Notes */}
+                  {student.notes && student.notes.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <StickyNote className="h-5 w-5 text-primary" />
+                          Notes
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-4">
+                          {student.notes.map((note, index) => (
+                            <div
+                              key={note._id || index}
+                              className="border p-4 rounded-md"
+                            >
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                  <Label className="text-sm text-muted-foreground">
+                                    Date
+                                  </Label>
+                                  <p className="text-sm font-semibold">
+                                    {note.date
+                                      ? formatDateForDisplay(note.date)
+                                      : "N/A"}
+                                  </p>
+                                </div>
+                                <div className="md:col-span-2">
+                                  <Label className="text-sm text-muted-foreground">
+                                    Note
+                                  </Label>
+                                  <p className="text-sm">{note.text}</p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
                   )}
-                </div>
+                </>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div className="flex justify-end gap-2">
@@ -817,6 +1231,55 @@ export default function StudentDetailPage() {
                       <span>{dialogError}</span>
                     </div>
                   )}
+
+                  {/* Avatar Section */}
+                  <fieldset className="border p-4 rounded-md">
+                    <legend className="px-1 text-sm">Avatar</legend>
+                    <div className="flex items-center gap-6 mt-2">
+                      <Avatar className="h-24 w-24">
+                        {studentAvatar ? (
+                          <AvatarImage src={studentAvatar} alt={formData.name || "Student"} />
+                        ) : null}
+                        <AvatarFallback className="text-lg">
+                          {formData.name ? getInitials(formData.name) : "ST"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex flex-col gap-2">
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => fileInputRef.current?.click()}
+                          >
+                            <Upload className="h-4 w-4 mr-2" />
+                            Upload Avatar
+                          </Button>
+                          {studentAvatar && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={handleRemoveAvatar}
+                            >
+                              <X className="h-4 w-4 mr-2" />
+                              Remove
+                            </Button>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Image files only, max 5MB
+                        </p>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleAvatarChange}
+                          className="hidden"
+                        />
+                      </div>
+                    </div>
+                  </fieldset>
 
                   <fieldset className="border p-4 rounded-md">
                     <legend className="px-1 text-sm">Personal Info</legend>
@@ -946,6 +1409,21 @@ export default function StudentDetailPage() {
                       </div>
                     </div>
                   </fieldset>
+                  <fieldset className="border p-4 rounded-md">
+                    <legend className="px-1 text-sm">Canva & Doc</legend>
+                    <div className="mt-2">
+                      <div className="space-y-2">
+                        <Label>Canva Document URL</Label>
+                        <Input
+                          name="canvaDocUrl"
+                          type="url"
+                          placeholder="https://..."
+                          value={formData.canvaDocUrl || ""}
+                          onChange={handleFormChange}
+                        />
+                      </div>
+                    </div>
+                  </fieldset>
                   <div className="space-y-4">
                     <h3 className="text-lg font-medium">Notes</h3>
                     {(formData.notes || []).map((note, index) => (
@@ -994,9 +1472,8 @@ export default function StudentDetailPage() {
                   </div>
                 </form>
               )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </div>
+          </TabsContent>
         )}
 
         {/* Tab: Enrollments */}
@@ -1025,62 +1502,61 @@ export default function StudentDetailPage() {
 
                 {/* Lista de Enrollments */}
                 {studentInfo && studentInfo.enrollmentDetails.length > 0 ? (
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     <Label className="text-lg font-semibold">Active Enrollments</Label>
-                    {studentInfo.enrollmentDetails.map((enrollment) => (
-                      <Card key={enrollment.enrollmentId}>
-                        <CardContent className="pt-4">
-                          <div className="flex items-start justify-between">
-                            <div className="space-y-2 flex-1">
-                              <div className="flex items-center gap-2">
-                                <BookOpen className="h-4 w-4 text-muted-foreground" />
-                                <Label className="font-semibold">
-                                  {enrollment.planName}
-                                </Label>
+                    {studentInfo.enrollmentDetails.map((enrollment, index) => (
+                      <div key={enrollment.enrollmentId}>
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-2 flex-1">
+                            <div className="flex items-center gap-2">
+                              <BookOpen className="h-4 w-4 text-muted-foreground" />
+                              <Label className="font-semibold">
+                                {enrollment.planName}
+                              </Label>
+                              <span className="text-sm text-muted-foreground capitalize">
+                                ({enrollment.enrollmentType})
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                              <div className="flex items-center gap-1">
+                                <Calendar className="h-4 w-4 text-muted-foreground" />
+                                <span>
+                                  {formatDateForDisplay(enrollment.startDate)} /{" "}
+                                  {formatDateForDisplay(enrollment.endDate)}
+                                </span>
                               </div>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                                <div className="flex items-center gap-1">
-                                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                                  <span>
-                                    {formatDateForDisplay(enrollment.startDate)} -{" "}
-                                    {formatDateForDisplay(enrollment.endDate)}
-                                  </span>
-                                </div>
-                                <div>
-                                  <span className="capitalize">
-                                    {enrollment.enrollmentType}
-                                  </span>
-                                </div>
+                              <div>
+                                <Label className="text-muted-foreground">
+                                  Available Balance
+                                </Label>
+                                <p className="font-semibold text-secondary">
+                                  ${enrollment.amount.toFixed(2)}
+                                </p>
+                              </div>
+                              {enrollment.rescheduleHours > 0 && (
                                 <div>
                                   <Label className="text-muted-foreground">
-                                    Available Balance
+                                    Reschedule Hours
                                   </Label>
-                                  <p className="font-semibold text-secondary">
-                                    ${enrollment.amount.toFixed(2)}
-                                  </p>
+                                  <p>{enrollment.rescheduleHours} hours</p>
                                 </div>
-                                {enrollment.rescheduleHours > 0 && (
-                                  <div>
-                                    <Label className="text-muted-foreground">
-                                      Reschedule Hours
-                                    </Label>
-                                    <p>{enrollment.rescheduleHours} hours</p>
-                                  </div>
-                                )}
-                              </div>
+                              )}
                             </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleViewEnrollment(enrollment.enrollmentId)}
-                              className="ml-4"
-                            >
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Details
-                            </Button>
                           </div>
-                        </CardContent>
-                      </Card>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleViewEnrollment(enrollment.enrollmentId)}
+                            className="ml-4"
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            View Details
+                          </Button>
+                        </div>
+                        {index < studentInfo.enrollmentDetails.length - 1 && (
+                          <div className="border-t my-6" />
+                        )}
+                      </div>
                     ))}
                   </div>
                 ) : (
@@ -1114,62 +1590,61 @@ export default function StudentDetailPage() {
 
                 {/* Lista de Enrollments */}
                 {studentInfo && studentInfo.enrollmentDetails.length > 0 ? (
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     <Label className="text-lg font-semibold">Active Enrollments</Label>
-                    {studentInfo.enrollmentDetails.map((enrollment) => (
-                      <Card key={enrollment.enrollmentId}>
-                        <CardContent className="pt-4">
-                          <div className="flex items-start justify-between">
-                            <div className="space-y-2 flex-1">
-                              <div className="flex items-center gap-2">
-                                <BookOpen className="h-4 w-4 text-muted-foreground" />
-                                <Label className="font-semibold">
-                                  {enrollment.planName}
-                                </Label>
+                    {studentInfo.enrollmentDetails.map((enrollment, index) => (
+                      <div key={enrollment.enrollmentId}>
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-2 flex-1">
+                            <div className="flex items-center gap-2">
+                              <BookOpen className="h-4 w-4 text-muted-foreground" />
+                              <Label className="font-semibold">
+                                {enrollment.planName}
+                              </Label>
+                              <span className="text-sm text-muted-foreground capitalize">
+                                ({enrollment.enrollmentType})
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                              <div className="flex items-center gap-1">
+                                <Calendar className="h-4 w-4 text-muted-foreground" />
+                                <span>
+                                  {formatDateForDisplay(enrollment.startDate)} /{" "}
+                                  {formatDateForDisplay(enrollment.endDate)}
+                                </span>
                               </div>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                                <div className="flex items-center gap-1">
-                                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                                  <span>
-                                    {formatDateForDisplay(enrollment.startDate)} -{" "}
-                                    {formatDateForDisplay(enrollment.endDate)}
-                                  </span>
-                                </div>
-                                <div>
-                                  <span className="capitalize">
-                                    {enrollment.enrollmentType}
-                                  </span>
-                                </div>
+                              <div>
+                                <Label className="text-muted-foreground">
+                                  Available Balance
+                                </Label>
+                                <p className="font-semibold text-secondary">
+                                  ${enrollment.amount.toFixed(2)}
+                                </p>
+                              </div>
+                              {enrollment.rescheduleHours > 0 && (
                                 <div>
                                   <Label className="text-muted-foreground">
-                                    Available Balance
+                                    Reschedule Hours
                                   </Label>
-                                  <p className="font-semibold text-secondary">
-                                    ${enrollment.amount.toFixed(2)}
-                                  </p>
+                                  <p>{enrollment.rescheduleHours} hours</p>
                                 </div>
-                                {enrollment.rescheduleHours > 0 && (
-                                  <div>
-                                    <Label className="text-muted-foreground">
-                                      Reschedule Hours
-                                    </Label>
-                                    <p>{enrollment.rescheduleHours} hours</p>
-                                  </div>
-                                )}
-                              </div>
+                              )}
                             </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleViewEnrollment(enrollment.enrollmentId)}
-                              className="ml-4"
-                            >
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Details
-                            </Button>
                           </div>
-                        </CardContent>
-                      </Card>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleViewEnrollment(enrollment.enrollmentId)}
+                            className="ml-4"
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            View Details
+                          </Button>
+                        </div>
+                        {index < studentInfo.enrollmentDetails.length - 1 && (
+                          <div className="border-t my-6" />
+                        )}
+                      </div>
                     ))}
                   </div>
                 ) : (
@@ -1179,6 +1654,79 @@ export default function StudentDetailPage() {
                       : "Loading enrollment information..."}
                   </p>
                 )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Income History - Solo Admin y Estudiante */}
+          {(isAdmin || isStudent) && studentInfo?.incomeHistory && studentInfo.incomeHistory.length > 0 && (
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <DollarSign className="h-5 w-5 text-primary" />
+                  Income History
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  {studentInfo.incomeHistory.map((incomeGroup, groupIndex) => (
+                    <div key={incomeGroup.enrollment._id}>
+                      <div className="mb-4 pb-2 border-b">
+                        <div className="flex items-center gap-2 mb-1">
+                          <BookOpen className="h-4 w-4 text-muted-foreground" />
+                          <Label className="font-semibold">
+                            {incomeGroup.enrollment.planId.name}
+                          </Label>
+                          <span className="text-sm text-muted-foreground capitalize">
+                            ({incomeGroup.enrollment.enrollmentType})
+                          </span>
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {formatDateForDisplay(incomeGroup.enrollment.startDate)} - {formatDateForDisplay(incomeGroup.enrollment.endDate)}
+                        </div>
+                      </div>
+                      {incomeGroup.incomes.length > 0 ? (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Date</TableHead>
+                              <TableHead>Deposit Name</TableHead>
+                              <TableHead className="text-right">Amount (USD)</TableHead>
+                              <TableHead>Currency</TableHead>
+                              <TableHead>Payment Method</TableHead>
+                              <TableHead>Note</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {incomeGroup.incomes.map((income) => (
+                              <TableRow key={income._id}>
+                                <TableCell>
+                                  {formatDateForDisplay(income.income_date)}
+                                </TableCell>
+                                <TableCell>{income.deposit_name}</TableCell>
+                                <TableCell className="text-right font-medium">
+                                  ${income.amountInDollars.toFixed(2)}
+                                </TableCell>
+                                <TableCell>{income.idDivisa.name}</TableCell>
+                                <TableCell>{income.idPaymentMethod.name}</TableCell>
+                                <TableCell className="max-w-xs truncate">
+                                  {income.note || "N/A"}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      ) : (
+                        <p className="text-muted-foreground text-sm py-4">
+                          No income records for this enrollment.
+                        </p>
+                      )}
+                      {groupIndex < (studentInfo.incomeHistory?.length ?? 0) - 1 && (
+                        <div className="border-t my-6" />
+                      )}
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           )}
@@ -1231,7 +1779,7 @@ export default function StudentDetailPage() {
                     </p>
                   </div>
                 )}
-                {!isStudent && studentInfo?.lostClasses && (
+                {isAdmin && studentInfo?.lostClasses && (
                   <div className="space-y-2">
                     <Label className="font-semibold text-red-600">Lost Classes</Label>
                     <p className="text-2xl font-bold text-red-600">

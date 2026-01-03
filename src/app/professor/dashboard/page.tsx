@@ -152,55 +152,58 @@ export default function ProfessorDashboardPage() {
               No active enrollments found.
             </p>
           ) : (
-            <div className="space-y-4">
-              {enrollments.slice(0, 5).map((enrollment) => (
-                <Card key={enrollment._id}>
-                  <CardContent>
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                      <div className="space-y-3 flex-1 min-w-0">
-                        {/* Estudiantes - Más prominente */}
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Users className="h-5 w-5 text-foreground shrink-0" />
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {enrollment.studentIds.map((s, index) => (
-                                <span key={s.studentId._id}>
-                                  <Link
-                                    href={`/students/${s.studentId._id}`}
-                                    className="text-base sm:text-lg font-semibold text-primary hover:underline break-words"
-                                  >
-                                    {s.studentId.name}
-                                  </Link>
-                                  {index < enrollment.studentIds.length - 1 && (
-                                    <span className="text-base sm:text-lg font-semibold text-foreground mx-1">
-                                      ,
-                                    </span>
-                                  )}
+            <div className="space-y-0">
+              {enrollments.slice(0, 5).map((enrollment, index) => (
+                <div
+                  key={enrollment._id}
+                  className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 py-4 ${
+                    index < enrollments.slice(0, 5).length - 1
+                      ? "border-b border-border"
+                      : ""
+                  }`}
+                >
+                  <div className="space-y-3 flex-1 min-w-0">
+                    {/* Estudiantes - Más prominente */}
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Users className="h-5 w-5 text-foreground shrink-0" />
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {enrollment.studentIds.map((s, studentIndex) => (
+                            <span key={s.studentId._id}>
+                              <Link
+                                href={`/students/${s.studentId._id}`}
+                                className="text-base sm:text-lg font-semibold text-primary hover:underline break-words"
+                              >
+                                {s.studentId.name}
+                              </Link>
+                              {studentIndex < enrollment.studentIds.length - 1 && (
+                                <span className="text-base sm:text-lg font-semibold text-foreground mx-1">
+                                  ,
                                 </span>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="text-sm text-foreground pl-7">
-                            {enrollment.studentIds.length} student
-                            {enrollment.studentIds.length !== 1 ? "s" : ""}
-                          </div>
-                        </div>
-                        {/* Plan - Menos prominente */}
-                        <div className="flex items-center gap-2 pt-1">
-                          <BookOpen className="h-3.5 w-3.5 text-primary shrink-0" />
-                          <Label className="text-xs text-foreground font-normal break-words">
-                            {enrollment.planId.name}
-                          </Label>
+                              )}
+                            </span>
+                          ))}
                         </div>
                       </div>
-                      <Button asChild variant="outline" size="sm" className="w-full sm:w-auto shrink-0">
-                        <Link href={`/professor/class-registry/${enrollment._id}`}>
-                          View Registry
-                        </Link>
-                      </Button>
+                      <div className="text-sm text-foreground pl-7">
+                        {enrollment.studentIds.length} student
+                        {enrollment.studentIds.length !== 1 ? "s" : ""}
+                      </div>
                     </div>
-                  </CardContent>
-                </Card>
+                    {/* Plan - Menos prominente */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <BookOpen className="h-3.5 w-3.5 text-primary shrink-0" />
+                      <Label className="text-xs text-foreground font-normal break-words">
+                        {enrollment.planId.name}
+                      </Label>
+                    </div>
+                  </div>
+                  <Button asChild variant="outline" size="sm" className="w-full sm:w-auto shrink-0">
+                    <Link href={`/professor/class-registry/${enrollment._id}`}>
+                      View Registry
+                    </Link>
+                  </Button>
+                </div>
               ))}
             </div>
           )}

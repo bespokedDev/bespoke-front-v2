@@ -79,7 +79,7 @@ interface PlanBrief {
 }
 interface EnrollmentBrief {
   _id: string;
-  studentIds: StudentBrief[];
+  studentIds: Array<{ studentId: StudentBrief }>;
   planId: PlanBrief;
   professorId: ProfessorBrief;
   enrollmentType: string;
@@ -312,24 +312,32 @@ export default function IncomesPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validaciones de campos obligatorios
+    // Required field validations
     if (!formData.deposit_name.trim()) {
-      setDialogError("El nombre de depósito es obligatorio.");
+      setDialogError("Deposit name is required.");
       return;
     }
 
     if (!formData.amount || formData.amount <= 0) {
-      setDialogError("El monto es obligatorio y debe ser mayor a 0.");
+      setDialogError("Amount is required and must be greater than 0.");
       return;
     }
 
     if (!formData.idPaymentMethod) {
-      setDialogError("El método de pago es obligatorio.");
+      setDialogError("Payment method is required.");
       return;
     }
 
     if (!formData.idDivisa) {
-      setDialogError("La divisa es obligatoria.");
+      setDialogError("Currency is required.");
+      return;
+    }
+
+    // Validation: If a professor is selected, an enrollment must also be selected
+    if (formData.idProfessor && !formData.idEnrollment) {
+      setDialogError(
+        "If you select a professor, you must also select an enrollment."
+      );
       return;
     }
 
@@ -502,18 +510,26 @@ export default function IncomesPage() {
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
             className="flex items-center gap-1"
           >
-            Student(s)
+            Enrollment
             <ArrowUpDown className="h-4 w-4" />
           </Button>
         ),
-        accessorFn: (row) =>
-          row.idEnrollment?.studentIds
-            ?.map((student) => student.name)
-            .join(", ") || "",
+        accessorFn: (row) => {
+          if (!row.idEnrollment) return "";
+          const enrollment = row.idEnrollment;
+          const studentNames = enrollment.studentIds?.map((s) => s.studentId?.name).join(", ") || "";
+          const primaryText = enrollment.alias || studentNames;
+          const planName = enrollment.planId?.name || "";
+          return planName ? `${primaryText} - ${planName}` : primaryText;
+        },
         sortingFn: stringLocaleSort(),
-        cell: ({ getValue }) => {
-          const formatted = getValue<string>();
-          return formatted || "N/A";
+        cell: ({ row }) => {
+          if (!row.original.idEnrollment) return "N/A";
+          const enrollment = row.original.idEnrollment;
+          const studentNames = enrollment.studentIds?.map((s) => s.studentId?.name).join(", ") || "";
+          const primaryText = enrollment.alias || studentNames;
+          const planName = enrollment.planId?.name || "";
+          return planName ? `${primaryText} - ${planName}` : primaryText || "N/A";
         },
       },
       {
@@ -548,26 +564,6 @@ export default function IncomesPage() {
         accessorKey: "idPaymentMethod.name",
         sortingFn: stringLocaleSort(),
         cell: ({ row }) => row.original.idPaymentMethod?.name || "N/A",
-      },
-      {
-        id: "amount",
-        header: ({ column }) => (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="flex items-center gap-1"
-          >
-            Amount
-            <ArrowUpDown className="h-4 w-4" />
-          </Button>
-        ),
-        accessorKey: "amount",
-        sortingFn: stringLocaleSort(),
-        cell: ({ row }) => {
-          const amount = row.original.amount || 0;
-          const divisa = row.original.idDivisa;
-          return `${amount.toFixed(2)} ${divisa?.name || ""}`;
-        },
       },
       {
         id: "amountInDollars",
@@ -625,16 +621,33 @@ export default function IncomesPage() {
   }, []);
 
   const filteredEnrollmentsForForm = useMemo(() => {
+    // Si hay un enrollment seleccionado, asegurarse de que esté incluido
+    const selectedEnrollmentId = formData.idEnrollment;
+    const selectedEnrollment = enrollments.find(
+      (e) => e._id === selectedEnrollmentId
+    );
+
     if (!formData.idProfessor) {
-      return [];
+      // Si no hay profesor, solo mostrar el enrollment seleccionado si existe
+      return selectedEnrollment ? [selectedEnrollment] : [];
     }
 
-    return enrollments.filter(
+    const filtered = enrollments.filter(
       (enrollment) =>
         enrollment.professorId?._id === formData.idProfessor &&
         isEnrollmentStatusActive(enrollment.status)
     );
-  }, [enrollments, formData.idProfessor]);
+
+    // Asegurarse de que el enrollment seleccionado esté incluido si no está ya en la lista
+    if (
+      selectedEnrollment &&
+      !filtered.find((e) => e._id === selectedEnrollmentId)
+    ) {
+      filtered.push(selectedEnrollment);
+    }
+
+    return filtered;
+  }, [enrollments, formData.idProfessor, formData.idEnrollment]);
 
   // Calcular monto en dólares
   const amountInDollars = useMemo(() => {
@@ -649,10 +662,9 @@ export default function IncomesPage() {
     return formData.amount / (formData.tasa || 1);
   }, [formData.amount, formData.idDivisa, formData.tasa, divisas]);
 
+  // Limpiar enrollment cuando cambia el profesor (incluso si se deselecciona)
   useEffect(() => {
-    if (formData.idProfessor) {
-      setFormData((prev) => ({ ...prev, idEnrollment: "" }));
-    }
+    setFormData((prev) => ({ ...prev, idEnrollment: "" }));
   }, [formData.idProfessor]);
 
   // Resetear tasa cuando cambie la divisa
@@ -716,6 +728,7 @@ export default function IncomesPage() {
             <DataTable
               columns={columns}
               data={incomes}
+              initialSorting={[{ id: "date", desc: true }]}
               searchKeys={[
                 "date",
                 "deposit_name",
@@ -825,7 +838,7 @@ export default function IncomesPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>
-                        Tasa de cambio ({selectedDivisa.name} → USD)
+                        Exchange Rate ({selectedDivisa.name} → USD)
                       </Label>
                       <Input
                         name="tasa"
@@ -839,11 +852,11 @@ export default function IncomesPage() {
                             tasa: Number(parseFloat(e.target.value).toFixed(2)),
                           }))
                         }
-                        placeholder="Ej: 35.50"
+                        placeholder="e.g., 35.50"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Monto en USD</Label>
+                      <Label>Amount in USD</Label>
                       <Label className="text-lg">
                         {amountInDollars.toFixed(2)}
                       </Label>
@@ -864,29 +877,59 @@ export default function IncomesPage() {
                   placeholder="Select payment method..."
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Professor</Label>
-                <SearchableSelect
-                  items={professors}
-                  selectedId={formData.idProfessor}
-                  onSelectedChange={(v) =>
-                    setFormData((p) => ({ ...p, idProfessor: v }))
-                  }
-                  placeholder="Select a professor..."
-                />
+
+              {/* Visual separator */}
+              <div className="border-t border-border my-6"></div>
+
+              {/* Enrollment Association Section (Optional) */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground mb-1">
+                    Enrollment Association (Optional)
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Leave empty to create an excedent income.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>
+                    Professor <span className="text-muted-foreground text-sm font-normal">(Optional)</span>
+                  </Label>
+                  <SearchableSelect
+                    items={professors}
+                    selectedId={formData.idProfessor}
+                    onSelectedChange={(v) =>
+                      setFormData((p) => ({ ...p, idProfessor: v }))
+                    }
+                    placeholder="Select a professor (optional)..."
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>
+                    Enrollment <span className="text-muted-foreground text-sm font-normal">(Required if professor selected)</span>
+                  </Label>
+                  <SearchableEnrollmentSelect
+                    enrollments={filteredEnrollmentsForForm}
+                    selectedId={formData.idEnrollment}
+                    onSelectedChange={(v) =>
+                      setFormData((p) => ({ ...p, idEnrollment: v }))
+                    }
+                    placeholder={
+                      formData.idProfessor
+                        ? "Select an enrollment..."
+                        : "Select a professor first..."
+                    }
+                    disabled={!formData.idProfessor}
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Enrollment</Label>
-                <SearchableEnrollmentSelect
-                  enrollments={filteredEnrollmentsForForm}
-                  selectedId={formData.idEnrollment}
-                  onSelectedChange={(v) =>
-                    setFormData((p) => ({ ...p, idEnrollment: v }))
-                  }
-                  placeholder="Select an enrollment..."
-                  disabled={!formData.idProfessor}
-                />
-              </div>
+
+              {/* Visual separator */}
+              <div className="border-t border-border my-6"></div>
+
+              {/* Note Section */}
               <div className="space-y-2">
                 <Label>Note</Label>
                 <Textarea
@@ -898,7 +941,7 @@ export default function IncomesPage() {
                 />
               </div>
               <div className="text-sm text-muted-foreground">
-                <span className="text-red-500">*</span> Campos obligatorios
+                <span className="text-red-500">*</span> Required fields
               </div>
               <DialogFooter className="pt-4 border-t">
                 <p className="text-sm text-accent-1 mr-auto">{dialogError}</p>
@@ -917,6 +960,7 @@ export default function IncomesPage() {
 
           {openDialog === "view" && selectedIncome && (
             <div className="space-y-6 max-h-[70vh] overflow-y-auto p-1 pr-4">
+              {/* Deposit Name and Date */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
                 <div>
                   <Label className="font-semibold">Deposit Name</Label>
@@ -930,10 +974,20 @@ export default function IncomesPage() {
                     {formatDateForDisplay(selectedIncome.income_date)}
                   </p>
                 </div>
+              </div>
+
+              {/* Amount, Currency, Amount in Dollars, Exchange Rate, Payment Method */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
                 <div>
                   <Label className="font-semibold">Amount</Label>
                   <p className="text-sm font-semibold">
-                    ${(selectedIncome.amount || 0).toFixed(2)}
+                    {(selectedIncome.amount || 0).toFixed(2)}
+                  </p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Currency</Label>
+                  <p className="text-sm">
+                    {selectedIncome.idDivisa?.name || "N/A"}
                   </p>
                 </div>
                 <div>
@@ -949,11 +1003,15 @@ export default function IncomesPage() {
                   </p>
                 </div>
                 <div>
-                  <Label className="font-semibold">Currency</Label>
+                  <Label className="font-semibold">Payment Method</Label>
                   <p className="text-sm">
-                    {selectedIncome.idDivisa?.name || "N/A"}
+                    {selectedIncome.idPaymentMethod?.name || "N/A"}
                   </p>
                 </div>
+              </div>
+
+              {/* Professor and Enrollment */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
                 <div>
                   <Label className="font-semibold">Professor</Label>
                   <p className="text-sm">
@@ -961,30 +1019,27 @@ export default function IncomesPage() {
                   </p>
                 </div>
                 <div>
-                  <Label className="font-semibold">Payment Method</Label>
-                  <p className="text-sm">
-                    {selectedIncome.idPaymentMethod?.name || "N/A"}
-                  </p>
-                </div>
-                <div className="md:col-span-2">
                   <Label className="font-semibold">Enrollment</Label>
                   <p className="text-sm">
                     {selectedIncome.idEnrollment
-                      ? `${
-                          selectedIncome.idEnrollment.planId?.name || "N/A"
-                        } - ${
-                          selectedIncome.idEnrollment.studentIds
-                            ?.map((s) => s.name)
-                            .join(", ") || "N/A"
-                        }`
+                      ? (() => {
+                          const enrollment = selectedIncome.idEnrollment;
+                          const studentNames = enrollment.studentIds?.map((s) => s.studentId?.name).join(", ") || "";
+                          const primaryText = enrollment.alias || studentNames;
+                          const planName = enrollment.planId?.name || "";
+                          return planName ? `${primaryText} - ${planName}` : primaryText || "N/A";
+                        })()
                       : "N/A"}
                   </p>
                 </div>
-                <div className="md:col-span-2">
-                  <Label className="font-semibold">Note</Label>
-                  <p className="text-sm">{selectedIncome.note || "N/A"}</p>
-                </div>
               </div>
+
+              {/* Note */}
+              <div>
+                <Label className="font-semibold">Note</Label>
+                <p className="text-sm">{selectedIncome.note || "N/A"}</p>
+              </div>
+
               <DialogFooter className="pt-4 border-t">
                 <Button variant="outline" onClick={handleClose}>
                   Close
@@ -1109,7 +1164,18 @@ function SearchableSelect({
           className="w-full justify-between h-auto min-h-10 hover:!bg-primary/30 dark:hover:!primary/30"
         >
           {selectedItem ? selectedItem.name : placeholder}
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          <div className="flex items-center gap-1">
+            {!required && selectedItem && (
+              <X
+                className="h-4 w-4 shrink-0 opacity-50 hover:opacity-100"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectedChange("");
+                }}
+              />
+            )}
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </div>
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
@@ -1117,6 +1183,19 @@ function SearchableSelect({
           <CommandInput placeholder={placeholder} />
           <CommandEmpty>No item found.</CommandEmpty>
           <CommandGroup className="max-h-60 overflow-y-auto">
+            {!required && selectedItem && (
+              <CommandItem
+                value="__clear__"
+                onSelect={() => {
+                  onSelectedChange("");
+                  setOpen(false);
+                }}
+                className="hover:!bg-secondary/20 dark:hover:!secondary/30 text-muted-foreground"
+              >
+                <X className="h-4 w-4 mr-2" />
+                Clear selection
+              </CommandItem>
+            )}
             {items.map((item) => (
               <CommandItem
                 key={item._id}
@@ -1157,6 +1236,14 @@ function SearchableEnrollmentSelect({
     (item) => item._id === selectedId
   );
 
+  // Helper function to get display text for enrollment
+  const getEnrollmentDisplayText = (enrollment: EnrollmentBrief) => {
+    const studentNames = enrollment.studentIds?.map((s) => s.studentId?.name).join(", ") || "";
+    const primaryText = enrollment.alias || studentNames;
+    const planName = enrollment.planId?.name || "";
+    return planName ? `${primaryText} - ${planName}` : primaryText;
+  };
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -1169,12 +1256,7 @@ function SearchableEnrollmentSelect({
         >
           {selectedEnrollment ? (
             <div className="text-left">
-              {selectedEnrollment.alias ||
-                selectedEnrollment.studentIds
-                  ?.map((s) => s.name)
-                  .join(", ")}{" "}
-              - Plan: {selectedEnrollment.planId?.name} (
-              {selectedEnrollment.enrollmentType})
+              {getEnrollmentDisplayText(selectedEnrollment)}
             </div>
           ) : (
             placeholder
@@ -1187,27 +1269,25 @@ function SearchableEnrollmentSelect({
           <CommandInput placeholder={placeholder} />
           <CommandEmpty>No enrollment found.</CommandEmpty>
           <CommandGroup className="max-h-60 overflow-y-auto">
-            {enrollments.map((enrollment) => (
-              <CommandItem
-                key={enrollment._id}
-                value={`${
-                  enrollment.alias ||
-                  enrollment.studentIds?.map((s) => s.name).join(", ")
-                } ${enrollment.planId?.name} ${enrollment.enrollmentType}`}
-                onSelect={() => {
-                  onSelectedChange(enrollment._id);
-                  setOpen(false);
-                }}
-                className="hover:!bg-secondary/20 dark:hover:!secondary/30"
-              >
-                <div className="text-left">
-                  {enrollment.alias ||
-                    enrollment.studentIds?.map((s) => s.name).join(", ")}{" "}
-                  - Plan: {enrollment.planId?.name} ({enrollment.enrollmentType}
-                  )
-                </div>
-              </CommandItem>
-            ))}
+            {enrollments.map((enrollment) => {
+              const studentNames = enrollment.studentIds?.map((s) => s.studentId?.name).join(", ") || "";
+              const searchValue = `${enrollment.alias || studentNames} ${enrollment.planId?.name || ""}`.toLowerCase();
+              return (
+                <CommandItem
+                  key={enrollment._id}
+                  value={searchValue}
+                  onSelect={() => {
+                    onSelectedChange(enrollment._id);
+                    setOpen(false);
+                  }}
+                  className="hover:!bg-secondary/20 dark:hover:!secondary/30"
+                >
+                  <div className="text-left">
+                    {getEnrollmentDisplayText(enrollment)}
+                  </div>
+                </CommandItem>
+              );
+            })}
           </CommandGroup>
         </Command>
       </PopoverContent>

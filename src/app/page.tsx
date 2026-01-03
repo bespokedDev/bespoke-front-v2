@@ -15,10 +15,10 @@ export default function HomePage() {
   const router = useRouter();
   
   const summary = [
-    { title: "Students", count: 120, color: "secondary" },
-    { title: "Professors", count: 25, color: "primary" },
-    { title: "Active Plans", count: 8, color: "accent-2" },
-    { title: "Assignments Today", count: 15, color: "accent-1" },
+    { title: "Students", count: 120, color: "secondary" as const },
+    { title: "Professors", count: 25, color: "primary" as const },
+    { title: "Active Plans", count: 8, color: "accent-2" as const },
+    { title: "Assignments Today", count: 15, color: "accent-1" as const },
   ];
 
   // Redirigir según el rol si no es admin

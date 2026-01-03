@@ -5,7 +5,6 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { apiClient } from "@/lib/api";
 import { handleApiError, getFriendlyErrorMessage } from "@/lib/errorHandler";
 import {
-  formatDateForDisplay,
   getCurrentDateString,
   extractDatePart,
   dateStringToISO,
@@ -64,16 +63,19 @@ import {
   ChevronDown,
   Trash2,
 } from "lucide-react";
+import Link from "next/link";
 
 // --- DEFINICIONES DE TIPOS ---
 interface Plan {
   _id: string;
   name: string;
+  weeklyClasses: number;
   pricing: { single: number; couple: number; group: number };
 }
 interface StudentBrief {
   _id: string;
   name: string;
+  status?: number; // 1 = activo, 0 = inactivo
 }
 interface ProfessorBrief {
   _id: string;
@@ -104,6 +106,11 @@ interface StudentEnrollmentInfo {
   idealClassType?: string;
   learningDifficulties?: string;
   languageLevel?: string;
+  experiencePastClass?: string;
+  howWhereTheClasses?: string;
+  roleGroup?: string;
+  willingHomework?: number;
+  availabityToPractice?: string;
 }
 
 interface Enrollment {
@@ -115,6 +122,8 @@ interface Enrollment {
   scheduledDays: ScheduledDay[] | null;
   purchaseDate: string;
   startDate?: string;
+  endDate?: string;
+  monthlyClasses?: number;
   pricePerStudent: number;
   totalAmount: number;
   status: number; // 1=activo, 2=inactivo, 0=disuelto, 3=pausado
@@ -123,6 +132,17 @@ interface Enrollment {
   available_balance?: number;
   classCalculationType?: number;
   substituteProfessor?: SubstituteProfessor | null;
+  lateFee?: number;
+  suspensionDaysAfterEndDate?: number;
+  penalizationMoney?: number;
+  penalizationId?: string;
+  graceDays?: number;
+  latePaymentPenalty?: number;
+  extendedGraceDays?: number;
+  cancellationPaymentsEnabled?: boolean;
+  rescheduleHours?: number;
+  disolve_reason?: string | null;
+  disolve_user?: string | null;
 }
 
 type StudentEnrollmentFormData = {
@@ -132,10 +152,15 @@ type StudentEnrollmentFormData = {
   previousExperience?: string;
   goals?: string;
   dailyLearningTime?: string;
-  learningType?: string;
+  learningType?: string; // Se maneja como array internamente, se envía como string separado por comas
   idealClassType?: string;
   learningDifficulties?: string;
   languageLevel?: string;
+  experiencePastClass?: string;
+  howWhereTheClasses?: string;
+  roleGroup?: string;
+  willingHomework?: number;
+  availabityToPractice?: string;
 };
 
 type EnrollmentFormData = {
@@ -153,6 +178,8 @@ type EnrollmentFormData = {
   language?: string;
   classCalculationType?: number;
   substituteProfessor?: SubstituteProfessor | null;
+  lateFee: number;
+  suspensionDaysAfterEndDate: number;
 };
 
 // --- ESTADO INICIAL ---
@@ -168,7 +195,8 @@ const initialEnrollmentState: EnrollmentFormData = {
   totalAmount: 0,
   alias: "",
   language: "",
-  classCalculationType: 1,
+  lateFee: 0,
+  suspensionDaysAfterEndDate: 0,
 };
 
 const weekDays = [
@@ -191,7 +219,7 @@ export default function EnrollmentsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState<
-    "create" | "edit" | "status" | "view" | null
+    "create" | "edit" | "status" | null
   >(null);
   const [selectedEnrollment, setSelectedEnrollment] =
     useState<Enrollment | null>(null);
@@ -205,6 +233,9 @@ export default function EnrollmentsPage() {
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [openDisolveDialog, setOpenDisolveDialog] = useState(false);
   const [disolveReason, setDisolveReason] = useState("");
+  const [openPauseDialog, setOpenPauseDialog] = useState(false);
+  const [openResumeDialog, setOpenResumeDialog] = useState(false);
+  const [resumeStartDate, setResumeStartDate] = useState("");
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -221,7 +252,11 @@ export default function EnrollmentsPage() {
         setEnrollments(enrollmentData);
         // Handle API response structure for plans
         setPlans(planData.plans || planData || []);
-        setStudents(studentData);
+        // Filtrar solo estudiantes activos (status === 1)
+        const activeStudents = Array.isArray(studentData)
+          ? studentData.filter((student: any) => student.status === 1)
+          : [];
+        setStudents(activeStudents);
         const sortedProfessors = professorData.sort((a: any, b: any) =>
           a.name.localeCompare(b.name)
         );
@@ -270,7 +305,7 @@ export default function EnrollmentsPage() {
   }, [formData.planId, formData.studentIds, plans]);
 
   const handleOpen = (
-    type: "create" | "edit" | "status" | "view",
+    type: "create" | "edit" | "status",
     enrollment?: Enrollment
   ) => {
     setDialogError(null);
@@ -309,6 +344,11 @@ export default function EnrollmentsPage() {
             idealClassType: s.idealClassType || "",
             learningDifficulties: s.learningDifficulties || "",
             languageLevel: s.languageLevel || "",
+            experiencePastClass: s.experiencePastClass || "",
+            howWhereTheClasses: s.howWhereTheClasses || "",
+            roleGroup: s.roleGroup || "",
+            willingHomework: s.willingHomework !== undefined && s.willingHomework !== null ? s.willingHomework : undefined,
+            availabityToPractice: s.availabityToPractice || "",
           };
         });
         setFormData({
@@ -326,7 +366,6 @@ export default function EnrollmentsPage() {
           status: enrollment.status,
           alias: enrollment.alias || "",
           language: enrollment.language || "",
-          classCalculationType: enrollment.classCalculationType || 1,
           substituteProfessor: enrollment.substituteProfessor
             ? {
                 professorId: enrollment.substituteProfessor.professorId,
@@ -339,6 +378,8 @@ export default function EnrollmentsPage() {
                 ),
               }
             : null,
+          lateFee: enrollment.lateFee ?? 0,
+          suspensionDaysAfterEndDate: enrollment.suspensionDaysAfterEndDate ?? 0,
         });
       }
     }
@@ -356,13 +397,136 @@ export default function EnrollmentsPage() {
     setDisolveReason("");
   };
 
-  const handleDisolveConfirm = () => {
-    // Por ahora solo cerramos el modal y limpiamos el estado
-    // TODO: Conectar con endpoint cuando esté disponible
-    console.log("Disolve reason:", disolveReason);
-    handleDisolveClose();
-    // Opcionalmente cerrar también el modal de edición
-    // handleClose();
+  const handleDisolveConfirm = async () => {
+    if (!selectedEnrollment || !disolveReason.trim()) return;
+    
+    setIsSubmitting(true);
+    try {
+      const response = await apiClient(
+        `api/enrollments/${selectedEnrollment._id}/disolve`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            disolve_reason: disolveReason.trim(),
+          }),
+        }
+      );
+
+      if (!response || !response.enrollment) {
+        throw new Error("Invalid response structure from server");
+      }
+
+      const enrollmentData = await apiClient("api/enrollments");
+      setEnrollments(enrollmentData);
+      handleDisolveClose();
+      if (openDialog === "edit") {
+        handleClose();
+      }
+    } catch (err: unknown) {
+      const errorInfo = handleApiError(err);
+      const errorMessage = getFriendlyErrorMessage(
+        err,
+        errorInfo.isValidationError
+          ? "Please provide a valid reason for disolving the enrollment."
+          : errorInfo.isNotFoundError
+          ? "Enrollment not found."
+          : "Failed to disolve enrollment. Please try again."
+      );
+      setDialogError(errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handlePause = async () => {
+    if (!selectedEnrollment) return;
+    
+    setIsSubmitting(true);
+    setDialogError(null);
+    try {
+      const response = await apiClient(
+        `api/enrollments/${selectedEnrollment._id}/pause`,
+        {
+          method: "PATCH",
+        }
+      );
+
+      if (!response || !response.enrollment) {
+        throw new Error("Invalid response structure from server");
+      }
+
+      const enrollmentData = await apiClient("api/enrollments");
+      setEnrollments(enrollmentData);
+      setOpenPauseDialog(false);
+      if (openDialog === "edit") {
+        handleClose();
+      }
+    } catch (err: unknown) {
+      const errorInfo = handleApiError(err);
+      const errorMessage = getFriendlyErrorMessage(
+        err,
+        errorInfo.isNotFoundError
+          ? "Enrollment not found."
+          : "Failed to pause enrollment. Please try again."
+      );
+      setDialogError(errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleResume = async () => {
+    if (!selectedEnrollment || !resumeStartDate.trim()) return;
+    
+    setIsSubmitting(true);
+    setDialogError(null);
+    try {
+      const response = await apiClient(
+        `api/enrollments/${selectedEnrollment._id}/resume`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            startDate: resumeStartDate,
+          }),
+        }
+      );
+
+      if (!response || !response.enrollment) {
+        throw new Error("Invalid response structure from server");
+      }
+
+      const enrollmentData = await apiClient("api/enrollments");
+      setEnrollments(enrollmentData);
+      setOpenResumeDialog(false);
+      setResumeStartDate("");
+      if (openDialog === "edit") {
+        handleClose();
+      }
+    } catch (err: unknown) {
+      const errorInfo = handleApiError(err);
+      const errorMessage = getFriendlyErrorMessage(
+        err,
+        errorInfo.isValidationError
+          ? "Please provide a valid start date for resuming the enrollment."
+          : errorInfo.isNotFoundError
+          ? "Enrollment not found."
+          : "Failed to resume enrollment. Please try again."
+      );
+      setDialogError(errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handlePauseClose = () => {
+    setOpenPauseDialog(false);
+    setDialogError(null);
+  };
+
+  const handleResumeClose = () => {
+    setOpenResumeDialog(false);
+    setResumeStartDate("");
+    setDialogError(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -383,6 +547,73 @@ export default function EnrollmentsPage() {
       return;
     }
 
+    // Validar campos obligatorios de información del estudiante
+    for (let i = 0; i < formData.studentIds.length; i++) {
+      const student = formData.studentIds[i];
+      const studentName = students.find((s) => s._id === student.studentId)?.name || `Student ${i + 1}`;
+      
+      if (!student.goals?.trim()) {
+        setDialogError(`${studentName}: Main goal is required.`);
+        setIsSubmitting(false);
+        return;
+      }
+      
+      if (!student.preferences?.trim()) {
+        setDialogError(`${studentName}: Preferences is required.`);
+        setIsSubmitting(false);
+        return;
+      }
+      
+      if (!student.learningType?.trim()) {
+        setDialogError(`${studentName}: At least one learning type must be selected.`);
+        setIsSubmitting(false);
+        return;
+      }
+      
+      if (!student.firstTimeLearningLanguage?.trim()) {
+        setDialogError(`${studentName}: First time learning a language is required.`);
+        setIsSubmitting(false);
+        return;
+      }
+      
+      if (!student.previousExperience?.trim()) {
+        setDialogError(`${studentName}: Previous experience is required.`);
+        setIsSubmitting(false);
+        return;
+      }
+      
+      if (!student.experiencePastClass?.trim()) {
+        setDialogError(`${studentName}: How was that experience is required.`);
+        setIsSubmitting(false);
+        return;
+      }
+      
+      if (!student.howWhereTheClasses?.trim()) {
+        setDialogError(`${studentName}: How were the classes is required.`);
+        setIsSubmitting(false);
+        return;
+      }
+      
+      if (!student.roleGroup?.trim()) {
+        setDialogError(`${studentName}: Role in a group is required.`);
+        setIsSubmitting(false);
+        return;
+      }
+      
+      
+      if (!student.availabityToPractice?.trim()) {
+        setDialogError(`${studentName}: Availability to practice is required.`);
+        setIsSubmitting(false);
+        return;
+      }
+      
+      if (!student.learningDifficulties?.trim()) {
+        setDialogError(`${studentName}: Learning difficulties is required.`);
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
     if (!formData.professorId) {
       setDialogError("Professor is required.");
       setIsSubmitting(false);
@@ -395,6 +626,16 @@ export default function EnrollmentsPage() {
       return;
     }
 
+    // Validar que la cantidad de días seleccionados coincida con weeklyClasses del plan
+    const selectedPlan = plans.find((p) => p._id === formData.planId);
+    if (selectedPlan && formData.scheduledDays.length !== selectedPlan.weeklyClasses) {
+      setDialogError(
+        `The selected plan requires ${selectedPlan.weeklyClasses} classes per week. Please select exactly ${selectedPlan.weeklyClasses} days.`
+      );
+      setIsSubmitting(false);
+      return;
+    }
+
     if (!formData.startDate) {
       setDialogError("Start date is required.");
       setIsSubmitting(false);
@@ -403,6 +644,12 @@ export default function EnrollmentsPage() {
 
     if (!formData.language) {
       setDialogError("Language is required.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (formData.lateFee === undefined || formData.lateFee < 0) {
+      setDialogError("Late fee is required and must be a non-negative number.");
       setIsSubmitting(false);
       return;
     }
@@ -440,6 +687,16 @@ export default function EnrollmentsPage() {
         payload.learningDifficulties = student.learningDifficulties.trim();
       if (student.languageLevel?.trim())
         payload.languageLevel = student.languageLevel.trim();
+      if (student.experiencePastClass?.trim())
+        payload.experiencePastClass = student.experiencePastClass.trim();
+      if (student.howWhereTheClasses?.trim())
+        payload.howWhereTheClasses = student.howWhereTheClasses.trim();
+      if (student.roleGroup?.trim())
+        payload.roleGroup = student.roleGroup.trim();
+      if (student.willingHomework !== undefined && student.willingHomework !== null)
+        payload.willingHomework = student.willingHomework;
+      if (student.availabityToPractice?.trim())
+        payload.availabityToPractice = student.availabityToPractice.trim();
       return payload;
     });
 
@@ -456,15 +713,13 @@ export default function EnrollmentsPage() {
       language: formData.language,
     };
 
-    // classCalculationType solo se envía al crear, no al editar
-    if (openDialog === "create") {
-      payload.classCalculationType = formData.classCalculationType || 1;
-    }
-
     // Agregar campos opcionales solo si tienen valor
     if (formData.alias) {
       payload.alias = formData.alias;
     }
+
+    // Campos obligatorios según la documentación
+    payload.lateFee = formData.lateFee ?? 0;
 
     // Agregar substituteProfessor si existe (solo al editar)
     // El status se maneja internamente, siempre se envía como 1
@@ -784,9 +1039,11 @@ export default function EnrollmentsPage() {
             size="icon"
             variant="outline"
             className="text-secondary border-secondary/50 hover:bg-secondary/10"
-            onClick={() => handleOpen("view", row.original)}
+            asChild
           >
-            <Eye className="h-4 w-4" />
+            <Link href={`/enrollments/${row.original._id}`}>
+              <Eye className="h-4 w-4" />
+            </Link>
           </Button>
           <Button
             size="icon"
@@ -872,11 +1129,7 @@ export default function EnrollmentsPage() {
       )}
 
       <Dialog
-        open={
-          openDialog === "create" ||
-          openDialog === "edit" ||
-          openDialog === "view"
-        }
+        open={openDialog === "create" || openDialog === "edit"}
         onOpenChange={(isOpen) => !isOpen && handleClose()}
       >
         <DialogContent className="sm:max-w-3xl">
@@ -884,7 +1137,6 @@ export default function EnrollmentsPage() {
             <DialogTitle>
               {openDialog === "create" && "Create Enrollment"}
               {openDialog === "edit" && "Edit Enrollment"}
-              {openDialog === "view" && "Enrollment Details"}
             </DialogTitle>
           </DialogHeader>
 
@@ -895,7 +1147,9 @@ export default function EnrollmentsPage() {
             >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Plan</Label>
+                  <Label>
+                    Plan <span className="text-red-500">*</span>
+                  </Label>
                   <Select
                     value={formData.planId}
                     onValueChange={(v) =>
@@ -953,11 +1207,11 @@ export default function EnrollmentsPage() {
                 />
               </div>
 
-              {/* Campos opcionales para cada estudiante */}
+              {/* Campos obligatorios para cada estudiante */}
               {formData.studentIds.length > 0 && (
                 <div className="space-y-4">
                   <h3 className="text-lg font-medium">
-                    Student Information (Optional)
+                    Student Information <span className="text-red-500">*</span>
                   </h3>
                   {formData.studentIds.map((student, index) => {
                     const studentName =
@@ -994,8 +1248,29 @@ export default function EnrollmentsPage() {
                         </CollapsibleTrigger>
                         <CollapsibleContent className="px-4 pb-4">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                            {/* Main goal */}
                             <div className="space-y-2">
-                              <Label>Preferences</Label>
+                              <Label>Main goal <span className="text-red-500">*</span></Label>
+                              <Input
+                                value={student.goals || ""}
+                                onChange={(e) => {
+                                  const updated = [...formData.studentIds];
+                                  updated[index] = {
+                                    ...updated[index],
+                                    goals: e.target.value,
+                                  };
+                                  setFormData((p) => ({
+                                    ...p,
+                                    studentIds: updated,
+                                  }));
+                                }}
+                                placeholder="e.g., Learn English for travel"
+                                required
+                              />
+                            </div>
+                            {/* Preferences */}
+                            <div className="space-y-2">
+                              <Label>Preferences <span className="text-red-500">*</span></Label>
                               <Textarea
                                 value={student.preferences || ""}
                                 onChange={(e) => {
@@ -1011,10 +1286,59 @@ export default function EnrollmentsPage() {
                                 }}
                                 placeholder="e.g., Prefers practical and conversational classes"
                                 rows={2}
+                                required
                               />
                             </div>
+                            {/* Learning type - Multiple checkboxes */}
+                            <div className="space-y-2 md:col-span-2">
+                              <Label>Learning type <span className="text-red-500">*</span></Label>
+                              <div className="space-y-2 border rounded-md p-4">
+                                {["Visual", "Auditivo", "Verbal", "Lógico", "Kinestésico"].map((type) => {
+                                  const learningTypes = student.learningType ? student.learningType.split(",").map((t: string) => t.trim()) : [];
+                                  const isChecked = learningTypes.includes(type);
+                                  return (
+                                    <div key={type} className="flex items-center gap-2">
+                                      <input
+                                        type="checkbox"
+                                        id={`learningType-${studentKey}-${type}`}
+                                        checked={isChecked}
+                                        onChange={(e) => {
+                                          const updated = [...formData.studentIds];
+                                          let currentTypes = learningTypes;
+                                          if (e.target.checked) {
+                                            if (!currentTypes.includes(type)) {
+                                              currentTypes.push(type);
+                                            }
+                                          } else {
+                                            currentTypes = currentTypes.filter((t: string) => t !== type);
+                                          }
+                                          updated[index] = {
+                                            ...updated[index],
+                                            learningType: currentTypes.join(", "),
+                                          };
+                                          setFormData((p) => ({
+                                            ...p,
+                                            studentIds: updated,
+                                          }));
+                                        }}
+                                        className="h-4 w-4 rounded border-gray-300"
+                                      />
+                                      <Label htmlFor={`learningType-${studentKey}-${type}`} className="cursor-pointer font-semibold text-primary">
+                                        {type}
+                                      </Label>
+                                      {type === "Visual" && <span className="text-sm text-muted-foreground">- Aprende mejor con imágenes, colores y gráficos.</span>}
+                                      {type === "Auditivo" && <span className="text-sm text-muted-foreground">- Retiene información al escuchar explicaciones o música.</span>}
+                                      {type === "Verbal" && <span className="text-sm text-muted-foreground">- Aprende mejor mediante el lenguaje hablado y escrito. Se beneficia de explicaciones, debates y lectura para procesar información.</span>}
+                                      {type === "Lógico" && <span className="text-sm text-muted-foreground">- Se enfoca en patrones, estructuras y razonamientos analíticos.</span>}
+                                      {type === "Kinestésico" && <span className="text-sm text-muted-foreground">- Prefiere actividades prácticas y el aprendizaje mediante movimiento.</span>}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            {/* First time learning a language */}
                             <div className="space-y-2">
-                              <Label>First Time Learning Language</Label>
+                              <Label>First time learning a language <span className="text-red-500">*</span></Label>
                               <Input
                                 value={student.firstTimeLearningLanguage || ""}
                                 onChange={(e) => {
@@ -1029,10 +1353,12 @@ export default function EnrollmentsPage() {
                                   }));
                                 }}
                                 placeholder="e.g., Yes, this is the first time"
+                                required
                               />
                             </div>
+                            {/* Previous experience */}
                             <div className="space-y-2">
-                              <Label>Previous Experience</Label>
+                              <Label>Previous experience <span className="text-red-500">*</span></Label>
                               <Input
                                 value={student.previousExperience || ""}
                                 onChange={(e) => {
@@ -1047,82 +1373,115 @@ export default function EnrollmentsPage() {
                                   }));
                                 }}
                                 placeholder="e.g., No previous experience"
+                                required
                               />
                             </div>
+                            {/* How was that experience (experiencePastClass) */}
                             <div className="space-y-2">
-                              <Label>Goals</Label>
+                              <Label>How was that experience <span className="text-red-500">*</span></Label>
                               <Input
-                                value={student.goals || ""}
+                                value={student.experiencePastClass || ""}
                                 onChange={(e) => {
                                   const updated = [...formData.studentIds];
                                   updated[index] = {
                                     ...updated[index],
-                                    goals: e.target.value,
+                                    experiencePastClass: e.target.value,
                                   };
                                   setFormData((p) => ({
                                     ...p,
                                     studentIds: updated,
                                   }));
                                 }}
-                                placeholder="e.g., Learn English for travel"
+                                placeholder="e.g., Very positive, learned a lot"
+                                required
                               />
                             </div>
+                            {/* How were the classes */}
                             <div className="space-y-2">
-                              <Label>Daily Learning Time</Label>
+                              <Label>How were the classes <span className="text-red-500">*</span></Label>
                               <Input
-                                value={student.dailyLearningTime || ""}
+                                value={student.howWhereTheClasses || ""}
                                 onChange={(e) => {
                                   const updated = [...formData.studentIds];
                                   updated[index] = {
                                     ...updated[index],
-                                    dailyLearningTime: e.target.value,
+                                    howWhereTheClasses: e.target.value,
                                   };
                                   setFormData((p) => ({
                                     ...p,
                                     studentIds: updated,
                                   }));
                                 }}
-                                placeholder="e.g., 1 hour per day"
+                                placeholder="e.g., Dynamic and participatory classes"
+                                required
                               />
                             </div>
+                            {/* Role in a group */}
                             <div className="space-y-2">
-                              <Label>Learning Type</Label>
+                              <Label>Role in a group <span className="text-red-500">*</span></Label>
                               <Input
-                                value={student.learningType || ""}
+                                value={student.roleGroup || ""}
                                 onChange={(e) => {
                                   const updated = [...formData.studentIds];
                                   updated[index] = {
                                     ...updated[index],
-                                    learningType: e.target.value,
+                                    roleGroup: e.target.value,
                                   };
                                   setFormData((p) => ({
                                     ...p,
                                     studentIds: updated,
                                   }));
                                 }}
-                                placeholder="e.g., Visual and auditory"
+                                placeholder="e.g., Leader, Organizer"
+                                required
                               />
                             </div>
-                            <div className="space-y-2">
-                              <Label>Ideal Class Type</Label>
-                              <Input
-                                value={student.idealClassType || ""}
+                            {/* Willingness to do homework */}
+                            <div className="space-y-2 flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                id={`willingHomework-${studentKey}`}
+                                checked={student.willingHomework === 1}
                                 onChange={(e) => {
                                   const updated = [...formData.studentIds];
                                   updated[index] = {
                                     ...updated[index],
-                                    idealClassType: e.target.value,
+                                    willingHomework: e.target.checked ? 1 : undefined,
                                   };
                                   setFormData((p) => ({
                                     ...p,
                                     studentIds: updated,
                                   }));
                                 }}
-                                placeholder="e.g., Individual classes"
+                                className="h-4 w-4 rounded border-gray-300"
+                              />
+                              <Label htmlFor={`willingHomework-${studentKey}`} className="cursor-pointer">
+                                Willingness to do homework
+                              </Label>
+                            </div>
+                            {/* Availability to practice */}
+                            <div className="space-y-2">
+                              <Label>Availability to practice <span className="text-red-500">*</span></Label>
+                              <Input
+                                value={student.availabityToPractice || ""}
+                                onChange={(e) => {
+                                  const updated = [...formData.studentIds];
+                                  updated[index] = {
+                                    ...updated[index],
+                                    availabityToPractice: e.target.value,
+                                  };
+                                  setFormData((p) => ({
+                                    ...p,
+                                    studentIds: updated,
+                                  }));
+                                }}
+                                placeholder="e.g., 1hr, 2hr, 3hr"
+                                required
                               />
                             </div>
-                            <div className="space-y-2">
-                              <Label>Learning Difficulties</Label>
+                            {/* Learning difficulties */}
+                            <div className="space-y-2 md:col-span-2">
+                              <Label>Learning difficulties <span className="text-red-500">*</span></Label>
                               <Input
                                 value={student.learningDifficulties || ""}
                                 onChange={(e) => {
@@ -1137,24 +1496,7 @@ export default function EnrollmentsPage() {
                                   }));
                                 }}
                                 placeholder="e.g., Difficulty with pronunciation"
-                              />
-                            </div>
-                            <div className="space-y-2 md:col-span-2">
-                              <Label>Language Level</Label>
-                              <Input
-                                value={student.languageLevel || ""}
-                                onChange={(e) => {
-                                  const updated = [...formData.studentIds];
-                                  updated[index] = {
-                                    ...updated[index],
-                                    languageLevel: e.target.value,
-                                  };
-                                  setFormData((p) => ({
-                                    ...p,
-                                    studentIds: updated,
-                                  }));
-                                }}
-                                placeholder="e.g., Beginner"
+                                required
                               />
                             </div>
                           </div>
@@ -1209,10 +1551,35 @@ export default function EnrollmentsPage() {
                   }
                   placeholder="Select days..."
                 />
+                {formData.planId && (() => {
+                  const selectedPlan = plans.find((p) => p._id === formData.planId);
+                  const requiredDays = selectedPlan?.weeklyClasses || 0;
+                  const selectedDaysCount = formData.scheduledDays.length;
+                  if (selectedPlan && requiredDays > 0) {
+                    return (
+                      <p className="text-sm text-muted-foreground">
+                        {selectedDaysCount === requiredDays ? (
+                          <span className="text-green-600">✓ Correct number of days selected ({requiredDays})</span>
+                        ) : selectedDaysCount < requiredDays ? (
+                          <span className="text-amber-600">
+                            Select {requiredDays - selectedDaysCount} more day{requiredDays - selectedDaysCount > 1 ? 's' : ''} (Plan requires {requiredDays} days per week)
+                          </span>
+                        ) : (
+                          <span className="text-red-600">
+                            Too many days selected. Plan requires only {requiredDays} day{requiredDays > 1 ? 's' : ''} per week.
+                          </span>
+                        )}
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Purchase Date</Label>
+                  <Label>
+                    Purchase Date <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     type="date"
                     value={formData.purchaseDate}
@@ -1242,39 +1609,26 @@ export default function EnrollmentsPage() {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Class Calculation Type</Label>
-                  {openDialog === "create" ? (
-                    <Select
-                      value={formData.classCalculationType?.toString() || "1"}
-                      onValueChange={(v) =>
-                        setFormData((p) => ({
-                          ...p,
-                          classCalculationType: parseInt(v),
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select calculation type..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">Normal (Monthly)</SelectItem>
-                        <SelectItem value="2">Weekly</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Input
-                      value={
-                        formData.classCalculationType === 2
-                          ? "Weekly"
-                          : "Normal (Monthly)"
-                      }
-                      disabled
-                      className="bg-muted"
-                    />
-                  )}
-                </div>
+              <div className="space-y-2">
+                <Label>
+                  Late Fee (Days) <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={formData.lateFee ?? 0}
+                  onChange={(e) =>
+                    setFormData((p) => ({
+                      ...p,
+                      lateFee: parseInt(e.target.value) || 0,
+                    }))
+                  }
+                  placeholder="e.g., 2"
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  Number of days of tolerance for late payments
+                </p>
               </div>
               {openDialog === "edit" && (
                 <>
@@ -1467,14 +1821,41 @@ export default function EnrollmentsPage() {
               )}
               <DialogFooter className="pt-4 border-t">
                 <div className="flex justify-between w-full">
-                  {openDialog === "edit" && (
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      onClick={() => setOpenDisolveDialog(true)}
-                    >
-                      Disolve
-                    </Button>
+                  {openDialog === "edit" && selectedEnrollment && (
+                    <div className="flex gap-2">
+                      {selectedEnrollment.status === 1 && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="text-yellow-600 border-yellow-600/50 hover:bg-yellow-600/10"
+                          onClick={() => setOpenPauseDialog(true)}
+                        >
+                          Pause
+                        </Button>
+                      )}
+                      {selectedEnrollment.status === 3 && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="text-secondary border-secondary/50 hover:bg-secondary/10"
+                          onClick={() => {
+                            setOpenResumeDialog(true);
+                            setResumeStartDate(getCurrentDateString());
+                          }}
+                        >
+                          Resume
+                        </Button>
+                      )}
+                      {selectedEnrollment.status !== 0 && (
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          onClick={() => setOpenDisolveDialog(true)}
+                        >
+                          Disolve
+                        </Button>
+                      )}
+                    </div>
                   )}
                   <div className="flex gap-2 ml-auto">
                 <Button type="button" variant="outline" onClick={handleClose}>
@@ -1490,130 +1871,6 @@ export default function EnrollmentsPage() {
                 </div>
               </DialogFooter>
             </form>
-          )}
-
-          {openDialog === "view" && selectedEnrollment && (
-            <div className="space-y-6 max-h-[70vh] overflow-y-auto p-1 pr-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                {(selectedEnrollment.enrollmentType === "couple" ||
-                  selectedEnrollment.enrollmentType === "group") && (
-                  <div>
-                    <Label className="font-semibold">Alias</Label>
-                    <p className="text-sm">
-                      {selectedEnrollment.alias || "N/A"}
-                    </p>
-                  </div>
-                )}
-                <div>
-                  <Label className="font-semibold">Students</Label>
-                  <p className="text-sm">
-                    {selectedEnrollment.studentIds
-                      .map((s: any) => {
-                        // Si studentId es un objeto (StudentBrief), tomar su name
-                        if (s.studentId && typeof s.studentId === "object" && s.studentId.name) {
-                          return s.studentId.name;
-                        }
-                        // Si studentId es un string, buscar en el array de students
-                        if (typeof s.studentId === "string") {
-                          const student = students.find(
-                            (st) => st._id === s.studentId
-                          );
-                          return student?.name || "N/A";
-                        }
-                        // Si tiene name directamente (StudentBrief)
-                        if (s.name) return s.name;
-                        return "N/A";
-                      })
-                      .join(", ")}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Plan</Label>
-                  <p className="text-sm">{selectedEnrollment.planId.name}</p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Professor</Label>
-                  <p className="text-sm">
-                    {selectedEnrollment.professorId?.name || "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Purchase Date</Label>
-                  <p className="text-sm">
-                    {formatDateForDisplay(selectedEnrollment.purchaseDate)}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Status</Label>
-                  <span
-                    className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                      selectedEnrollment.status === 1
-                        ? "bg-secondary/20 text-secondary"
-                        : selectedEnrollment.status === 2
-                        ? "bg-accent-1/20 text-accent-1"
-                        : selectedEnrollment.status === 3
-                        ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
-                        : "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
-                    }`}
-                  >
-                    {selectedEnrollment.status === 1
-                      ? "Active"
-                      : selectedEnrollment.status === 2
-                      ? "Inactive"
-                      : selectedEnrollment.status === 3
-                      ? "Paused"
-                      : "Disolved"}
-                  </span>
-                </div>
-                <div>
-                  <Label className="font-semibold">Start Date</Label>
-                  <p className="text-sm">
-                    {selectedEnrollment.startDate
-                      ? formatDateForDisplay(selectedEnrollment.startDate)
-                      : "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Scheduled Days</Label>
-                  <p className="text-sm">
-                    {selectedEnrollment.scheduledDays
-                      ?.map((d) => d.day)
-                      .join(", ") || "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Language</Label>
-                  <p className="text-sm">
-                    {selectedEnrollment.language || "N/A"}
-                  </p>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-4 p-4 border rounded-md bg-muted/30">
-                <div>
-                  <Label className="font-semibold">Enrollment Type</Label>
-                  <p className="font-semibold capitalize">
-                    {selectedEnrollment.enrollmentType}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Price per Student</Label>
-                  <p className="font-semibold">
-                    ${selectedEnrollment.pricePerStudent.toFixed(2)}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Total Amount</Label>
-                  <p className="font-semibold">
-                    ${selectedEnrollment.totalAmount.toFixed(2)}
-                  </p>
-                </div>
-              </div>
-              <DialogFooter className="pt-4 border-t">
-                <Button variant="outline" onClick={handleClose}>
-                  Close
-                </Button>
-              </DialogFooter>
-            </div>
           )}
         </DialogContent>
       </Dialog>
@@ -1646,15 +1903,106 @@ export default function EnrollmentsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={handleDisolveClose}>
+            <Button variant="outline" onClick={handleDisolveClose} disabled={isSubmitting}>
               Cancel
             </Button>
             <Button
               variant="destructive"
               onClick={handleDisolveConfirm}
-              disabled={!disolveReason.trim()}
+              disabled={!disolveReason.trim() || isSubmitting}
             >
+              {isSubmitting && (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              )}
               Confirm Disolve
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de confirmación de Pause */}
+      <Dialog
+        open={openPauseDialog}
+        onOpenChange={(isOpen) => !isOpen && handlePauseClose()}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Pause Enrollment</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to pause this enrollment? The enrollment will be temporarily suspended.
+            </DialogDescription>
+          </DialogHeader>
+          {dialogError && (
+            <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-3 py-2 rounded text-sm flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{dialogError}</span>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={handlePauseClose} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              onClick={handlePause}
+              disabled={isSubmitting}
+            >
+              {isSubmitting && (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              )}
+              Confirm Pause
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de confirmación de Resume */}
+      <Dialog
+        open={openResumeDialog}
+        onOpenChange={(isOpen) => !isOpen && handleResumeClose()}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Resume Enrollment</DialogTitle>
+            <DialogDescription>
+              Enter the new start date to resume this paused enrollment. Pending classes will be rescheduled.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>
+                New Start Date <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                type="date"
+                value={resumeStartDate}
+                onChange={(e) => setResumeStartDate(e.target.value)}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Classes will be rescheduled from this date onwards
+              </p>
+            </div>
+          </div>
+          {dialogError && (
+            <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-3 py-2 rounded text-sm flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{dialogError}</span>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={handleResumeClose} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              onClick={handleResume}
+              disabled={!resumeStartDate.trim() || isSubmitting}
+            >
+              {isSubmitting && (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              )}
+              Confirm Resume
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1834,6 +2182,11 @@ function StudentMultiSelect({
           idealClassType: "",
           learningDifficulties: "",
           languageLevel: "",
+          experiencePastClass: "",
+          howWhereTheClasses: "",
+          roleGroup: "",
+          willingHomework: undefined,
+          availabityToPractice: "",
         },
       ];
     }

@@ -374,6 +374,10 @@ export function useClassRegistries(
       // Refrescar los datos desde el servidor primero
       await fetchClassRegistries();
       
+      // Limpiar mensajes de error previos y mostrar mensaje de éxito
+      setRegistryErrorMessage(null);
+      setRegistrySuccessMessage("Class registry saved successfully");
+      
       // El useEffect (líneas 208-274) reinicializará editingRegistryData con los valores actualizados del servidor
       // incluyendo el nuevo classViewed, lo que hará que los campos dejen de ser editables
     } catch (err: unknown) {

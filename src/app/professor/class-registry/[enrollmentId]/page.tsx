@@ -62,7 +62,6 @@ import {
   EditableVocabularyContentField,
   EditableStudentMoodField,
   EditableHomeworkField,
-  EditableClassViewedField,
 } from "./components/EditableFields/EditableRegistryFields";
 import { useObjectiveColumns } from "./columns/objectiveColumns";
 import { useEvaluationColumns } from "./columns/evaluationColumns";
@@ -83,6 +82,7 @@ export default function ClassRegistryDetailPage() {
   const enrollmentId = params.enrollmentId as string;
   const { user } = useAuth();
   const isProfessor = user?.role?.toLowerCase() === "professor";
+  const isAdmin = user?.role?.toLowerCase() === "admin";
 
   // Estado local para el tab activo (necesario para useEvaluations)
   const [activeTab, setActiveTab] = useState("classes");
@@ -258,33 +258,43 @@ export default function ClassRegistryDetailPage() {
         note: registry.note || null,
         homework: registry.homework || "",
         reschedule: registry.reschedule,
-        classViewed: registry.classViewed,
         ...(isReschedule && { classDate: extractDatePart(registry.classDate) }),
       };
 
       const minutesNumber =
         base.minutesViewed === "" ? 0 : Number(base.minutesViewed);
       const rescheduleValue = base.reschedule ?? registry.reschedule;
-      const classViewedValue = base.classViewed ?? registry.classViewed ?? 0;
 
-      // Validación: si minutos < 60 y no hay reschedule
-      if (minutesNumber < 60 && rescheduleValue === 0) {
-        window.alert(
-          "This class has less than 60 minutes and no reschedule. Please create a reschedule before saving."
-        );
-        return;
-      }
+      // Determinar si el classType es "no show"
+      const selectedTypeId = base.classType[0];
+      const selectedType = classTypes.find((t) => t._id === selectedTypeId);
+      const isNoShow = selectedType?.name?.toLowerCase().includes("no show") || false;
 
-      // Validación: class viewed debe ser distinto de 0
-      if (!classViewedValue || classViewedValue === 0) {
-        window.alert(
-          "Class Viewed cannot be 0. Please mark the class as viewed before saving."
-        );
-        return;
+      // Calcular classViewed automáticamente basado en minutesViewed y classType
+      let classViewedValue: number;
+      if (minutesNumber === 0 || isNoShow) {
+        // No Show: minutesViewed === 0 o classType es "no show"
+        classViewedValue = 3;
+      } else if (minutesNumber === 60) {
+        // Viewed: exactamente 60 minutos
+        classViewedValue = 1;
+      } else if (minutesNumber > 0 && minutesNumber < 60) {
+        // Partially Viewed: entre 0 y 60 minutos
+        classViewedValue = 2;
+        // Validación: si minutos < 60 y no hay reschedule
+        if (rescheduleValue === 0) {
+          window.alert(
+            "This class has less than 60 minutes and no reschedule. Please create a reschedule before saving."
+          );
+          return;
+        }
+      } else {
+        // Fallback: si minutesViewed > 60, consideramos como Viewed
+        classViewedValue = 1;
       }
 
       // Confirmación para profesores: después de guardar no podrá editar (porque classViewed será diferente de 0)
-      if (isProfessor) {
+      if (isProfessor && classViewedValue !== 0) {
         const confirmed = window.confirm(
           "After saving this class registry, you will not be able to edit it again because the class will be marked as viewed. Do you want to continue?"
         );
@@ -337,7 +347,7 @@ export default function ClassRegistryDetailPage() {
         // El propio hook ya maneja y muestra el error apropiado
       }
     },
-    [classRegistriesHook, isProfessor]
+    [classRegistriesHook, isProfessor, classTypes]
   );
 
   const registryColumns: ColumnDef<ClassRegistry>[] = useMemo(() => [
@@ -817,9 +827,23 @@ export default function ClassRegistryDetailPage() {
         const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
         
         if (isLocked) {
+          // Opciones de estado de ánimo para mostrar
+          const moodOptions: Record<string, { emoji: string; label: string }> = {
+            "😊": { emoji: "😊", label: "Happy" },
+            "😐": { emoji: "😐", label: "Neutral" },
+            "☹️": { emoji: "☹️", label: "Sad" },
+          };
+          const currentMood = registry.studentMood ? moodOptions[registry.studentMood] : null;
           return (
             <span className="text-sm font-medium">
-              {registry.studentMood || "—"}
+              {currentMood ? (
+                <span className="flex items-center gap-2">
+                  <span className="text-lg">{currentMood.emoji}</span>
+                  <span>{currentMood.label}</span>
+                </span>
+              ) : (
+                "—"
+              )}
             </span>
           );
         }
@@ -991,60 +1015,6 @@ export default function ClassRegistryDetailPage() {
       },
     },
     {
-      id: "classViewed",
-      header: "Class Status",
-      cell: ({ row }) => {
-        const registry = row.original;
-        const editData = classRegistriesHook.editingRegistryData[registry._id];
-        const initialValue = editData?.classViewed ?? registry.classViewed;
-        
-        // Inicializar el ref si no existe
-        if (!classRegistriesHook.editingRegistryDataRef.current[registry._id]) {
-          classRegistriesHook.editingRegistryDataRef.current[registry._id] = {
-                    minutesViewed: registry.minutesViewed?.toString() || "",
-                    classType: registry.classType.map((t) => t._id),
-                    contentType: registry.contentType.map((t) => t._id),
-                    vocabularyContent: registry.vocabularyContent || "",
-                    studentMood: registry.studentMood || "",
-                    note: registry.note || null,
-                    homework: registry.homework || "",
-                    reschedule: registry.reschedule,
-            classViewed: initialValue,
-          };
-        }
-        
-        const isReschedule = registry.originalClassId !== null && registry.originalClassId !== undefined;
-        const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
-        
-        if (isLocked) {
-          const classViewedLabels: Record<number, string> = {
-            0: "Pending",
-            1: "Viewed",
-            2: "Partially Viewed",
-            3: "No Show",
-          };
-          return (
-            <span className="text-sm font-medium">
-              {classViewedLabels[registry.classViewed] || "—"}
-            </span>
-          );
-        }
-        
-        return (
-          <EditableClassViewedField
-            registryId={registry._id}
-            initialValue={initialValue}
-            onUpdate={(newValue) => {
-              if (classRegistriesHook.editingRegistryDataRef.current[registry._id]) {
-                classRegistriesHook.editingRegistryDataRef.current[registry._id].classViewed = newValue;
-              }
-            }}
-            isReschedule={isReschedule}
-          />
-        );
-      },
-    },
-    {
       id: "actions",
       header: "Actions",
       cell: ({ row }) => {
@@ -1151,7 +1121,7 @@ export default function ClassRegistryDetailPage() {
       <div className="space-y-4">
         <Button
           variant="outline"
-          onClick={() => router.push("/professor/class-registry")}
+          onClick={() => router.push(isAdmin ? `/enrollments/${enrollmentId}` : "/professor/class-registry")}
           className="mb-4"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
@@ -1171,7 +1141,7 @@ export default function ClassRegistryDetailPage() {
         <div className="flex items-center gap-2 sm:gap-4">
           <Button
             variant="outline"
-            onClick={() => router.push("/professor/class-registry")}
+            onClick={() => router.push(isAdmin ? `/enrollments/${enrollmentId}` : "/professor/class-registry")}
             size="sm"
             className="sm:size-default"
           >
@@ -1187,9 +1157,8 @@ export default function ClassRegistryDetailPage() {
         {/* Enrollment Card - Left Side - Sticky */}
         <EnrollmentInfoCard enrollment={enrollment} />
 
-        {/* Objectives and Registries - Right Side */}
-        <div className="md:col-span-2 lg:col-span-3 space-y-4 md:space-y-6">
-          {/* Objectives Section */}
+        {/* Objectives Section - Right Side */}
+        <div className="md:col-span-2 lg:col-span-3">
           <ObjectivesSection
             objectives={objectivesHook.objectives}
                   columns={objectiveColumns}
@@ -1200,23 +1169,23 @@ export default function ClassRegistryDetailPage() {
             onDismissError={() => objectivesHook.setObjectiveErrorMessage(null)}
             onAddObjective={objectivesHook.addNewObjective}
           />
+            </div>
+              </div>
 
-          {/* Class Registries Table */}
-          <ClassRegistriesSection
-            classRegistries={classRegistriesHook.classRegistries}
-            registryColumns={registryColumns}
-            evaluations={evaluationsHook.evaluations}
-            EvaluationsTable={EvaluationsTable}
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-            registrySuccessMessage={classRegistriesHook.registrySuccessMessage}
-            registryErrorMessage={classRegistriesHook.registryErrorMessage}
-            isLoadingEvaluations={evaluationsHook.isLoadingEvaluations}
-            onDismissSuccess={() => classRegistriesHook.setRegistrySuccessMessage(null)}
-            onDismissError={() => classRegistriesHook.setRegistryErrorMessage(null)}
-          />
-        </div>
-      </div>
+      {/* Class Registries Table - Full Width */}
+      <ClassRegistriesSection
+        classRegistries={classRegistriesHook.classRegistries}
+        registryColumns={registryColumns}
+        evaluations={evaluationsHook.evaluations}
+        EvaluationsTable={EvaluationsTable}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        registrySuccessMessage={classRegistriesHook.registrySuccessMessage}
+        registryErrorMessage={classRegistriesHook.registryErrorMessage}
+        isLoadingEvaluations={evaluationsHook.isLoadingEvaluations}
+        onDismissSuccess={() => classRegistriesHook.setRegistrySuccessMessage(null)}
+        onDismissError={() => classRegistriesHook.setRegistryErrorMessage(null)}
+      />
 
       {/* Reschedule Modal */}
       <RescheduleDialog
@@ -1242,15 +1211,15 @@ export default function ClassRegistryDetailPage() {
           if (!isOpen) {
             classRegistriesHook.setEditingNoteRegistryId(null);
             classRegistriesHook.setNoteModalData({
-                  content: "",
-                  visible: {
-                    admin: true,
-                    student: false,
-                    professor: true,
-                  },
-                });
+              content: "",
+              visible: {
+                admin: true,
+                student: false,
+                professor: true,
+              },
+            });
           }
-              }}
+        }}
         registryId={classRegistriesHook.editingNoteRegistryId}
         classRegistries={classRegistriesHook.classRegistries}
         noteData={classRegistriesHook.noteModalData}

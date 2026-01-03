@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { DataTable } from "@/components/ui/data-table";
 import {
   Plus,
@@ -32,28 +31,26 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { apiClient } from "@/lib/api";
 import { handleApiError, getFriendlyErrorMessage } from "@/lib/errorHandler";
 
-interface Penalty {
+interface CategoryNotification {
   _id: string;
-  name: string;
-  description?: string | null;
-  status: number;
-  statusText: string;
+  category_notification_description: string;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
-interface CreatePenaltyData {
-  name: string;
-  description?: string;
+interface CreateCategoryNotificationData {
+  category_notification_description: string;
+  isActive?: boolean;
 }
 
-interface UpdatePenaltyData {
-  name: string;
-  description?: string;
+interface UpdateCategoryNotificationData {
+  category_notification_description: string;
+  isActive?: boolean;
 }
 
-export default function PenaltiesPage() {
-  const [penalties, setPenalties] = useState<Penalty[]>([]);
+export default function CategoryNotificationsPage() {
+  const [categoryNotifications, setCategoryNotifications] = useState<CategoryNotification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -61,22 +58,25 @@ export default function PenaltiesPage() {
   const [openDialog, setOpenDialog] = useState<
     "create" | "edit" | "toggle-status" | "view" | null
   >(null);
-  const [selectedPenalty, setSelectedPenalty] = useState<Penalty | null>(null);
+  const [selectedCategoryNotification, setSelectedCategoryNotification] =
+    useState<CategoryNotification | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [dialogError, setDialogError] = useState<string | null>(null);
 
-  // Fetch penalties from API
-  const fetchPenalties = async () => {
+  // Fetch category notifications from API
+  const fetchCategoryNotifications = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const data = await apiClient("api/penalties");
-      setPenalties(data || []);
+      const response = await apiClient("api/category-notifications");
+      // API returns { categoryNotifications: [...], count: number, message: string }
+      const data = (response as any).categoryNotifications || response || [];
+      setCategoryNotifications(data);
     } catch (err: unknown) {
       const errorMessage = getFriendlyErrorMessage(
         err,
-        "Failed to load penalties. Please try again."
+        "Failed to load notification categories. Please try again."
       );
       setError(errorMessage);
     } finally {
@@ -84,90 +84,46 @@ export default function PenaltiesPage() {
     }
   };
 
-  // Create new penalty
-  const createPenalty = async (penaltyData: CreatePenaltyData) => {
-    try {
-      setIsSubmitting(true);
-      setFormErrors({});
-      setDialogError(null);
-      const response = await apiClient("api/penalties", {
-        method: "POST",
-        body: JSON.stringify(penaltyData),
-      });
-      
-      if (!response || !response.penalizacion) {
-        throw new Error("Invalid response structure from server");
-      }
-      
-      setPenalties((prev) => [...prev, response.penalizacion]);
-      setSuccessMessage("Penalty created successfully");
-      handleClose();
-    } catch (err: unknown) {
-      const errorInfo = handleApiError(err);
-      
-      if (errorInfo.isConflictError) {
-        setFormErrors({ 
-          name: errorInfo.message || "Penalty name already exists" 
-        });
-      } else if (errorInfo.isValidationError) {
-        setFormErrors({ 
-          general: errorInfo.message || "Please check all required fields" 
-        });
-      } else {
-        const errorMessage = getFriendlyErrorMessage(
-          err,
-          "Failed to create penalty. Please try again."
-        );
-        setFormErrors({ general: errorMessage });
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Update existing penalty
-  const updatePenalty = async (
-    penaltyId: string,
-    penaltyData: UpdatePenaltyData
+  // Create new category notification
+  const createCategoryNotification = async (
+    categoryNotificationData: CreateCategoryNotificationData
   ) => {
     try {
       setIsSubmitting(true);
       setFormErrors({});
       setDialogError(null);
-      const response = await apiClient(`api/penalties/${penaltyId}`, {
-        method: "PUT",
-        body: JSON.stringify(penaltyData),
+      const response = await apiClient("api/category-notifications", {
+        method: "POST",
+        body: JSON.stringify(categoryNotificationData),
       });
-      
-      // Validar que la respuesta tenga la estructura esperada
-      if (!response || !response.penalizacion) {
+
+      if (!response || !(response as any).categoryNotification) {
         throw new Error("Invalid response structure from server");
       }
-      
-      setPenalties((prev) =>
-        prev.map((p) =>
-          p._id === penaltyId ? response.penalizacion : p
-        )
-      );
-      setSuccessMessage("Penalty updated successfully");
+
+      setCategoryNotifications((prev) => [
+        ...prev,
+        (response as any).categoryNotification,
+      ]);
+      setSuccessMessage("Notification category created successfully");
       handleClose();
     } catch (err: unknown) {
       const errorInfo = handleApiError(err);
-      
+
       if (errorInfo.isConflictError) {
-        setFormErrors({ 
-          name: errorInfo.message || "Penalty name already exists" 
+        setFormErrors({
+          category_notification_description:
+            errorInfo.message ||
+            "Notification category description already exists",
         });
       } else if (errorInfo.isValidationError) {
-        setFormErrors({ 
-          general: errorInfo.message || "Please check all required fields" 
+        setFormErrors({
+          general: errorInfo.message || "Please check all required fields",
         });
-      } else if (errorInfo.isNotFoundError) {
-        setFormErrors({ general: errorInfo.message || "Penalty not found" });
       } else {
         const errorMessage = getFriendlyErrorMessage(
           err,
-          "Failed to update penalty. Please try again."
+          "Failed to create notification category. Please try again."
         );
         setFormErrors({ general: errorMessage });
       }
@@ -176,40 +132,100 @@ export default function PenaltiesPage() {
     }
   };
 
-  // Anular penalty
-  const anularPenalty = async (penaltyId: string) => {
+  // Update existing category notification
+  const updateCategoryNotification = async (
+    categoryNotificationId: string,
+    categoryNotificationData: UpdateCategoryNotificationData
+  ) => {
+    try {
+      setIsSubmitting(true);
+      setFormErrors({});
+      setDialogError(null);
+      const response = await apiClient(
+        `api/category-notifications/${categoryNotificationId}`,
+        {
+          method: "PUT",
+          body: JSON.stringify(categoryNotificationData),
+        }
+      );
+
+      if (!response || !(response as any).categoryNotification) {
+        throw new Error("Invalid response structure from server");
+      }
+
+      setCategoryNotifications((prev) =>
+        prev.map((cn) =>
+          cn._id === categoryNotificationId
+            ? (response as any).categoryNotification
+            : cn
+        )
+      );
+      setSuccessMessage("Notification category updated successfully");
+      handleClose();
+    } catch (err: unknown) {
+      const errorInfo = handleApiError(err);
+
+      if (errorInfo.isConflictError) {
+        setFormErrors({
+          category_notification_description:
+            errorInfo.message ||
+            "Notification category description already exists",
+        });
+      } else if (errorInfo.isValidationError) {
+        setFormErrors({
+          general: errorInfo.message || "Please check all required fields",
+        });
+      } else if (errorInfo.isNotFoundError) {
+        setFormErrors({
+          general: errorInfo.message || "Notification category not found",
+        });
+      } else {
+        const errorMessage = getFriendlyErrorMessage(
+          err,
+          "Failed to update notification category. Please try again."
+        );
+        setFormErrors({ general: errorMessage });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Anular category notification
+  const anularCategoryNotification = async (categoryNotificationId: string) => {
     try {
       setIsSubmitting(true);
       setDialogError(null);
       setFormErrors({});
       const response = await apiClient(
-        `api/penalties/${penaltyId}/anular`,
+        `api/category-notifications/${categoryNotificationId}/anular`,
         {
           method: "PATCH",
         }
       );
-      
-      // Validar que la respuesta tenga la estructura esperada
-      if (!response || !response.penalizacion) {
+
+      if (!response || !(response as any).categoryNotification) {
         throw new Error("Invalid response structure from server");
       }
-      
-      setPenalties((prev) =>
-        prev.map((p) =>
-          p._id === penaltyId ? response.penalizacion : p
+
+      setCategoryNotifications((prev) =>
+        prev.map((cn) =>
+          cn._id === categoryNotificationId
+            ? (response as any).categoryNotification
+            : cn
         )
       );
-      setSuccessMessage("Penalty deactivated successfully");
+      setSuccessMessage("Notification category deactivated successfully");
       handleClose();
     } catch (err: unknown) {
       const errorInfo = handleApiError(err);
       const errorMessage = getFriendlyErrorMessage(
         err,
         errorInfo.isNotFoundError
-          ? "Penalty not found"
+          ? "Notification category not found"
           : errorInfo.isValidationError
-          ? "Penalty is already deactivated or invalid ID"
-          : "Failed to deactivate penalty. Please try again."
+          ? "Notification category is already deactivated or invalid ID"
+          : "Failed to deactivate notification category. Please try again."
       );
       setDialogError(errorMessage);
     } finally {
@@ -217,40 +233,41 @@ export default function PenaltiesPage() {
     }
   };
 
-  // Activate penalty
-  const activatePenalty = async (penaltyId: string) => {
+  // Activate category notification
+  const activateCategoryNotification = async (categoryNotificationId: string) => {
     try {
       setIsSubmitting(true);
       setDialogError(null);
       setFormErrors({});
       const response = await apiClient(
-        `api/penalties/${penaltyId}/activate`,
+        `api/category-notifications/${categoryNotificationId}/activate`,
         {
           method: "PATCH",
         }
       );
-      
-      // Validar que la respuesta tenga la estructura esperada
-      if (!response || !response.penalizacion) {
+
+      if (!response || !(response as any).categoryNotification) {
         throw new Error("Invalid response structure from server");
       }
-      
-      setPenalties((prev) =>
-        prev.map((p) =>
-          p._id === penaltyId ? response.penalizacion : p
+
+      setCategoryNotifications((prev) =>
+        prev.map((cn) =>
+          cn._id === categoryNotificationId
+            ? (response as any).categoryNotification
+            : cn
         )
       );
-      setSuccessMessage("Penalty activated successfully");
+      setSuccessMessage("Notification category activated successfully");
       handleClose();
     } catch (err: unknown) {
       const errorInfo = handleApiError(err);
       const errorMessage = getFriendlyErrorMessage(
         err,
         errorInfo.isNotFoundError
-          ? "Penalty not found"
+          ? "Notification category not found"
           : errorInfo.isValidationError
-          ? "Penalty is already active or invalid ID"
-          : "Failed to activate penalty. Please try again."
+          ? "Notification category is already active or invalid ID"
+          : "Failed to activate notification category. Please try again."
       );
       setDialogError(errorMessage);
     } finally {
@@ -259,7 +276,7 @@ export default function PenaltiesPage() {
   };
 
   useEffect(() => {
-    fetchPenalties();
+    fetchCategoryNotifications();
   }, []);
 
   // Auto-hide success messages after 5 seconds
@@ -274,15 +291,15 @@ export default function PenaltiesPage() {
 
   const handleOpen = (
     type: "create" | "edit" | "toggle-status" | "view",
-    penalty?: Penalty
+    categoryNotification?: CategoryNotification
   ) => {
-    setSelectedPenalty(penalty || null);
+    setSelectedCategoryNotification(categoryNotification || null);
     setOpenDialog(type);
   };
 
   const handleClose = () => {
     setOpenDialog(null);
-    setSelectedPenalty(null);
+    setSelectedCategoryNotification(null);
     setFormErrors({});
     setError(null);
     setDialogError(null);
@@ -293,8 +310,8 @@ export default function PenaltiesPage() {
   const validateForm = (formData: any): Record<string, string> => {
     const errors: Record<string, string> = {};
 
-    if (!formData.name?.trim()) {
-      errors.name = "Name is required";
+    if (!formData.category_notification_description?.trim()) {
+      errors.category_notification_description = "Description is required";
     }
 
     return errors;
@@ -305,24 +322,24 @@ export default function PenaltiesPage() {
     e.preventDefault();
 
     const formData = new FormData(e.target as HTMLFormElement);
-    const descriptionValue = formData.get("description") as string;
-    const penaltyData = {
-      name: formData.get("name") as string,
-      description: descriptionValue?.trim() || undefined,
+    const categoryNotificationData = {
+      category_notification_description: formData.get(
+        "category_notification_description"
+      ) as string,
     };
 
-    const errors = validateForm(penaltyData);
+    const errors = validateForm(categoryNotificationData);
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
       return;
     }
 
     if (openDialog === "create") {
-      await createPenalty(penaltyData);
-    } else if (openDialog === "edit" && selectedPenalty) {
-      await updatePenalty(
-        selectedPenalty._id,
-        penaltyData as UpdatePenaltyData
+      await createCategoryNotification(categoryNotificationData);
+    } else if (openDialog === "edit" && selectedCategoryNotification) {
+      await updateCategoryNotification(
+        selectedCategoryNotification._id,
+        categoryNotificationData as UpdateCategoryNotificationData
       );
     }
   };
@@ -339,23 +356,23 @@ export default function PenaltiesPage() {
       });
     };
 
-  const columns: ColumnDef<Penalty>[] = [
+  const columns: ColumnDef<CategoryNotification>[] = [
     {
-      accessorKey: "name",
+      accessorKey: "category_notification_description",
       header: ({ column }) => (
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
           className="flex items-center gap-1"
         >
-          Name
+          Description
           <ArrowUpDown className="h-4 w-4" />
         </Button>
       ),
       sortingFn: stringLocaleSort(),
     },
     {
-      accessorKey: "statusText",
+      accessorKey: "isActive",
       header: ({ column }) => (
         <Button
           variant="ghost"
@@ -366,16 +383,15 @@ export default function PenaltiesPage() {
           <ArrowUpDown className="h-4 w-4" />
         </Button>
       ),
-      sortingFn: stringLocaleSort(),
       cell: ({ row }) => (
         <span
           className={`px-2 py-1 rounded-full text-xs font-semibold ${
-            row.original.status === 1
+            row.original.isActive
               ? "bg-secondary/20 text-secondary"
               : "bg-accent-1/20 text-accent-1"
           }`}
         >
-          {row.original.statusText || (row.original.status === 1 ? "Active" : "Deactivated")}
+          {row.original.isActive ? "Active" : "Deactivated"}
         </span>
       ),
     },
@@ -400,7 +416,7 @@ export default function PenaltiesPage() {
           >
             <Pencil className="h-4 w-4" />
           </Button>
-          {row.original.status === 1 ? (
+          {row.original.isActive ? (
             <Button
               size="icon"
               variant="outline"
@@ -428,12 +444,12 @@ export default function PenaltiesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Penalties"
-        subtitle="Manage penalties for enrollments"
+        title="Notification Categories"
+        subtitle="Manage notification categories for the system"
       >
         <Button variant="default" onClick={() => handleOpen("create")}>
           <Plus className="h-4 w-4 mr-2" />
-          Add penalty
+          Add category
         </Button>
       </PageHeader>
 
@@ -478,88 +494,80 @@ export default function PenaltiesPage() {
           <CardContent>
             <DataTable
               columns={columns}
-              data={penalties}
-              searchKeys={["name"]}
-              searchPlaceholder="Search penalties by name..."
+              data={categoryNotifications}
+              searchKeys={["category_notification_description"]}
+              searchPlaceholder="Search categories by description..."
             />
           </CardContent>
         </Card>
       )}
 
       <Dialog open={openDialog !== null} onOpenChange={handleClose}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {openDialog === "create" && "Add penalty"}
-              {openDialog === "edit" && "Edit penalty"}
-              {openDialog === "view" && "Penalty Details"}
+              {openDialog === "create" && "Add notification category"}
+              {openDialog === "edit" && "Edit notification category"}
+              {openDialog === "view" && "Notification Category Details"}
               {openDialog === "toggle-status" &&
-                (selectedPenalty?.status === 1
-                  ? "Deactivate penalty"
-                  : "Activate penalty")}
+                (selectedCategoryNotification?.isActive
+                  ? "Deactivate notification category"
+                  : "Activate notification category")}
             </DialogTitle>
           </DialogHeader>
 
           {(openDialog === "create" || openDialog === "edit") && (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Name *</Label>
+                <Label htmlFor="category_notification_description">
+                  Description *
+                </Label>
                 <Input
-                  id="name"
-                  name="name"
-                  placeholder="e.g., Absence, Tardiness, etc."
-                  defaultValue={selectedPenalty?.name || ""}
-                  className={formErrors.name ? "border-red-500" : ""}
+                  id="category_notification_description"
+                  name="category_notification_description"
+                  placeholder="e.g., Administrative, Penalization, etc."
+                  defaultValue={
+                    selectedCategoryNotification?.category_notification_description ||
+                    ""
+                  }
+                  className={
+                    formErrors.category_notification_description
+                      ? "border-red-500"
+                      : ""
+                  }
                 />
-                {formErrors.name && (
-                  <p className="text-red-500 text-sm">{formErrors.name}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  name="description"
-                  placeholder="Enter a detailed description of the penalty (optional)"
-                  defaultValue={selectedPenalty?.description || ""}
-                  rows={4}
-                  className={formErrors.description ? "border-red-500" : ""}
-                />
-                {formErrors.description && (
-                  <p className="text-red-500 text-sm">{formErrors.description}</p>
+                {formErrors.category_notification_description && (
+                  <p className="text-red-500 text-sm">
+                    {formErrors.category_notification_description}
+                  </p>
                 )}
               </div>
             </form>
           )}
 
-          {openDialog === "view" && selectedPenalty && (
+          {openDialog === "view" && selectedCategoryNotification && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4">
                 <div>
-                  <Label className="text-sm font-semibold">Name</Label>
+                  <Label className="text-sm font-semibold">Description</Label>
                   <p className="text-sm font-semibold">
-                    {selectedPenalty.name}
+                    {
+                      selectedCategoryNotification.category_notification_description
+                    }
                   </p>
                 </div>
-                {selectedPenalty.description && (
-                  <div>
-                    <Label className="text-sm font-semibold">Description</Label>
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                      {selectedPenalty.description}
-                    </p>
-                  </div>
-                )}
                 <div>
                   <Label className="text-sm font-semibold">Status</Label>
                   <span
                     className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                      selectedPenalty.status === 1
+                      selectedCategoryNotification.isActive
                         ? "bg-secondary/20 text-secondary"
                         : "bg-accent-1/20 text-accent-1"
                     }`}
                   >
-                    {selectedPenalty.statusText ||
-                      (selectedPenalty.status === 1 ? "Active" : "Deactivated")}
+                    {selectedCategoryNotification.isActive
+                      ? "Active"
+                      : "Deactivated"}
                   </span>
                 </div>
               </div>
@@ -570,15 +578,21 @@ export default function PenaltiesPage() {
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
                 Are you sure you want to{" "}
-                {selectedPenalty?.status === 1
+                {selectedCategoryNotification?.isActive
                   ? "deactivate"
                   : "activate"}{" "}
-                <strong>{selectedPenalty?.name}</strong>?
+                <strong>
+                  {
+                    selectedCategoryNotification?.category_notification_description
+                  }
+                </strong>
+                ?
               </p>
             </div>
           )}
 
-          {((openDialog === "create" || openDialog === "edit") && formErrors.general) ||
+          {((openDialog === "create" || openDialog === "edit") &&
+            formErrors.general) ||
           (openDialog === "toggle-status" && dialogError) ? (
             <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-3 py-2 rounded text-sm flex items-center gap-2">
               <AlertCircle className="h-4 w-4 shrink-0" />
@@ -602,7 +616,7 @@ export default function PenaltiesPage() {
               <Button
                 variant={
                   openDialog === "toggle-status" &&
-                  selectedPenalty?.status === 1
+                  selectedCategoryNotification?.isActive
                     ? "destructive"
                     : "default"
                 }
@@ -613,12 +627,16 @@ export default function PenaltiesPage() {
                     if (form) form.requestSubmit();
                   } else if (
                     openDialog === "toggle-status" &&
-                    selectedPenalty
+                    selectedCategoryNotification
                   ) {
-                    if (selectedPenalty.status === 1) {
-                      anularPenalty(selectedPenalty._id);
+                    if (selectedCategoryNotification.isActive) {
+                      anularCategoryNotification(
+                        selectedCategoryNotification._id
+                      );
                     } else {
-                      activatePenalty(selectedPenalty._id);
+                      activateCategoryNotification(
+                        selectedCategoryNotification._id
+                      );
                     }
                   }
                 }}
@@ -629,7 +647,7 @@ export default function PenaltiesPage() {
                 {openDialog === "create" && "Create"}
                 {openDialog === "edit" && "Save changes"}
                 {openDialog === "toggle-status" &&
-                  (selectedPenalty?.status === 1
+                  (selectedCategoryNotification?.isActive
                     ? "Deactivate"
                     : "Activate")}
               </Button>

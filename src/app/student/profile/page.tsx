@@ -21,7 +21,10 @@ import {
   DollarSign,
   BookOpen,
   Calendar,
+  Eye,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
 
 interface Note {
   _id?: string;
@@ -72,6 +75,7 @@ interface StudentInfo {
 
 export default function StudentProfilePage() {
   const { user, isLoading: isAuthLoading } = useAuth();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
   const [activeTab, setActiveTab] = useState<string>(tabParam || "profile");
@@ -109,6 +113,7 @@ export default function StudentProfilePage() {
           totalAvailableBalance: infoResponse.totalAvailableBalance,
           enrollmentDetails: infoResponse.enrollmentDetails || [],
         };
+        console.log("data", data);
         setStudentInfo(data);
       } catch (infoErr) {
         // If info endpoint fails, we can still show student profile
@@ -138,7 +143,7 @@ export default function StudentProfilePage() {
   useEffect(() => {
     // Solo hacer fetch si el usuario está autenticado y es estudiante
     if (!isAuthLoading && user?.id && user?.role?.toLowerCase() === "student") {
-      fetchStudent();
+    fetchStudent();
     } else if (!isAuthLoading && (!user || user?.role?.toLowerCase() !== "student")) {
       setError("You must be logged in as a student to view your profile.");
       setIsLoading(false);
@@ -335,6 +340,17 @@ export default function StudentProfilePage() {
                             <p className="text-sm">
                               {enrollment.rescheduleHours} hours
                             </p>
+                          </div>
+                          <div className="md:col-span-2 flex justify-end pt-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => router.push(`/student/class-registry/${enrollment.enrollmentId}`)}
+                              className="flex items-center gap-2"
+                            >
+                              <Eye className="h-4 w-4" />
+                              View Class Records
+                            </Button>
                           </div>
                         </div>
                       </CardContent>

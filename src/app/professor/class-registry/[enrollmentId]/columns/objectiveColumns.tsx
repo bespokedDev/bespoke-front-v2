@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
-import { Loader2, X, Save, Pencil, CheckCircle2 } from "lucide-react";
+import { Loader2, X, Save, Pencil } from "lucide-react";
 import { formatDateForDisplay, extractDatePart, dateStringToISO } from "@/lib/dateUtils";
 import type { ClassObjective, ContentClass } from "../types";
 import {

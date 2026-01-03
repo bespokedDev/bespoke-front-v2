@@ -14,11 +14,22 @@ export interface Enrollment {
       dob?: string; // Fecha de nacimiento
       photo?: string | null; // Imagen/foto del estudiante (base64 o URL)
       representativeName?: string | null; // Nombre del representante
+      canvaDocUrl?: string | null; // URL del documento Canva
+      createdAt?: string; // Fecha de creación del estudiante
+      enrollmentDate?: string; // Fecha de inscripción
+      avatarPermission?: boolean | null; // Autorización de imagen a redes sociales
     };
+    languageLevel?: string; // Nivel de idioma
+    learningType?: string; // Estilo de aprendizaje (puede ser string separado por comas)
+    willingHomework?: number; // Si quiere tarea (0 o 1)
   }>;
   enrollmentType: string;
   alias?: string | null;
   language: string;
+  scheduledDays?: Array<{
+    _id?: string;
+    day: string;
+  }>; // Días de clase programados
   startDate: string;
   endDate: string;
   status: number;

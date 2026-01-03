@@ -105,18 +105,37 @@ export const EditableStudentMoodField = ({ registryId, initialValue, onUpdate, i
     setValue(initialValue);
   }, [initialValue]);
 
+  // Opciones de estado de ánimo con emojis
+  const moodOptions = [
+    { value: "😊", label: "Happy" },
+    { value: "😐", label: "Neutral" },
+    { value: "☹️", label: "Sad" },
+  ];
+
   return (
-    <Input
-      key={`studentMood-input-${registryId}`}
-      value={value}
-      onChange={(e) => {
-        const newValue = e.target.value;
+    <Select
+      key={`studentMood-select-${registryId}`}
+      value={value || ""}
+      onValueChange={(newValue) => {
         setValue(newValue);
         onUpdate(newValue);
       }}
       disabled={disabled}
-      className={`w-full min-w-[100px] md:min-w-[120px] ${isReschedule ? "bg-white" : ""}`}
-    />
+    >
+      <SelectTrigger className={`w-full min-w-[100px] md:min-w-[120px] ${isReschedule ? "bg-white" : ""}`}>
+        <SelectValue placeholder="Select mood..." />
+      </SelectTrigger>
+      <SelectContent>
+        {moodOptions.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            <span className="flex items-center gap-2">
+              <span className="text-lg">{option.value}</span>
+              <span>{option.label}</span>
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 };
 

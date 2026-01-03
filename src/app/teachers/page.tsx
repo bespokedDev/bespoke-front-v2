@@ -4,7 +4,6 @@
 import { useState, useEffect } from "react";
 import { apiClient } from "@/lib/api";
 import { handleApiError, getFriendlyErrorMessage } from "@/lib/errorHandler";
-import { formatDateForDisplay, extractDatePart } from "@/lib/dateUtils";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,19 +18,32 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DataTable } from "@/components/ui/data-table";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from "@/components/ui/command";
+import {
   Plus,
-  Pencil,
-  Ban,
-  CheckCircle2,
   Loader2,
   Trash2,
   Eye,
   ArrowUpDown,
   X,
   AlertCircle,
+  Ban,
+  CheckCircle2,
+  ChevronsUpDown,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import type { ColumnDef } from "@tanstack/react-table";
+import Link from "next/link";
 
 // --- Tipos y Estado Inicial (igual que antes) ---
 interface PaymentData {
@@ -59,6 +71,7 @@ interface Professor {
   phone: string;
   occupation: string;
   startDate?: string;
+  typeId?: string;
   emergencyContact: EmergencyContact;
   paymentData: PaymentData[];
   isActive: boolean;
@@ -73,6 +86,7 @@ const initialProfessorState: ProfessorFormData = {
   phone: "",
   occupation: "",
   startDate: "",
+  typeId: "",
   emergencyContact: { name: "", phone: "" },
   paymentData: [
     {
@@ -87,29 +101,22 @@ const initialProfessorState: ProfessorFormData = {
     },
   ],
 };
-const formatDateForInput = (dateString?: string | null) => {
-  if (!dateString) return "";
-  try {
-    return extractDatePart(dateString);
-  } catch (e) {
-    console.log("error: ", e);
-    return "";
-  }
-};
+
+interface ProfessorType {
+  _id: string;
+  name: string;
+}
 
 // --- COMPONENTE PRINCIPAL ---
 export default function TeachersPage() {
   const [teachers, setTeachers] = useState<Professor[]>([]);
+  const [professorTypes, setProfessorTypes] = useState<ProfessorType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Estados del diálogo (se mantienen igual)
-  const [openDialog, setOpenDialog] = useState<
-    "create" | "edit" | "status" | "view" | null
-  >(null);
-  const [selectedTeacher, setSelectedTeacher] = useState<Professor | null>(
-    null
-  );
+  // Estados del diálogo
+  const [openDialog, setOpenDialog] = useState<"create" | "status" | null>(null);
+  const [selectedTeacher, setSelectedTeacher] = useState<Professor | null>(null);
   const [formData, setFormData] = useState<Partial<ProfessorFormData>>(
     initialProfessorState
   );
@@ -118,51 +125,72 @@ export default function TeachersPage() {
 
   // --- Lógica de la API (se mantiene igual) ---
   const fetchTeachers = async () => {
-    /* ... (sin cambios) ... */
     try {
       setIsLoading(true);
       setError(null);
+      console.log("Fetching teachers from api/professors...");
       const data = await apiClient("api/professors");
-      console.log("EL DATA", data);
-      setTeachers(data);
+      console.log("Teachers data received:", data);
+      setTeachers(Array.isArray(data) ? data : []);
     } catch (err: unknown) {
-      const errorMessage = getFriendlyErrorMessage(
-        err,
-        "Failed to load teachers. Please try again."
-      );
-      setError(errorMessage);
+      const errorInfo = handleApiError(err);
+      console.log("Error fetching teachers:", errorInfo);
+      // Solo mostrar error al usuario si no es un 404 (Not Found)
+      // Los 404 pueden ocurrir durante navegación y no deberían mostrarse
+      if (errorInfo.statusCode !== 404) {
+        const errorMessage = getFriendlyErrorMessage(
+          err,
+          "Failed to load teachers. Please try again."
+        );
+        setError(errorMessage);
+      } else {
+        // Si es 404, simplemente establecer array vacío sin mostrar error
+        console.log("404 error on professors endpoint, setting empty array");
+        setTeachers([]);
+      }
     } finally {
       setIsLoading(false);
     }
   };
+
+  const fetchProfessorTypes = async () => {
+    try {
+      const data = await apiClient("api/professor-types");
+      setProfessorTypes(data || []);
+    } catch (err: unknown) {
+      const errorInfo = handleApiError(err);
+      // Solo loguear errores que no sean 404 (Not Found), ya que este endpoint es opcional
+      if (errorInfo.statusCode !== 404) {
+        console.error("Error fetching professor types:", err);
+      }
+      // No mostramos error al usuario ya que este campo es opcional
+      setProfessorTypes([]);
+    }
+  };
+
   useEffect(() => {
-    fetchTeachers();
+    // Envolver las llamadas para evitar que los errores 404 se muestren en consola
+    const loadData = async () => {
+      try {
+        await Promise.allSettled([
+          fetchTeachers(),
+          fetchProfessorTypes()
+        ]);
+      } catch {
+        // Los errores ya están manejados en las funciones individuales
+        // Este catch solo previene que errores no manejados se propaguen
+      }
+    };
+    
+    loadData();
   }, []);
 
-  const handleOpen = (
-    type: "create" | "edit" | "status" | "view",
-    teacher?: Professor
-  ) => {
-    /* ... (sin cambios) ... */
+  const handleOpen = (type: "create") => {
     setDialogError(null);
-    if (type === "create") {
-      setSelectedTeacher(null);
-      setFormData(initialProfessorState);
-    } else if (teacher) {
-      setSelectedTeacher(teacher);
-      if (type === "edit") {
-        const { /*_id, isActive, __v,*/ ...editableData } = teacher as any;
-        if (editableData.dob)
-          editableData.dob = formatDateForInput(editableData.dob);
-        if (editableData.startDate)
-          editableData.startDate = formatDateForInput(editableData.startDate);
-        setFormData(editableData);
-      }
-    }
+    setFormData(initialProfessorState);
     setOpenDialog(type);
   };
   const handleClose = () => {
-    /* ... (sin cambios) ... */
     setOpenDialog(null);
     setSelectedTeacher(null);
     setFormData(initialProfessorState);
@@ -231,17 +259,10 @@ export default function TeachersPage() {
       delete payload.emergencyContact;
     }
     try {
-      if (openDialog === "create") {
-        await apiClient("api/professors", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
-      } else if (openDialog === "edit" && selectedTeacher) {
-        await apiClient(`api/professors/${selectedTeacher._id}`, {
-          method: "PUT",
-          body: JSON.stringify(payload),
-        });
-      }
+      await apiClient("api/professors", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
       await fetchTeachers();
       handleClose();
     } catch (err: unknown) {
@@ -261,7 +282,6 @@ export default function TeachersPage() {
   };
 
   const handleToggleStatus = async () => {
-    /* ... (sin cambios) ... */
     if (!selectedTeacher) return;
     setIsSubmitting(true);
     setDialogError(null);
@@ -280,10 +300,16 @@ export default function TeachersPage() {
           ? "Teacher not found."
           : "Failed to update teacher status. Please try again."
       );
-      setDialogError(errorMessage); // Mostrar error dentro del modal
+      setDialogError(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleOpenStatus = (teacher: Professor) => {
+    setSelectedTeacher(teacher);
+    setDialogError(null);
+    setOpenDialog("status");
   };
 
   const stringLocaleSort =
@@ -376,24 +402,18 @@ export default function TeachersPage() {
             size="icon"
             variant="outline"
             className="text-secondary border-secondary/50 hover:bg-secondary/10"
-            onClick={() => handleOpen("view", row.original)}
+            asChild
           >
-            <Eye className="h-4 w-4" />
-          </Button>
-          <Button
-            size="icon"
-            variant="outline"
-            className="text-primary border-primary/50 hover:bg-primary/10"
-            onClick={() => handleOpen("edit", row.original)}
-          >
-            <Pencil className="h-4 w-4" />
+            <Link href={`/teachers/${row.original._id}`}>
+              <Eye className="h-4 w-4" />
+            </Link>
           </Button>
           {row.original.isActive ? (
             <Button
               size="icon"
               variant="outline"
               className="text-accent-1 border-accent-1/50 hover:bg-accent-1/10"
-              onClick={() => handleOpen("status", row.original)}
+              onClick={() => handleOpenStatus(row.original)}
             >
               <Ban className="h-4 w-4" />
             </Button>
@@ -402,7 +422,7 @@ export default function TeachersPage() {
               size="icon"
               variant="outline"
               className="text-secondary border-secondary/50 hover:bg-secondary/10"
-              onClick={() => handleOpen("status", row.original)}
+              onClick={() => handleOpenStatus(row.original)}
             >
               <CheckCircle2 className="h-4 w-4" />
             </Button>
@@ -467,14 +487,9 @@ export default function TeachersPage() {
       >
         <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
-            <DialogTitle>
-              {openDialog === "create" && "Add New Teacher"}
-              {openDialog === "edit" && "Edit Teacher&apos;s Information"}
-              {openDialog === "view" && "Teacher Details"}
-              {openDialog === "status" && `Confirm Status Change`}
-            </DialogTitle>
+            <DialogTitle>Change teacher status</DialogTitle>
           </DialogHeader>
-          {(openDialog === "create" || openDialog === "edit") && (
+          {openDialog === "create" && (
             <form
               onSubmit={handleSubmit}
               className="max-h-[70vh] overflow-y-auto p-1 pr-4"
@@ -559,6 +574,20 @@ export default function TeachersPage() {
                     type="date"
                     value={formData.startDate || ""}
                     onChange={handleFormChange}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="typeId">
+                    Professor Type <span className="text-red-500">*</span>
+                  </Label>
+                  <SearchableSelect
+                    items={professorTypes}
+                    selectedId={formData.typeId || ""}
+                    onSelectedChange={(id) =>
+                      setFormData((prev) => ({ ...prev, typeId: id }))
+                    }
+                    placeholder="Select professor type..."
+                    required
                   />
                 </div>
                 <fieldset className="md:col-span-2 border p-4 rounded-md border-light-border dark:border-dark-border">
@@ -703,7 +732,7 @@ export default function TeachersPage() {
                   {isSubmitting && (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   )}{" "}
-                  {openDialog === "create" ? "Create Teacher" : "Save Changes"}
+                  Create Teacher
                 </Button>
               </DialogFooter>
             </form>
@@ -748,174 +777,89 @@ export default function TeachersPage() {
               </DialogFooter>
             </div>
           )}
-
-          {openDialog === "view" && selectedTeacher && (
-            <div className="space-y-6 max-h-[70vh] overflow-y-auto p-1 pr-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                <div>
-                  <Label className="font-semibold">Full Name</Label>
-                  <p className="text-sm font-semibold">
-                    {selectedTeacher.name}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">CI Number</Label>
-                  <p className="text-sm font-semibold">
-                    {selectedTeacher.ciNumber}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Email</Label>
-                  <p className="text-sm">{selectedTeacher.email}</p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Phone</Label>
-                  <p className="text-sm">{selectedTeacher.phone}</p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Date of Birth</Label>
-                  <p className="text-sm">
-                    {selectedTeacher.dob
-                      ? formatDateForDisplay(selectedTeacher.dob)
-                      : "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Start Date</Label>
-                  <p className="text-sm">
-                    {selectedTeacher.startDate
-                      ? formatDateForDisplay(selectedTeacher.startDate)
-                      : "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Occupation</Label>
-                  <p className="text-sm">
-                    {selectedTeacher.occupation || "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Status</Label>
-                  <span
-                    className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                      selectedTeacher.isActive
-                        ? "bg-secondary/20 text-secondary"
-                        : "bg-accent-1/20 text-accent-1"
-                    }`}
-                  >
-                    {selectedTeacher.isActive ? "Active" : "Inactive"}
-                  </span>
-                </div>
-                <div className="md:col-span-2">
-                  <Label className="font-semibold">Address</Label>
-                  <p className="text-sm">{selectedTeacher.address || "N/A"}</p>
-                </div>
-              </div>
-
-              {selectedTeacher.emergencyContact &&
-                (selectedTeacher.emergencyContact.name ||
-                  selectedTeacher.emergencyContact.phone) && (
-                  <div className="border p-4 rounded-md">
-                    <h3 className="text-lg font-medium mb-4">
-                      Emergency Contact
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label className="text-sm text-muted-foreground font-semibold">
-                          Name
-                        </Label>
-                        <p className="text-sm">
-                          {selectedTeacher.emergencyContact.name || "N/A"}
-                        </p>
-                      </div>
-                      <div>
-                        <Label className="text-sm text-muted-foreground font-semibold">
-                          Phone
-                        </Label>
-                        <p className="text-sm">
-                          {selectedTeacher.emergencyContact.phone || "N/A"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-              {selectedTeacher.paymentData &&
-                selectedTeacher.paymentData.length > 0 && (
-                  <div>
-                    <h3 className="text-lg font-semibold pb-1">Payment Data</h3>
-                    {selectedTeacher.paymentData.map((payment, index) => (
-                      <div
-                        key={payment._id || index}
-                        className="border p-4 rounded-md mb-4"
-                      >
-                        <h4 className="font-semibold mb-3">
-                          Method {index + 1}
-                        </h4>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div>
-                            <Label className="text-sm text-muted-foreground">
-                              Bank Name
-                            </Label>
-                            <p className="text-sm">
-                              {payment.bankName || "N/A"}
-                            </p>
-                          </div>
-                          <div>
-                            <Label className="text-sm text-muted-foreground">
-                              Account Type
-                            </Label>
-                            <p className="text-sm">
-                              {payment.accountType || "N/A"}
-                            </p>
-                          </div>
-                          <div>
-                            <Label className="text-sm text-muted-foreground">
-                              Account Number
-                            </Label>
-                            <p className="text-sm">
-                              {payment.accountNumber || "N/A"}
-                            </p>
-                          </div>
-                          <div>
-                            <Label className="text-sm text-muted-foreground">
-                              Holder&apos;s Name
-                            </Label>
-                            <p className="text-sm">
-                              {payment.holderName || "N/A"}
-                            </p>
-                          </div>
-                          <div>
-                            <Label className="text-sm text-muted-foreground">
-                              Holder&apos;s CI
-                            </Label>
-                            <p className="text-sm">
-                              {payment.holderCI || "N/A"}
-                            </p>
-                          </div>
-                          <div>
-                            <Label className="text-sm text-muted-foreground">
-                              Holder&apos;s Email
-                            </Label>
-                            <p className="text-sm">
-                              {payment.holderEmail || "N/A"}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-              <DialogFooter className="pt-4 border-t">
-                <Button variant="outline" onClick={handleClose}>
-                  Close
-                </Button>
-              </DialogFooter>
-            </div>
-          )}
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// --- COMPONENTE SEARCHABLE SELECT REUTILIZABLE ---
+function SearchableSelect({
+  items,
+  selectedId,
+  onSelectedChange,
+  placeholder,
+  required,
+}: {
+  items: { _id: string; name: string }[];
+  selectedId: string;
+  onSelectedChange: (id: string) => void;
+  placeholder: string;
+  required?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const selectedItem = items.find((item) => item._id === selectedId);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          aria-required={required}
+          className="w-full justify-between h-auto min-h-10 hover:!bg-primary/30 dark:hover:!primary/30"
+        >
+          {selectedItem ? selectedItem.name : placeholder}
+          <div className="flex items-center gap-1">
+            {!required && selectedItem && (
+              <X
+                className="h-4 w-4 shrink-0 opacity-50 hover:opacity-100"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectedChange("");
+                }}
+              />
+            )}
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </div>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+        <Command>
+          <CommandInput placeholder={placeholder} />
+          <CommandEmpty>No item found.</CommandEmpty>
+          <CommandGroup className="max-h-60 overflow-y-auto">
+            {!required && selectedItem && (
+              <CommandItem
+                value="__clear__"
+                onSelect={() => {
+                  onSelectedChange("");
+                  setOpen(false);
+                }}
+                className="hover:!bg-secondary/20 dark:hover:!secondary/30 text-muted-foreground"
+              >
+                <X className="h-4 w-4 mr-2" />
+                Clear selection
+              </CommandItem>
+            )}
+            {items.map((item) => (
+              <CommandItem
+                key={item._id}
+                value={item.name}
+                onSelect={() => {
+                  onSelectedChange(item._id);
+                  setOpen(false);
+                }}
+                className="hover:!bg-secondary/20 dark:hover:!secondary/30"
+              >
+                {item.name}
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }

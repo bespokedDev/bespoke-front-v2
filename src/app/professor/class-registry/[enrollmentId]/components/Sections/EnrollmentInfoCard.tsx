@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Eye } from "lucide-react";
+import { Eye, ExternalLink } from "lucide-react";
 import { formatDateForDisplay } from "@/lib/dateUtils";
 import type { Enrollment } from "../../types";
 
@@ -133,31 +133,31 @@ export function EnrollmentInfoCard({ enrollment }: EnrollmentInfoCardProps) {
               </Label>
               <p className="text-sm">{enrollment.language}</p>
             </div>
-            {isSingleStudent && firstStudent.studentId.dob && (
-              <div>
-                <Label className="text-xs font-semibold text-muted-foreground">
-                  Date of Birth
-                </Label>
-                <p className="text-sm">
-                  {formatDateOfBirth(firstStudent.studentId.dob)}
-                </p>
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
               <Label className="text-xs font-semibold text-muted-foreground">
                 Plan
               </Label>
               <p className="text-sm">{enrollment.planId.name}</p>
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
               <Label className="text-xs font-semibold text-muted-foreground">
                 Type
               </Label>
               <p className="text-sm">{enrollment.enrollmentType}</p>
             </div>
+            {enrollment.scheduledDays && enrollment.scheduledDays.length > 0 && (
+              <div>
+                <Label className="text-xs font-semibold text-muted-foreground">
+                  Class Days
+                </Label>
+                <p className="text-sm">
+                  {enrollment.scheduledDays.map((d) => d.day).join(", ")}
+                </p>
+              </div>
+            )}
           </div>
 
           <div>
@@ -171,29 +171,182 @@ export function EnrollmentInfoCard({ enrollment }: EnrollmentInfoCardProps) {
           </div>
         </div>
 
+        {/* Información adicional del estudiante (para un solo estudiante) */}
+        {isSingleStudent && (
+          <div className="border-t pt-3 mt-3 space-y-3">
+            <div>
+              <Label className="text-xs font-semibold text-muted-foreground">
+                Language Level
+              </Label>
+              <p className="text-sm">{firstStudent.languageLevel || "N/A"}</p>
+            </div>
+            <div>
+              <Label className="text-xs font-semibold text-muted-foreground">
+                Student Since
+              </Label>
+              <p className="text-sm">
+                {(firstStudent.studentId.enrollmentDate || firstStudent.studentId.createdAt)
+                  ? formatDateForDisplay(
+                      firstStudent.studentId.enrollmentDate || firstStudent.studentId.createdAt || ""
+                    )
+                  : "N/A"}
+              </p>
+            </div>
+            <div>
+              <Label className="text-xs font-semibold text-muted-foreground">
+                Image to Social Media Authorization
+              </Label>
+              <p className="text-sm">
+                {firstStudent.studentId.avatarPermission === true
+                  ? "Yes"
+                  : firstStudent.studentId.avatarPermission === false
+                  ? "No"
+                  : "N/A"}
+              </p>
+            </div>
+            <div>
+              <Label className="text-xs font-semibold text-muted-foreground">
+                Learning Style
+              </Label>
+              <p className="text-sm">{firstStudent.learningType || "N/A"}</p>
+            </div>
+            <div>
+              <Label className="text-xs font-semibold text-muted-foreground">
+                Wants Homework
+              </Label>
+              <p className="text-sm">
+                {firstStudent.willingHomework === 1
+                  ? "Yes"
+                  : firstStudent.willingHomework === 0
+                  ? "No"
+                  : "N/A"}
+              </p>
+            </div>
+            {/* Canva & Doc */}
+            <div>
+              <Label className="text-xs font-semibold text-muted-foreground">
+                Canva & Doc
+              </Label>
+              {firstStudent.studentId.canvaDocUrl ? (
+                <a
+                  href={firstStudent.studentId.canvaDocUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-primary hover:underline flex items-center gap-1"
+                >
+                  {firstStudent.studentId.canvaDocUrl}
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              ) : (
+                <p className="text-sm text-muted-foreground">N/A</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Información adicional de estudiantes (para múltiples estudiantes) */}
+        {!isSingleStudent && (
+          <div className="border-t pt-3 mt-3 space-y-4">
+            {enrollment.studentIds.map((studentInfo) => (
+              <div key={studentInfo._id} className="space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">
+                  {studentInfo.studentId.name}
+                </p>
+                <div className="space-y-2 pl-2">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">
+                      Language Level
+                    </Label>
+                    <p className="text-sm">{studentInfo.languageLevel || "N/A"}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">
+                      Student Since
+                    </Label>
+                    <p className="text-sm">
+                      {(studentInfo.studentId.enrollmentDate || studentInfo.studentId.createdAt)
+                        ? formatDateForDisplay(
+                            studentInfo.studentId.enrollmentDate || studentInfo.studentId.createdAt || ""
+                          )
+                        : "N/A"}
+                    </p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">
+                      Image to Social Media Authorization
+                    </Label>
+                    <p className="text-sm">
+                      {studentInfo.studentId.avatarPermission === true
+                        ? "Yes"
+                        : studentInfo.studentId.avatarPermission === false
+                        ? "No"
+                        : "N/A"}
+                    </p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">
+                      Learning Style
+                    </Label>
+                    <p className="text-sm">{studentInfo.learningType || "N/A"}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">
+                      Wants Homework
+                    </Label>
+                    <p className="text-sm">
+                      {studentInfo.willingHomework === 1
+                        ? "Yes"
+                        : studentInfo.willingHomework === 0
+                        ? "No"
+                        : "N/A"}
+                    </p>
+                  </div>
+                  {/* Canva & Doc para múltiples estudiantes */}
+                  <div>
+                    <Label className="text-xs text-muted-foreground">
+                      Canva & Doc
+                    </Label>
+                    {studentInfo.studentId.canvaDocUrl ? (
+                      <a
+                        href={studentInfo.studentId.canvaDocUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary hover:underline flex items-center gap-1"
+                      >
+                        {studentInfo.studentId.canvaDocUrl}
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">N/A</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Información del Representante (si existe) */}
         {hasRepresentative && (
-          <>
-            <div className="border-t pt-3 mt-3">
-              <Label className="text-xs font-semibold text-muted-foreground mb-2 block">
-                Representative
-              </Label>
-              <div className="space-y-2">
-                {enrollment.studentIds
-                  .filter((s) => s.studentId.representativeName)
-                  .map((studentInfo) => (
-                    <div key={studentInfo._id} className="space-y-1">
-                      <p className="text-xs text-muted-foreground">
-                        {studentInfo.studentId.name}:
-                      </p>
-                      <p className="text-sm font-medium">
-                        {studentInfo.studentId.representativeName}
-                      </p>
-                    </div>
-                  ))}
-              </div>
+          <div className="border-t pt-3 mt-3">
+            <Label className="text-xs font-semibold text-muted-foreground mb-2 block">
+              Representative
+            </Label>
+            <div className="space-y-2">
+              {enrollment.studentIds
+                .filter((s) => s.studentId.representativeName)
+                .map((studentInfo) => (
+                  <div key={studentInfo._id} className="space-y-1">
+                    <p className="text-xs text-muted-foreground">
+                      {studentInfo.studentId.name}:
+                    </p>
+                    <p className="text-sm font-medium">
+                      {studentInfo.studentId.representativeName}
+                    </p>
+                  </div>
+                ))}
             </div>
-          </>
+          </div>
         )}
       </CardContent>
     </Card>

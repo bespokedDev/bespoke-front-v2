@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api";
 import { getFriendlyErrorMessage } from "@/lib/errorHandler";
 import { PageHeader } from "@/components/ui/page-header";
@@ -16,9 +17,21 @@ import {
   BookOpen,
   Eye,
   ClipboardList,
+  ExternalLink,
+  User,
+  Globe,
+  Clock,
 } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 import Link from "next/link";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { formatDateForDisplay } from "@/lib/dateUtils";
 
 interface Enrollment {
   _id: string;
@@ -55,9 +68,22 @@ interface ProfessorEnrollmentsResponse {
 
 export default function ProfessorClassRegistryPage() {
   const { user, isLoading: isAuthLoading } = useAuth();
+  const router = useRouter();
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedEnrollment, setSelectedEnrollment] = useState<Enrollment | null>(null);
+  const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
+
+  const handleNavigateToFullDetails = (enrollmentId: string) => {
+    setIsQuickViewOpen(false);
+    router.push(`/professor/enrollments/${enrollmentId}`);
+  };
+
+  const handleNavigateToClassRegistry = (enrollmentId: string) => {
+    setIsQuickViewOpen(false);
+    router.push(`/professor/class-registry/${enrollmentId}`);
+  };
 
   const fetchEnrollments = async () => {
     if (!user?.id) {
@@ -173,12 +199,24 @@ export default function ProfessorClassRegistryPage() {
           <Button
             variant="outline"
             size="sm"
+            onClick={() => {
+              setSelectedEnrollment(row.original);
+              setIsQuickViewOpen(true);
+            }}
+            className="text-secondary border-secondary/50 hover:bg-secondary/10"
+          >
+            <Eye className="h-4 w-4 mr-2" />
+            Quick View
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             asChild
             className="text-primary border-primary/50 hover:bg-primary/10"
           >
             <Link href={`/professor/enrollments/${row.original._id}`}>
-              <Eye className="h-4 w-4 mr-2" />
-              View Details
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Full Details
             </Link>
           </Button>
           <Button
@@ -249,6 +287,135 @@ export default function ProfessorClassRegistryPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Quick View Dialog */}
+      <Dialog open={isQuickViewOpen} onOpenChange={setIsQuickViewOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedEnrollment?.alias || selectedEnrollment?.planId.name}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedEnrollment && (
+            <div className="space-y-6">
+              {/* Students */}
+              <div>
+                <Label className="font-semibold text-base mb-2 block">
+                  Students
+                </Label>
+                <div className="space-y-2">
+                  {selectedEnrollment.studentIds.map((student) => (
+                    <div
+                      key={student._id}
+                      className="flex items-center gap-2 p-2 rounded-md bg-muted/50"
+                    >
+                      <User className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-semibold">
+                        {student.studentId.name}
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        ({student.studentId.studentCode})
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Enrollment Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm text-muted-foreground font-semibold">
+                    Language
+                  </Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Globe className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-sm">{selectedEnrollment.language}</p>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground font-semibold">
+                    Plan
+                  </Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <BookOpen className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-sm">{selectedEnrollment.planId.name}</p>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground font-semibold">
+                    Enrollment Type
+                  </Label>
+                  <p className="text-sm mt-1 capitalize">
+                    {selectedEnrollment.enrollmentType}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground font-semibold">
+                    Status
+                  </Label>
+                  <span
+                    className={`inline-block px-2 py-1 rounded-full text-xs font-semibold mt-1 ${
+                      selectedEnrollment.status === 1
+                        ? "bg-secondary/20 text-secondary"
+                        : selectedEnrollment.status === 2
+                        ? "bg-accent-1/20 text-accent-1"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {selectedEnrollment.status === 1
+                      ? "Active"
+                      : selectedEnrollment.status === 2
+                      ? "Inactive"
+                      : "Other"}
+                  </span>
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground font-semibold">
+                    Start Date
+                  </Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-sm">
+                      {formatDateForDisplay(selectedEnrollment.startDate)}
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground font-semibold">
+                    End Date
+                  </Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-sm">
+                      {formatDateForDisplay(selectedEnrollment.endDate)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-2 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => handleNavigateToFullDetails(selectedEnrollment._id)}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  View Full Details
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => handleNavigateToClassRegistry(selectedEnrollment._id)}
+                >
+                  <ClipboardList className="h-4 w-4 mr-2" />
+                  Class Registry
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

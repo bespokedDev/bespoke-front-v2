@@ -38,6 +38,12 @@ type ApiClientOptions = RequestInit & {
   skipAutoRedirect?: boolean; // Para evitar redirección automática en login
 };
 
+interface ApiError extends Error {
+  statusCode?: number;
+  apiMessage?: string;
+  __handled?: boolean;
+}
+
 export const apiClient = async (
   endpoint: string,
   {
@@ -87,7 +93,7 @@ export const apiClient = async (
         // Si no se puede parsear, usar el mensaje por defecto
       }
       
-      const error = new Error(errorMessage) as Error & { statusCode?: number; apiMessage?: string };
+      const error = new Error(errorMessage) as ApiError;
       error.statusCode = response.status;
       error.apiMessage = errorMessage;
       throw error;
@@ -102,10 +108,20 @@ export const apiClient = async (
       const error = new Error(
         errorData.message ||
           `API request failed with status ${response.status}`
-      ) as Error & { statusCode?: number; apiMessage?: string };
+      ) as ApiError;
       
       error.statusCode = response.status;
       error.apiMessage = errorData.message;
+      
+      // Para errores 404, marcar el error para que no se muestre en consola de React
+      // pero aún así lanzarlo para que el código que llama pueda manejarlo
+      if (response.status === 404) {
+        // Marcar el error como "manejado" para evitar que React lo muestre
+        error.__handled = true;
+      } else {
+        // Solo loguear errores que no sean 404 (Not Found) para evitar ruido en consola
+        console.error(`API Error [${response.status}]:`, endpoint, errorData.message || response.statusText);
+      }
       
       throw error;
     }
@@ -117,7 +133,28 @@ export const apiClient = async (
 
     return response;
   } catch (error) {
-    console.error(`[apiClient] Error fetching ${fullUrl}:`, error);
+    // Solo loguear errores que no sean 404 para evitar ruido en consola
+    // Los 404 pueden ser esperados en algunos casos
+    const apiError = error as ApiError;
+    const is404 = apiError && typeof apiError === 'object' && 'statusCode' in apiError && apiError.statusCode === 404;
+    const isHandled = apiError && typeof apiError === 'object' && '__handled' in apiError && apiError.__handled === true;
+    
+    if (!is404 && !isHandled) {
+      console.error(`[apiClient] Error fetching ${fullUrl}:`, error);
+    }
+    
+    // Para errores 404, suprimir el error de React usando un error silencioso
+    if (is404 || isHandled) {
+      // Crear un error silencioso que no se mostrará en consola de React
+      const silentError = new Error() as ApiError;
+      silentError.statusCode = 404;
+      silentError.apiMessage = apiError?.apiMessage || 'Not Found';
+      silentError.__handled = true;
+      // No incluir el stack trace para evitar que React lo muestre
+      silentError.stack = undefined;
+      throw silentError;
+    }
+    
     throw error;
   }
 };

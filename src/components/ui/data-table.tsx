@@ -36,6 +36,7 @@ interface DataTableProps<TData, TValue> {
   data: TData[];
   searchKeys?: string[]; // Acepta un array de strings con los nombres de las claves
   searchPlaceholder?: string;
+  initialSorting?: SortingState; // Ordenamiento inicial opcional
 }
 
 export function DataTable<TData, TValue>({
@@ -43,8 +44,9 @@ export function DataTable<TData, TValue>({
   data,
   searchKeys = [],
   searchPlaceholder = "Search...",
+  initialSorting = [],
 }: DataTableProps<TData, TValue>) {
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [sorting, setSorting] = useState<SortingState>(initialSorting);
   const [globalFilter, setGlobalFilter] = useState("");
 
   const table = useReactTable({
