@@ -47,6 +47,7 @@ import {
   CheckCircle2,
   X,
   ChevronsUpDown,
+  Check,
 } from "lucide-react";
 import {
   Tabs,
@@ -172,6 +173,15 @@ interface UpdateBonusData {
 interface ProfessorType {
   _id: string;
   name: string;
+  rates: {
+    single: number;
+    couple: number;
+    group: number;
+  };
+  status: number;
+  statusText?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export default function TeacherDetailPage() {
@@ -883,7 +893,7 @@ export default function TeacherDetailPage() {
                   <Label htmlFor="typeId">
                     Professor Type <span className="text-red-500">*</span>
                   </Label>
-                  <SearchableSelect
+                  <ProfessorTypeSelect
                     items={professorTypes}
                     selectedId={typeof formData.typeId === 'string' ? formData.typeId : (typeof formData.typeId === 'object' && formData.typeId?._id ? formData.typeId._id : "") || ""}
                     onSelectedChange={(id: string) =>
@@ -1576,15 +1586,15 @@ export default function TeacherDetailPage() {
   );
 }
 
-// --- COMPONENTE SEARCHABLE SELECT REUTILIZABLE ---
-function SearchableSelect({
+// --- COMPONENTE SELECTOR DE PROFESSOR TYPE CON TARIFAS ---
+function ProfessorTypeSelect({
   items,
   selectedId,
   onSelectedChange,
   placeholder,
   required,
 }: {
-  items: { _id: string; name: string }[];
+  items: ProfessorType[];
   selectedId: string;
   onSelectedChange: (id: string) => void;
   placeholder: string;
@@ -1604,7 +1614,16 @@ function SearchableSelect({
           aria-required={required}
           className="w-full justify-between h-auto min-h-10 hover:!bg-primary/30 dark:hover:!primary/30"
         >
-          {selectedItem ? selectedItem.name : placeholder}
+          {selectedItem ? (
+            <div className="flex flex-col items-start flex-1">
+              <span className="font-medium">{selectedItem.name}</span>
+              <span className="text-xs text-muted-foreground">
+                Single: ${selectedItem.rates.single.toFixed(2)} | Couple: ${selectedItem.rates.couple.toFixed(2)} | Group: ${selectedItem.rates.group.toFixed(2)}
+              </span>
+            </div>
+          ) : (
+            placeholder
+          )}
           <div className="flex items-center gap-1">
             {!required && selectedItem && (
               <X
@@ -1622,7 +1641,7 @@ function SearchableSelect({
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
         <Command>
           <CommandInput placeholder={placeholder} />
-          <CommandEmpty>No item found.</CommandEmpty>
+          <CommandEmpty>No professor type found.</CommandEmpty>
           <CommandGroup className="max-h-60 overflow-y-auto">
             {!required && selectedItem && (
               <CommandItem
@@ -1645,9 +1664,18 @@ function SearchableSelect({
                   onSelectedChange(item._id);
                   setOpen(false);
                 }}
-                className="hover:!bg-secondary/20 dark:hover:!secondary/30"
               >
-                {item.name}
+                <Check
+                  className={`mr-2 h-4 w-4 ${
+                    selectedId === item._id ? "opacity-100" : "opacity-0"
+                  }`}
+                />
+                <div className="flex flex-col flex-1">
+                  <span className="font-medium">{item.name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    Single: ${item.rates.single.toFixed(2)} | Couple: ${item.rates.couple.toFixed(2)} | Group: ${item.rates.group.toFixed(2)}
+                  </span>
+                </div>
               </CommandItem>
             ))}
           </CommandGroup>

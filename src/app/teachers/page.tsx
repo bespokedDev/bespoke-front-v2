@@ -40,6 +40,7 @@ import {
   Ban,
   CheckCircle2,
   ChevronsUpDown,
+  Check,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -105,6 +106,15 @@ const initialProfessorState: ProfessorFormData = {
 interface ProfessorType {
   _id: string;
   name: string;
+  rates: {
+    single: number;
+    couple: number;
+    group: number;
+  };
+  status: number;
+  statusText?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // --- COMPONENTE PRINCIPAL ---
@@ -156,7 +166,20 @@ export default function TeachersPage() {
   const fetchProfessorTypes = async () => {
     try {
       const data = await apiClient("api/professor-types");
-      setProfessorTypes(data || []);
+      console.log("Professor types data received:", data);
+      
+      // Manejar diferentes estructuras de respuesta
+      let typesArray: ProfessorType[] = [];
+      if (Array.isArray(data)) {
+        typesArray = data;
+      } else if (data && typeof data === 'object' && 'professorTypes' in data) {
+        typesArray = Array.isArray(data.professorTypes) ? data.professorTypes : [];
+      } else if (data && typeof data === 'object' && 'data' in data) {
+        typesArray = Array.isArray(data.data) ? data.data : [];
+      }
+      
+      console.log("Processed professor types:", typesArray);
+      setProfessorTypes(typesArray);
     } catch (err: unknown) {
       const errorInfo = handleApiError(err);
       // Solo loguear errores que no sean 404 (Not Found), ya que este endpoint es opcional
@@ -580,13 +603,17 @@ export default function TeachersPage() {
                   <Label htmlFor="typeId">
                     Professor Type <span className="text-red-500">*</span>
                   </Label>
-                  <SearchableSelect
+                  <ProfessorTypeSelect
                     items={professorTypes}
                     selectedId={formData.typeId || ""}
                     onSelectedChange={(id) =>
                       setFormData((prev) => ({ ...prev, typeId: id }))
                     }
-                    placeholder="Select professor type..."
+                    placeholder={
+                      professorTypes.length === 0
+                        ? "Loading professor types..."
+                        : "Select professor type..."
+                    }
                     required
                   />
                 </div>
@@ -855,6 +882,105 @@ function SearchableSelect({
                 className="hover:!bg-secondary/20 dark:hover:!secondary/30"
               >
                 {item.name}
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// --- COMPONENTE SELECTOR DE PROFESSOR TYPE CON TARIFAS ---
+function ProfessorTypeSelect({
+  items,
+  selectedId,
+  onSelectedChange,
+  placeholder,
+  required,
+}: {
+  items: ProfessorType[];
+  selectedId: string;
+  onSelectedChange: (id: string) => void;
+  placeholder: string;
+  required?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const selectedItem = items.find((item) => item._id === selectedId);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          aria-required={required}
+          className="w-full justify-between h-auto min-h-10 hover:!bg-primary/30 dark:hover:!primary/30"
+        >
+          {selectedItem ? (
+            <div className="flex flex-col items-start flex-1">
+              <span className="font-medium">{selectedItem.name}</span>
+              <span className="text-xs text-muted-foreground">
+                Single: ${selectedItem.rates.single.toFixed(2)} | Couple: ${selectedItem.rates.couple.toFixed(2)} | Group: ${selectedItem.rates.group.toFixed(2)}
+              </span>
+            </div>
+          ) : (
+            placeholder
+          )}
+          <div className="flex items-center gap-1">
+            {!required && selectedItem && (
+              <X
+                className="h-4 w-4 shrink-0 opacity-50 hover:opacity-100"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectedChange("");
+                }}
+              />
+            )}
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </div>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+        <Command>
+          <CommandInput placeholder={placeholder} />
+          <CommandEmpty>No professor type found.</CommandEmpty>
+          <CommandGroup className="max-h-60 overflow-y-auto">
+            {!required && selectedItem && (
+              <CommandItem
+                value="__clear__"
+                onSelect={() => {
+                  onSelectedChange("");
+                  setOpen(false);
+                }}
+                className="hover:!bg-secondary/20 dark:hover:!secondary/30 text-muted-foreground"
+              >
+                <X className="h-4 w-4 mr-2" />
+                Clear selection
+              </CommandItem>
+            )}
+            {items.map((item) => (
+              <CommandItem
+                key={item._id}
+                value={item.name}
+                onSelect={() => {
+                  onSelectedChange(item._id);
+                  setOpen(false);
+                }}
+              >
+                <Check
+                  className={`mr-2 h-4 w-4 ${
+                    selectedId === item._id ? "opacity-100" : "opacity-0"
+                  }`}
+                />
+                <div className="flex flex-col flex-1">
+                  <span className="font-medium">{item.name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    Single: ${item.rates.single.toFixed(2)} | Couple: ${item.rates.couple.toFixed(2)} | Group: ${item.rates.group.toFixed(2)}
+                  </span>
+                </div>
               </CommandItem>
             ))}
           </CommandGroup>

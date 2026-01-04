@@ -67,6 +67,7 @@ const allNavItems = [
       { title: "Penalties", href: "/settings/penalties", icon: AlertTriangle },
       { title: "Class Content Types", href: "/settings/content-class", icon: BookMarked },
       { title: "Class Types", href: "/settings/class-types", icon: GraduationCap },
+      { title: "Professor Types", href: "/settings/professor-types", icon: UserCircle },
       { title: "Income Categories", href: "/settings/category-money", icon: Tags },
       { title: "Class Categories", href: "/settings/category-class", icon: FolderTree },
       { title: "Notification Categories", href: "/settings/category-notifications", icon: Bell },
