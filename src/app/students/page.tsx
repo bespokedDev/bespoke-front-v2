@@ -887,6 +887,7 @@ export default function StudentsPage() {
                         <Label>Date</Label>
                         <Input
                           type="date"
+                          max="9999-12-31"
                           value={note.date}
                           onChange={(e) =>
                             handleNoteChange(index, "date", e.target.value)

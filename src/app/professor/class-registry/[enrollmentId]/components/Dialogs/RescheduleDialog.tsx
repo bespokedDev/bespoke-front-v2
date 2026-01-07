@@ -67,6 +67,7 @@ export const RescheduleDialog = ({
             <Input
               id="reschedule-date"
               type="date"
+              max="9999-12-31"
               value={rescheduleDate}
               onChange={(e) => onRescheduleDateChange(e.target.value)}
               required

@@ -70,6 +70,20 @@ export const apiClient = async (
     headers,
   };
 
+  // Debug: Log request body for plans endpoint
+  if (endpoint === "api/plans" && requestConfig.body) {
+    try {
+      const bodyObj = typeof requestConfig.body === "string" 
+        ? JSON.parse(requestConfig.body) 
+        : requestConfig.body;
+      console.log("[apiClient] Plans request body:", bodyObj);
+      console.log("[apiClient] planType in body:", bodyObj.planType);
+      console.log("[apiClient] typeof planType:", typeof bodyObj.planType);
+    } catch (e) {
+      console.log("[apiClient] Could not parse request body for logging");
+    }
+  }
+
   const fullUrl = `${API_URL}${endpoint}`;
 
   try {

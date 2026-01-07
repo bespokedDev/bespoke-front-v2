@@ -566,6 +566,7 @@ export default function TeachersPage() {
                     id="dob"
                     name="dob"
                     type="date"
+                    max="9999-12-31"
                     value={formData.dob || ""}
                     onChange={handleFormChange}
                     required
@@ -595,6 +596,7 @@ export default function TeachersPage() {
                     id="startDate"
                     name="startDate"
                     type="date"
+                    max="9999-12-31"
                     value={formData.startDate || ""}
                     onChange={handleFormChange}
                   />

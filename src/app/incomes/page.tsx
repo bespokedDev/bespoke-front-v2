@@ -735,7 +735,6 @@ export default function IncomesPage() {
                 "student",
                 "professor",
                 "paymentMethod",
-                "amount",
                 "amountInDollars",
               ]}
               searchPlaceholder="Search incomes..."
@@ -770,6 +769,7 @@ export default function IncomesPage() {
                 <Input
                   name="income_date"
                   type="date"
+                  max="9999-12-31"
                   value={formData.income_date}
                   onChange={(e) =>
                     setFormData((p) => ({ ...p, income_date: e.target.value }))
@@ -1098,6 +1098,7 @@ export default function IncomesPage() {
               <Input
                 id="summary-start-date"
                 type="date"
+                max="9999-12-31"
                 value={summaryStartDate}
                 onChange={(e) => setSummaryStartDate(e.target.value)}
               />
@@ -1107,6 +1108,7 @@ export default function IncomesPage() {
               <Input
                 id="summary-end-date"
                 type="date"
+                max="9999-12-31"
                 value={summaryEndDate}
                 onChange={(e) => setSummaryEndDate(e.target.value)}
               />

@@ -1311,6 +1311,7 @@ export default function PayoutsPage() {
                       <Label>Date Paid</Label>
                       <Input
                         type="date"
+                        max="9999-12-31"
                         value={formData.paidAt}
                         onChange={(e) =>
                           setFormData((p) => ({ ...p, paidAt: e.target.value }))

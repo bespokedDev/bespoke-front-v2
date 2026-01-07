@@ -1298,6 +1298,7 @@ export default function StudentDetailPage() {
                         <Input
                           name="dob"
                           type="date"
+                          max="9999-12-31"
                           value={formData.dob || ""}
                           onChange={handleFormChange}
                           required
@@ -1436,6 +1437,7 @@ export default function StudentDetailPage() {
                             <Label>Date</Label>
                             <Input
                               type="date"
+                              max="9999-12-31"
                               value={note.date}
                               onChange={(e) =>
                                 handleNoteChange(index, "date", e.target.value)

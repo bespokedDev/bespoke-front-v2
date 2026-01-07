@@ -392,6 +392,7 @@ export default function ClassRegistryDetailPage() {
           return (
             <Input
               type="date"
+              max="9999-12-31"
               value={dateValue}
               onChange={(e) => {
                 const newDate = e.target.value;

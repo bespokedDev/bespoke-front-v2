@@ -110,7 +110,6 @@ interface StudentEnrollmentInfo {
   howWhereTheClasses?: string;
   roleGroup?: string;
   willingHomework?: number;
-  availabityToPractice?: string;
 }
 
 interface Enrollment {
@@ -160,7 +159,6 @@ type StudentEnrollmentFormData = {
   howWhereTheClasses?: string;
   roleGroup?: string;
   willingHomework?: number;
-  availabityToPractice?: string;
 };
 
 type EnrollmentFormData = {
@@ -178,8 +176,9 @@ type EnrollmentFormData = {
   language?: string;
   classCalculationType?: number;
   substituteProfessor?: SubstituteProfessor | null;
-  lateFee: number;
+  lateFee?: number;
   suspensionDaysAfterEndDate: number;
+  penalizationMoney?: number;
 };
 
 // --- ESTADO INICIAL ---
@@ -195,8 +194,9 @@ const initialEnrollmentState: EnrollmentFormData = {
   totalAmount: 0,
   alias: "",
   language: "",
-  lateFee: 0,
+  lateFee: undefined,
   suspensionDaysAfterEndDate: 0,
+  penalizationMoney: undefined,
 };
 
 const weekDays = [
@@ -229,6 +229,21 @@ export default function EnrollmentsPage() {
   const [openStudentSections, setOpenStudentSections] = useState<
     Record<string, boolean>
   >({});
+
+  // Inicializar openStudentSections: abrir el primer estudiante, cerrar los demás
+  useEffect(() => {
+    if (formData.studentIds.length > 0) {
+      setOpenStudentSections((prev) => {
+        const updated: Record<string, boolean> = {};
+        formData.studentIds.forEach((student, index) => {
+          const studentKey = student.studentId || `student-${index}`;
+          // Si ya existe un estado para este estudiante, mantenerlo; si no, inicializar (primer estudiante abierto)
+          updated[studentKey] = prev[studentKey] ?? index === 0;
+        });
+        return updated;
+      });
+    }
+  }, [formData.studentIds]); // Dependencia completa para detectar cambios en los estudiantes
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [openDisolveDialog, setOpenDisolveDialog] = useState(false);
@@ -348,7 +363,6 @@ export default function EnrollmentsPage() {
             howWhereTheClasses: s.howWhereTheClasses || "",
             roleGroup: s.roleGroup || "",
             willingHomework: s.willingHomework !== undefined && s.willingHomework !== null ? s.willingHomework : undefined,
-            availabityToPractice: s.availabityToPractice || "",
           };
         });
         setFormData({
@@ -378,8 +392,9 @@ export default function EnrollmentsPage() {
                 ),
               }
             : null,
-          lateFee: enrollment.lateFee ?? 0,
+          lateFee: enrollment.lateFee ?? undefined,
           suspensionDaysAfterEndDate: enrollment.suspensionDaysAfterEndDate ?? 0,
+          penalizationMoney: enrollment.penalizationMoney ?? undefined,
         });
       }
     }
@@ -601,8 +616,8 @@ export default function EnrollmentsPage() {
       }
       
       
-      if (!student.availabityToPractice?.trim()) {
-        setDialogError(`${studentName}: Availability to practice is required.`);
+      if (!student.dailyLearningTime?.trim()) {
+        setDialogError(`${studentName}: ATP (per day) is required.`);
         setIsSubmitting(false);
         return;
       }
@@ -648,7 +663,7 @@ export default function EnrollmentsPage() {
       return;
     }
 
-    if (formData.lateFee === undefined || formData.lateFee < 0) {
+    if (formData.lateFee === undefined || formData.lateFee === null || formData.lateFee < 0) {
       setDialogError("Late fee is required and must be a non-negative number.");
       setIsSubmitting(false);
       return;
@@ -695,8 +710,6 @@ export default function EnrollmentsPage() {
         payload.roleGroup = student.roleGroup.trim();
       if (student.willingHomework !== undefined && student.willingHomework !== null)
         payload.willingHomework = student.willingHomework;
-      if (student.availabityToPractice?.trim())
-        payload.availabityToPractice = student.availabityToPractice.trim();
       return payload;
     });
 
@@ -719,7 +732,16 @@ export default function EnrollmentsPage() {
     }
 
     // Campos obligatorios según la documentación
-    payload.lateFee = formData.lateFee ?? 0;
+    if (formData.lateFee !== undefined && formData.lateFee !== null) {
+      payload.lateFee = formData.lateFee;
+    } else {
+      payload.lateFee = 0; // Valor por defecto si no se especifica
+    }
+    
+    // Campos opcionales
+    if (formData.penalizationMoney !== undefined && formData.penalizationMoney !== null) {
+      payload.penalizationMoney = formData.penalizationMoney;
+    }
 
     // Agregar substituteProfessor si existe (solo al editar)
     // El status se maneja internamente, siempre se envía como 1
@@ -1145,7 +1167,50 @@ export default function EnrollmentsPage() {
               onSubmit={handleSubmit}
               className="space-y-4 max-h-[70vh] overflow-y-auto p-1 pr-4"
             >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="space-y-2 md:col-span-2">
+                  <Label>
+                    Professor <span className="text-red-500">*</span>
+                  </Label>
+                  <Select
+                    value={formData.professorId}
+                    onValueChange={(v) =>
+                      setFormData((p) => ({ ...p, professorId: v }))
+                    }
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a professor..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {professors.map((p) => (
+                        <SelectItem key={p._id} value={p._id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>
+                    Language <span className="text-red-500">*</span>
+                  </Label>
+                  <Select
+                    value={formData.language || ""}
+                    onValueChange={(v) =>
+                      setFormData((p) => ({ ...p, language: v }))
+                    }
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select language..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="English">English</SelectItem>
+                      <SelectItem value="French">French</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="space-y-2">
                   <Label>
                     Plan <span className="text-red-500">*</span>
@@ -1162,29 +1227,6 @@ export default function EnrollmentsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {plans.map((p) => (
-                        <SelectItem key={p._id} value={p._id}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>
-                    Professor <span className="text-red-500">*</span>
-                  </Label>
-                  <Select
-                    value={formData.professorId}
-                    onValueChange={(v) =>
-                      setFormData((p) => ({ ...p, professorId: v }))
-                    }
-                    required
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a professor..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {professors.map((p) => (
                         <SelectItem key={p._id} value={p._id}>
                           {p.name}
                         </SelectItem>
@@ -1234,7 +1276,7 @@ export default function EnrollmentsPage() {
                         <CollapsibleTrigger asChild>
                           <Button
                             variant="ghost"
-                            className="w-full justify-between p-4 h-auto hover:bg-muted/50"
+                            className="w-full justify-between p-4 h-auto bg-secondary/20 hover:bg-secondary/30 dark:bg-secondary/10 dark:hover:bg-secondary/20"
                           >
                             <span className="text-sm font-semibold">
                               {studentName}
@@ -1248,6 +1290,26 @@ export default function EnrollmentsPage() {
                         </CollapsibleTrigger>
                         <CollapsibleContent className="px-4 pb-4">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                            {/* Language level */}
+                            <div className="space-y-2">
+                              <Label>Language level <span className="text-red-500">*</span></Label>
+                              <Input
+                                value={student.languageLevel || ""}
+                                onChange={(e) => {
+                                  const updated = [...formData.studentIds];
+                                  updated[index] = {
+                                    ...updated[index],
+                                    languageLevel: e.target.value,
+                                  };
+                                  setFormData((p) => ({
+                                    ...p,
+                                    studentIds: updated,
+                                  }));
+                                }}
+                                placeholder="e.g., Beginner, Intermediate, Advanced"
+                                required
+                              />
+                            </div>
                             {/* Main goal */}
                             <div className="space-y-2">
                               <Label>Main goal <span className="text-red-500">*</span></Label>
@@ -1286,6 +1348,26 @@ export default function EnrollmentsPage() {
                                 }}
                                 placeholder="e.g., Prefers practical and conversational classes"
                                 rows={2}
+                                required
+                              />
+                            </div>
+                            {/* Ideal class */}
+                            <div className="space-y-2">
+                              <Label>Ideal class <span className="text-red-500">*</span></Label>
+                              <Input
+                                value={student.idealClassType || ""}
+                                onChange={(e) => {
+                                  const updated = [...formData.studentIds];
+                                  updated[index] = {
+                                    ...updated[index],
+                                    idealClassType: e.target.value,
+                                  };
+                                  setFormData((p) => ({
+                                    ...p,
+                                    studentIds: updated,
+                                  }));
+                                }}
+                                placeholder="e.g., Individual classes"
                                 required
                               />
                             </div>
@@ -1339,42 +1421,59 @@ export default function EnrollmentsPage() {
                             {/* First time learning a language */}
                             <div className="space-y-2">
                               <Label>First time learning a language <span className="text-red-500">*</span></Label>
-                              <Input
+                              <Select
                                 value={student.firstTimeLearningLanguage || ""}
-                                onChange={(e) => {
+                                onValueChange={(v) => {
                                   const updated = [...formData.studentIds];
                                   updated[index] = {
                                     ...updated[index],
-                                    firstTimeLearningLanguage: e.target.value,
+                                    firstTimeLearningLanguage: v,
                                   };
                                   setFormData((p) => ({
                                     ...p,
                                     studentIds: updated,
                                   }));
                                 }}
-                                placeholder="e.g., Yes, this is the first time"
                                 required
-                              />
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Yes">Yes</SelectItem>
+                                  <SelectItem value="No">No</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
                             {/* Previous experience */}
                             <div className="space-y-2">
                               <Label>Previous experience <span className="text-red-500">*</span></Label>
-                              <Input
+                              <Select
                                 value={student.previousExperience || ""}
-                                onChange={(e) => {
+                                onValueChange={(v) => {
                                   const updated = [...formData.studentIds];
                                   updated[index] = {
                                     ...updated[index],
-                                    previousExperience: e.target.value,
+                                    previousExperience: v,
                                   };
                                   setFormData((p) => ({
                                     ...p,
                                     studentIds: updated,
                                   }));
                                 }}
-                                placeholder="e.g., No previous experience"
                                 required
-                              />
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="online">Online</SelectItem>
+                                  <SelectItem value="on-site classes">On-site classes</SelectItem>
+                                  <SelectItem value="self-taught">Self-taught</SelectItem>
+                                  <SelectItem value="online & on-site">Online & on-site</SelectItem>
+                                  <SelectItem value="none">None</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
                             {/* How was that experience (experiencePastClass) */}
                             <div className="space-y-2">
@@ -1399,42 +1498,78 @@ export default function EnrollmentsPage() {
                             {/* How were the classes */}
                             <div className="space-y-2">
                               <Label>How were the classes <span className="text-red-500">*</span></Label>
-                              <Input
+                              <Select
                                 value={student.howWhereTheClasses || ""}
-                                onChange={(e) => {
+                                onValueChange={(v) => {
                                   const updated = [...formData.studentIds];
                                   updated[index] = {
                                     ...updated[index],
-                                    howWhereTheClasses: e.target.value,
+                                    howWhereTheClasses: v,
                                   };
                                   setFormData((p) => ({
                                     ...p,
                                     studentIds: updated,
                                   }));
                                 }}
-                                placeholder="e.g., Dynamic and participatory classes"
                                 required
-                              />
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="personalized">Personalized</SelectItem>
+                                  <SelectItem value="group lessons">Group lessons</SelectItem>
+                                  <SelectItem value="n/a">N/A</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
-                            {/* Role in a group */}
-                            <div className="space-y-2">
+                            {/* Role in a group - Multiple checkboxes */}
+                            <div className="space-y-2 md:col-span-2">
                               <Label>Role in a group <span className="text-red-500">*</span></Label>
-                              <Input
-                                value={student.roleGroup || ""}
-                                onChange={(e) => {
-                                  const updated = [...formData.studentIds];
-                                  updated[index] = {
-                                    ...updated[index],
-                                    roleGroup: e.target.value,
-                                  };
-                                  setFormData((p) => ({
-                                    ...p,
-                                    studentIds: updated,
-                                  }));
-                                }}
-                                placeholder="e.g., Leader, Organizer"
-                                required
-                              />
+                              <div className="space-y-2 border rounded-md p-4">
+                                {[
+                                  "Coordinador: Me gusta tomar la iniciativa y liderar",
+                                  "Participante: Prefiero contribuir activamente y apoyar",
+                                  "Observador: Soy más de observar y participar cuando se me indica",
+                                  "Adaptativo: Me adapto a lo que el grupo necesite",
+                                  "Prefiero aprender de manera individual."
+                                ].map((role) => {
+                                  const roleGroups = student.roleGroup ? student.roleGroup.split(",").map((r: string) => r.trim()) : [];
+                                  const isChecked = roleGroups.includes(role);
+                                  return (
+                                    <div key={role} className="flex items-center gap-2">
+                                      <input
+                                        type="checkbox"
+                                        id={`roleGroup-${studentKey}-${role}`}
+                                        checked={isChecked}
+                                        onChange={(e) => {
+                                          const updated = [...formData.studentIds];
+                                          let currentRoles = roleGroups;
+                                          if (e.target.checked) {
+                                            if (!currentRoles.includes(role)) {
+                                              currentRoles.push(role);
+                                            }
+                                          } else {
+                                            currentRoles = currentRoles.filter((r: string) => r !== role);
+                                          }
+                                          updated[index] = {
+                                            ...updated[index],
+                                            roleGroup: currentRoles.join(", "),
+                                          };
+                                          setFormData((p) => ({
+                                            ...p,
+                                            studentIds: updated,
+                                          }));
+                                        }}
+                                        className="h-4 w-4 rounded border-gray-300"
+                                      />
+                                      <Label htmlFor={`roleGroup-${studentKey}-${role}`} className="cursor-pointer font-semibold text-primary">
+                                        {role}
+                                      </Label>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
                             {/* Willingness to do homework */}
                             <div className="space-y-2 flex items-center gap-2">
@@ -1459,23 +1594,23 @@ export default function EnrollmentsPage() {
                                 Willingness to do homework
                               </Label>
                             </div>
-                            {/* Availability to practice */}
+                            {/* ATP (per day) */}
                             <div className="space-y-2">
-                              <Label>Availability to practice <span className="text-red-500">*</span></Label>
+                              <Label>Availability To Practice (per day) <span className="text-red-500">*</span></Label>
                               <Input
-                                value={student.availabityToPractice || ""}
+                                value={student.dailyLearningTime || ""}
                                 onChange={(e) => {
                                   const updated = [...formData.studentIds];
                                   updated[index] = {
                                     ...updated[index],
-                                    availabityToPractice: e.target.value,
+                                    dailyLearningTime: e.target.value,
                                   };
                                   setFormData((p) => ({
                                     ...p,
                                     studentIds: updated,
                                   }));
                                 }}
-                                placeholder="e.g., 1hr, 2hr, 3hr"
+                                placeholder="e.g., 1 hour per day"
                                 required
                               />
                             </div>
@@ -1506,39 +1641,22 @@ export default function EnrollmentsPage() {
                   })}
                 </div>
               )}
-              {(formData.enrollmentType === "couple" ||
-                formData.enrollmentType === "group") && (
-                <div className="space-y-2">
-                  <Label>Alias</Label>
-                  <Input
-                    type="text"
-                    value={formData.alias || ""}
-                    onChange={(e) =>
-                      setFormData((p) => ({ ...p, alias: e.target.value }))
-                    }
-                    placeholder="Enter alias..."
-                    maxLength={100}
-                  />
-                </div>
-              )}
-              <div className="space-y-2">
-                <Label>Language</Label>
-                <Select
-                  value={formData.language || ""}
-                  onValueChange={(v) =>
-                    setFormData((p) => ({ ...p, language: v }))
-                  }
-                  required
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select language..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="English">English</SelectItem>
-                    <SelectItem value="French">French</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {formData.studentIds.length > 0 &&
+                (formData.enrollmentType === "couple" ||
+                  formData.enrollmentType === "group") && (
+                  <div className="space-y-2">
+                    <Label>Alias</Label>
+                    <Input
+                      type="text"
+                      value={formData.alias || ""}
+                      onChange={(e) =>
+                        setFormData((p) => ({ ...p, alias: e.target.value }))
+                      }
+                      placeholder="Enter alias..."
+                      maxLength={100}
+                    />
+                  </div>
+                )}
               <div className="space-y-2">
                 <Label>
                   Scheduled Days <span className="text-red-500">*</span>
@@ -1582,6 +1700,7 @@ export default function EnrollmentsPage() {
                   </Label>
                   <Input
                     type="date"
+                    max="9999-12-31"
                     value={formData.purchaseDate}
                     onChange={(e) =>
                       setFormData((p) => ({
@@ -1598,6 +1717,7 @@ export default function EnrollmentsPage() {
                   </Label>
                   <Input
                     type="date"
+                    max="9999-12-31"
                     value={formData.startDate || getCurrentDateString()}
                     onChange={(e) =>
                       setFormData((p) => ({
@@ -1609,26 +1729,49 @@ export default function EnrollmentsPage() {
                   />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>
-                  Late Fee (Days) <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={formData.lateFee ?? 0}
-                  onChange={(e) =>
-                    setFormData((p) => ({
-                      ...p,
-                      lateFee: parseInt(e.target.value) || 0,
-                    }))
-                  }
-                  placeholder="e.g., 2"
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  Number of days of tolerance for late payments
-                </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>
+                    Late Fee (Days) <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={formData.lateFee !== undefined && formData.lateFee !== null ? formData.lateFee : ""}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setFormData((p) => ({
+                        ...p,
+                        lateFee: value === "" ? undefined : (parseInt(value) || 0),
+                      }));
+                    }}
+                    placeholder="e.g., 2"
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Number of days of tolerance for late payments
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Penalization Amount</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.penalizationMoney !== undefined && formData.penalizationMoney !== null ? formData.penalizationMoney : ""}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setFormData((p) => ({
+                        ...p,
+                        penalizationMoney: value === "" ? undefined : (parseFloat(value) || 0),
+                      }));
+                    }}
+                    placeholder="e.g., 10.50"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Amount of money for the penalization applied due to late payment
+                  </p>
+                </div>
               </div>
               {openDialog === "edit" && (
                 <>
@@ -1713,6 +1856,7 @@ export default function EnrollmentsPage() {
                           <Label>Assigned Date</Label>
                           <Input
                             type="date"
+                            max="9999-12-31"
                             value={formData.substituteProfessor.assignedDate}
                             onChange={(e) => {
                               const newAssignedDate = e.target.value;
@@ -1736,6 +1880,7 @@ export default function EnrollmentsPage() {
                           <Label>Expiry Date</Label>
                           <Input
                             type="date"
+                            max="9999-12-31"
                             value={formData.substituteProfessor.expiryDate}
                             onChange={(e) =>
                               setFormData((p) => ({
@@ -1975,6 +2120,7 @@ export default function EnrollmentsPage() {
               </Label>
               <Input
                 type="date"
+                max="9999-12-31"
                 value={resumeStartDate}
                 onChange={(e) => setResumeStartDate(e.target.value)}
                 required
@@ -2186,7 +2332,6 @@ function StudentMultiSelect({
           howWhereTheClasses: "",
           roleGroup: "",
           willingHomework: undefined,
-          availabityToPractice: "",
         },
       ];
     }
