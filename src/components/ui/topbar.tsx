@@ -102,7 +102,8 @@ export function Topbar() {
     try {
       setIsLoadingNotifications(true);
       setNotificationsError(null);
-      const response: NotificationsResponse = await apiClient("api/notifications");
+      // Use the endpoint for authenticated users to get their own notifications
+      const response: NotificationsResponse = await apiClient("api/notifications/user/my-notifications");
       setNotifications(response.notifications || []);
     } catch (err: unknown) {
       const errorMessage = getFriendlyErrorMessage(

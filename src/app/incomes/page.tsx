@@ -89,6 +89,28 @@ interface EnrollmentBrief {
   status: string;
   alias?: string;
 }
+interface PenalizationRegistryBrief {
+  _id: string;
+  penalization_description: string;
+  penalizationMoney?: number | null;
+  idPenalizacion?: {
+    _id: string;
+    name: string;
+  } | null;
+  enrollmentId?: {
+    _id: string;
+    alias?: string | null;
+  } | null;
+  professorId?: {
+    _id: string;
+    name: string;
+  } | null;
+  studentId?: {
+    _id: string;
+    name: string;
+  } | null;
+}
+
 interface Income {
   _id: string;
   deposit_name: string;
@@ -100,6 +122,7 @@ interface Income {
   note: string;
   idPaymentMethod: PaymentMethod;
   idEnrollment: EnrollmentBrief;
+  idPenalization?: PenalizationRegistryBrief | null;
   income_date: string;
   createdAt: string;
   updatedAt: string;
@@ -115,6 +138,7 @@ type IncomeFormData = {
   note: string;
   idPaymentMethod: string;
   idEnrollment: string;
+  idPenalization?: string | null;
 };
 
 interface SummaryItem {
@@ -135,6 +159,7 @@ const initialIncomeState: IncomeFormData = {
   note: "",
   idPaymentMethod: "",
   idEnrollment: "",
+  idPenalization: null,
 };
 
 const isEnrollmentStatusActive = (status: EnrollmentBrief["status"]) => {
@@ -153,6 +178,7 @@ export default function IncomesPage() {
   const [professors, setProfessors] = useState<ProfessorBrief[]>([]);
   const [divisas, setDivisas] = useState<Divisa[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [penalizations, setPenalizations] = useState<PenalizationRegistryBrief[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState<
@@ -183,12 +209,14 @@ export default function IncomesPage() {
           professorData,
           divisaData,
           paymentMethodData,
+          penalizationData,
         ] = await Promise.all([
           apiClient("api/incomes"),
           apiClient("api/enrollments"),
           apiClient("api/professors"),
           apiClient("api/divisas"),
           apiClient("api/payment-methods"),
+          apiClient("api/penalization-registry").catch(() => ({ penalizations: [] })),
         ]);
         console.log("incomeData", incomeData);
         // Normalizar los datos para asegurar que tengan los campos requeridos
@@ -208,6 +236,22 @@ export default function IncomesPage() {
         setProfessors(sortedProfessors);
         setDivisas(divisaData);
         setPaymentMethods(paymentMethodData);
+        
+        // Procesar penalizaciones: solo activas (status = 1) con penalizationMoney > 0
+        const penalizationsResponse = penalizationData;
+        let penalizationsArray: PenalizationRegistryBrief[] = [];
+        if (penalizationsResponse && typeof penalizationsResponse === "object" && "penalizations" in penalizationsResponse) {
+          penalizationsArray = Array.isArray(penalizationsResponse.penalizations) 
+            ? penalizationsResponse.penalizations 
+            : [];
+        } else if (Array.isArray(penalizationsResponse)) {
+          penalizationsArray = penalizationsResponse;
+        }
+        // Filtrar solo penalizaciones activas con penalizationMoney > 0
+        const activeMonetaryPenalizations = penalizationsArray.filter(
+          (p: any) => p.status === 1 && p.penalizationMoney && p.penalizationMoney > 0
+        ) as PenalizationRegistryBrief[];
+        setPenalizations(activeMonetaryPenalizations);
       } catch (err: unknown) {
         const errorMessage = getFriendlyErrorMessage(
           err,
@@ -298,6 +342,7 @@ export default function IncomesPage() {
         note: income.note || "",
         idPaymentMethod: income.idPaymentMethod?._id || "",
         idEnrollment: income.idEnrollment?._id || "",
+        idPenalization: income.idPenalization?._id || null,
       });
     } else if (income) {
       setSelectedIncome(income);
@@ -307,6 +352,9 @@ export default function IncomesPage() {
 
   const handleClose = () => {
     setOpenDialog(null);
+    setFormData(initialIncomeState);
+    setSelectedIncome(null);
+    setDialogError(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -341,6 +389,23 @@ export default function IncomesPage() {
       return;
     }
 
+    // Validation: idPenalization must be a valid ObjectId if provided
+    if (formData.idPenalization && formData.idPenalization.trim() !== "") {
+      const objectIdRegex = /^[0-9a-fA-F]{24}$/;
+      if (!objectIdRegex.test(formData.idPenalization)) {
+        setDialogError("Invalid penalization ID format.");
+        return;
+      }
+      // Verify that the penalization exists and is active
+      const selectedPenalization = penalizations.find(
+        (p) => p._id === formData.idPenalization
+      );
+      if (!selectedPenalization) {
+        setDialogError("Selected penalization is not available or has been deactivated.");
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     setDialogError(null);
     try {
@@ -360,7 +425,7 @@ export default function IncomesPage() {
         ? dateStringToISO(formData.income_date)
         : new Date().toISOString();
 
-      const incomePayload = {
+      const incomePayload: any = {
         ...formData,
         amountInDollars: amountInDollars,
         income_date: incomeDate,
@@ -371,6 +436,13 @@ export default function IncomesPage() {
         note: formData.note || undefined,
         tasa: formData.tasa && formData.tasa > 0 ? formData.tasa : undefined,
       };
+      
+      // Add idPenalization only if provided
+      if (formData.idPenalization && formData.idPenalization.trim() !== "") {
+        incomePayload.idPenalization = formData.idPenalization;
+      } else {
+        incomePayload.idPenalization = null;
+      }
 
       console.log("incomePayload", incomePayload);
 
@@ -929,6 +1001,36 @@ export default function IncomesPage() {
               {/* Visual separator */}
               <div className="border-t border-border my-6"></div>
 
+              {/* Penalization Association Section (Optional) */}
+              <div className="space-y-2">
+                <Label>
+                  Penalization <span className="text-muted-foreground text-sm font-normal">(Optional - Select if this income is paying a penalization)</span>
+                </Label>
+                <SearchableSelect
+                  items={penalizations.map((p) => {
+                    const parts = [];
+                    if (p.penalization_description) parts.push(p.penalization_description);
+                    parts.push(`$${(p.penalizationMoney || 0).toFixed(2)}`);
+                    if (p.idPenalizacion?.name) parts.push(`(${p.idPenalizacion.name})`);
+                    if (p.enrollmentId?.alias) parts.push(`Enr: ${p.enrollmentId.alias}`);
+                    else if (p.professorId?.name) parts.push(`Prof: ${p.professorId.name}`);
+                    else if (p.studentId?.name) parts.push(`Stud: ${p.studentId.name}`);
+                    return {
+                      _id: p._id,
+                      name: parts.join(" - "),
+                    };
+                  })}
+                  selectedId={formData.idPenalization || ""}
+                  onSelectedChange={(v) =>
+                    setFormData((p) => ({ ...p, idPenalization: v || null }))
+                  }
+                  placeholder="Select a penalization (optional)..."
+                />
+              </div>
+
+              {/* Visual separator */}
+              <div className="border-t border-border my-6"></div>
+
               {/* Note Section */}
               <div className="space-y-2">
                 <Label>Note</Label>
@@ -1033,6 +1135,45 @@ export default function IncomesPage() {
                   </p>
                 </div>
               </div>
+
+              {/* Penalization */}
+              {selectedIncome.idPenalization && (
+                <div>
+                  <Label className="font-semibold">Penalization</Label>
+                  <div className="mt-1 p-3 bg-muted rounded-md">
+                    <p className="text-sm font-medium">
+                      {selectedIncome.idPenalization.penalization_description}
+                    </p>
+                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-muted-foreground">
+                      {selectedIncome.idPenalization.penalizationMoney && (
+                        <p>
+                          <span className="font-semibold">Amount:</span> ${selectedIncome.idPenalization.penalizationMoney.toFixed(2)}
+                        </p>
+                      )}
+                      {selectedIncome.idPenalization.idPenalizacion && (
+                        <p>
+                          <span className="font-semibold">Type:</span> {selectedIncome.idPenalization.idPenalizacion.name}
+                        </p>
+                      )}
+                      {selectedIncome.idPenalization.enrollmentId && (
+                        <p>
+                          <span className="font-semibold">Enrollment:</span> {selectedIncome.idPenalization.enrollmentId.alias || "N/A"}
+                        </p>
+                      )}
+                      {selectedIncome.idPenalization.professorId && (
+                        <p>
+                          <span className="font-semibold">Professor:</span> {selectedIncome.idPenalization.professorId.name}
+                        </p>
+                      )}
+                      {selectedIncome.idPenalization.studentId && (
+                        <p>
+                          <span className="font-semibold">Student:</span> {selectedIncome.idPenalization.studentId.name}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Note */}
               <div>

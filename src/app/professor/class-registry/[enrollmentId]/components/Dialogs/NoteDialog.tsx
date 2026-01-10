@@ -1,8 +1,9 @@
 "use client";
 
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import {
   Dialog,
   DialogContent,
@@ -49,37 +50,85 @@ export const NoteDialog = ({
   onOpenChange,
   registryId,
   classRegistries,
-  noteData,
   onNoteDataChange,
   onSave,
 }: NoteDialogProps) => {
-  const handleClose = () => {
+  // Estado local para el contenido - solo se actualiza cuando se guarda o se abre el modal
+  const [localContent, setLocalContent] = useState<string>("");
+  const [localVisible, setLocalVisible] = useState<{
+    admin: boolean;
+    student: boolean;
+    professor: boolean;
+  }>({
+    admin: true,
+    student: false,
+    professor: true,
+  });
+
+  // Sincronizar estado local cuando se abre el modal o cambia el registryId
+  useEffect(() => {
+    if (open && registryId) {
+      const registry = classRegistries.find(r => r._id === registryId);
+      const existingContent = registry?.note?.content || "";
+      const existingVisible = registry?.note?.visible || {
+        admin: 1,
+        student: 0,
+        professor: 1,
+      };
+
+      setLocalContent(existingContent);
+      setLocalVisible({
+        admin: existingVisible.admin === 1,
+        student: existingVisible.student === 1,
+        professor: existingVisible.professor === 1,
+      });
+    }
+  }, [open, registryId, classRegistries]);
+
+  const handleClose = useCallback(() => {
+    setLocalContent("");
+    setLocalVisible({
+      admin: true,
+      student: false,
+      professor: true,
+    });
     onNoteDataChange({
       content: "",
       visible: {
         admin: true,
         student: false,
-        professor: true, // Always true for professor
+        professor: true,
       },
     });
     onOpenChange(false);
-  };
+  }, [onOpenChange, onNoteDataChange]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!registryId) return;
     
     const noteObject = {
-      content: noteData.content.trim() || null,
+      content: localContent.trim() || null,
       visible: {
         admin: 1, // Always visible to admin
-        student: noteData.visible.student ? 1 : 0,
+        student: localVisible.student ? 1 : 0,
         professor: 1, // Always visible to professor
       },
     };
 
     await onSave(registryId, noteObject);
     handleClose();
-  };
+  }, [registryId, localContent, localVisible, onSave, handleClose]);
+
+  const handleContentChange = useCallback((newContent: string) => {
+    setLocalContent(newContent);
+  }, []);
+
+  const handleVisibleChange = useCallback((field: "student", checked: boolean) => {
+    setLocalVisible((prev) => ({
+      ...prev,
+      [field]: checked,
+    }));
+  }, []);
 
   const registry = classRegistries.find(r => r._id === registryId);
   const isEditing = registry?.note?.content;
@@ -98,18 +147,15 @@ export const NoteDialog = ({
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label htmlFor="note-content">Note Content</Label>
-            <Textarea
-              id="note-content"
-              value={noteData.content}
-              onChange={(e) =>
-                onNoteDataChange({
-                  ...noteData,
-                  content: e.target.value,
-                })
-              }
-              placeholder="Enter note content..."
-              className="min-h-[120px]"
-            />
+            <div className="max-w-full">
+              <RichTextEditor
+                content={localContent}
+                onChange={handleContentChange}
+                placeholder="Enter note content..."
+                minHeight="120px"
+                className="w-full"
+              />
+            </div>
           </div>
           <div className="space-y-3">
             <Label>Visibility</Label>
@@ -131,16 +177,8 @@ export const NoteDialog = ({
                 <input
                   type="checkbox"
                   id="visible-student"
-                  checked={noteData.visible.student}
-                  onChange={(e) =>
-                    onNoteDataChange({
-                      ...noteData,
-                      visible: {
-                        ...noteData.visible,
-                        student: e.target.checked,
-                      },
-                    })
-                  }
+                  checked={localVisible.student}
+                  onChange={(e) => handleVisibleChange("student", e.target.checked)}
                   className="rounded"
                 />
                 <Label htmlFor="visible-student" className="font-normal cursor-pointer">

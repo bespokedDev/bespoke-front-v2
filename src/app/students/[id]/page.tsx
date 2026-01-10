@@ -9,6 +9,10 @@ import {
   formatDateForDisplay,
   extractDatePart,
 } from "@/lib/dateUtils";
+import { EnrollmentsBalanceCard } from "./components/EnrollmentsBalanceCard";
+import { CanvaDocsSection } from "./components/CanvaDocsSection";
+import { PenalizationsSection } from "@/components/penalizations/PenalizationsSection";
+import { getInitials, convertImageToBase64, validateImageFile } from "./utils/studentHelpers";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -42,7 +46,6 @@ import {
   AlertCircle,
   Plus,
   Trash2,
-  Eye,
   BookOpen,
   Calendar,
   User,
@@ -50,7 +53,6 @@ import {
   Phone,
   MapPin,
   FileText,
-  ExternalLink,
   Info,
   StickyNote,
   Hash,
@@ -80,7 +82,8 @@ interface Student {
   name: string;
   dob: string;
   gender: string;
-  representativeName?: string;
+  kid: number; // 0 = estudiante normal, 1 = kid
+  representativeName?: string | null;
   email: string;
   phone: string;
   address: string;
@@ -90,12 +93,17 @@ interface Student {
   status: number;
   isActive: boolean;
   notes: Note[];
-  canvaDocUrl?: string | null;
   avatar?: string | null;
   avatarPermission?: number;
   createdAt: string;
   updatedAt?: string;
   disenrollmentReason?: string | null;
+  dislike?: string | null;
+  strengths?: string | null;
+  academicPerformance?: string | null;
+  rutinePriorBespoke?: string | null;
+  specialAssitance?: number | null;
+  helpWithElectronicClassroom?: number | null;
 }
 
 type StudentFormData = Omit<
@@ -186,6 +194,80 @@ interface StudentInfo {
       classTime: string | null;
     }>;
   };
+  classLostClasses?: {
+    total: number;
+    details: Array<{
+      classRegistryId: string;
+      enrollmentId: string;
+      classDate: string;
+      classTime: string | null;
+    }>;
+  };
+  enrollmentStatistics?: Array<{
+    enrollmentId: string;
+    enrollmentInfo: {
+      planName: string;
+      enrollmentType: string;
+      startDate: string;
+      endDate: string;
+      status: number;
+    };
+    rescheduleTime?: {
+      totalAvailableMinutes: number;
+      totalAvailableHours: number;
+      details: Array<{
+        classRegistryId: string;
+        classDate: string;
+        classTime: string | null;
+        minutesClassDefault: number;
+        minutesViewed: number;
+        availableMinutes: number;
+        availableHours: string;
+      }>;
+    };
+    rescheduleClasses?: {
+      total: number;
+      details: Array<{
+        classRegistryId: string;
+        classDate: string;
+        classTime: string | null;
+        reschedule: number;
+      }>;
+    };
+    viewedClasses?: {
+      total: number;
+      details: Array<{
+        classRegistryId: string;
+        classDate: string;
+        classTime: string | null;
+      }>;
+    };
+    pendingClasses?: {
+      total: number;
+      details: Array<{
+        classRegistryId: string;
+        classDate: string;
+        classTime: string | null;
+      }>;
+    };
+    lostClasses?: {
+      total: number;
+      details: Array<{
+        classRegistryId: string;
+        classDate: string;
+        classTime: string | null;
+        enrollmentEndDate: string;
+      }>;
+    };
+    noShowClasses?: {
+      total: number;
+      details: Array<{
+        classRegistryId: string;
+        classDate: string;
+        classTime: string | null;
+      }>;
+    };
+  }>;
   incomeHistory?: Array<{
     enrollment: {
       _id: string;
@@ -278,6 +360,30 @@ export default function StudentDetailPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // --- OBTENCIÓN DE DATOS ---
+  const fetchStudentInfo = useCallback(async (id: string) => {
+    try {
+      const infoResponse = await apiClient(`api/students/info/${id}`);
+      const studentInfoData: StudentInfo = {
+        student: infoResponse.student,
+        totalAvailableBalance: infoResponse.totalAvailableBalance,
+        enrollmentDetails: infoResponse.enrollmentDetails || [],
+        rescheduleTime: infoResponse.rescheduleTime,
+        rescheduleClasses: infoResponse.rescheduleClasses,
+        viewedClasses: infoResponse.viewedClasses,
+        pendingClasses: infoResponse.pendingClasses,
+        lostClasses: infoResponse.lostClasses,
+        noShowClasses: infoResponse.noShowClasses,
+        classLostClasses: infoResponse.classLostClasses,
+        enrollmentStatistics: infoResponse.enrollmentStatistics,
+        incomeHistory: infoResponse.incomeHistory,
+      };
+      console.log("studentInfoData", studentInfoData);
+      setStudentInfo(studentInfoData);
+    } catch (infoErr) {
+      console.warn("Could not fetch student info:", infoErr);
+    }
+  }, []);
+
   const fetchStudent = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -285,13 +391,12 @@ export default function StudentDetailPage() {
       const data = await apiClient(`api/students/${studentId}`);
       console.log("data", data);
       setStudent(data);
-      if (data.avatar) {
-        setStudentAvatar(data.avatar);
-      } else {
-        setStudentAvatar(null);
-      }
+      setStudentAvatar(data.avatar || null);
+      
+      // Normalize form data
       setFormData({
         ...data,
+        kid: data.kid ?? 0, // Asegurar que kid siempre sea 0 o 1, nunca null o undefined
         dob: data.dob ? extractDatePart(data.dob) : "",
         notes: data.notes?.map((note: Note) => ({
           ...note,
@@ -300,29 +405,9 @@ export default function StudentDetailPage() {
         avatar: data.avatar || null,
       });
 
-      // Si es estudiante o admin, también obtener información de balance y enrollments
-      // Admin: userRole !== "professor" && userRole !== "student"
-      // Estudiante: userRole === "student"
-      if (isStudent || (!isProfessor && userRole !== "student")) {
-        try {
-          const infoResponse = await apiClient(`api/students/info/${studentId}`);
-          const studentInfoData: StudentInfo = {
-            student: infoResponse.student,
-            totalAvailableBalance: infoResponse.totalAvailableBalance,
-            enrollmentDetails: infoResponse.enrollmentDetails || [],
-            rescheduleTime: infoResponse.rescheduleTime,
-            rescheduleClasses: infoResponse.rescheduleClasses,
-            viewedClasses: infoResponse.viewedClasses,
-            pendingClasses: infoResponse.pendingClasses,
-            lostClasses: infoResponse.lostClasses, // Solo admin
-            noShowClasses: infoResponse.noShowClasses, // Solo admin y professor
-            incomeHistory: infoResponse.incomeHistory, // Solo student y admin
-          };
-          console.log("studentInfoData", studentInfoData);
-          setStudentInfo(studentInfoData);
-        } catch (infoErr) {
-          console.warn("Could not fetch student info:", infoErr);
-        }
+      // Fetch additional info for student or admin
+      if (isStudent || isAdmin) {
+        await fetchStudentInfo(studentId);
       }
     } catch (err: unknown) {
       const errorMessage = getFriendlyErrorMessage(
@@ -333,7 +418,7 @@ export default function StudentDetailPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [studentId, isStudent, isProfessor, userRole]);
+  }, [studentId, isStudent, isAdmin, fetchStudentInfo]);
 
   useEffect(() => {
     if (studentId) {
@@ -380,32 +465,13 @@ export default function StudentDetailPage() {
   };
 
   // --- MANEJADORES DE AVATAR ---
-  const convertImageToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        resolve(result);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  };
-
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validar que sea una imagen
-    if (!file.type.startsWith("image/")) {
-      setDialogError("Please select a valid image file.");
-      return;
-    }
-
-    // Validar tamaño máximo (5MB)
-    const maxSize = 5 * 1024 * 1024; // 5MB en bytes
-    if (file.size > maxSize) {
-      setDialogError("Image size must be less than 5MB.");
+    const validation = validateImageFile(file);
+    if (!validation.valid) {
+      setDialogError(validation.error || "Invalid image file.");
       return;
     }
 
@@ -427,15 +493,6 @@ export default function StudentDetailPage() {
     }
   };
 
-  // Función helper para obtener iniciales del nombre
-  const getInitials = (name: string): string => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
-  };
 
   // --- ACCIONES DE LA API ---
   const handleSubmit = async (e: React.FormEvent) => {
@@ -446,6 +503,7 @@ export default function StudentDetailPage() {
       // Enviar solo la fecha en formato YYYY-MM-DD (sin hora)
       const payload = {
         ...formData,
+        kid: formData.kid ?? 0, // Asegurar que kid siempre sea 0 o 1
         dob: formData.dob || undefined,
         notes: formData.notes?.map((note) => ({
           ...note,
@@ -475,6 +533,7 @@ export default function StudentDetailPage() {
       }
       setFormData({
         ...updatedStudent,
+        kid: updatedStudent.kid ?? 0, // Asegurar que kid siempre sea 0 o 1
         dob: updatedStudent.dob ? extractDatePart(updatedStudent.dob) : "",
         notes: updatedStudent.notes?.map((note: Note) => ({
           ...note,
@@ -509,6 +568,7 @@ export default function StudentDetailPage() {
       }
       setFormData({
         ...student,
+        kid: student.kid ?? 0, // Asegurar que kid siempre sea 0 o 1
         dob: student.dob ? extractDatePart(student.dob) : "",
         notes: student.notes?.map((note) => ({
           ...note,
@@ -726,27 +786,6 @@ export default function StudentDetailPage() {
                       : "Inactive"}
                   </span>
                 </div>
-                <div className="space-y-2">
-                  <Label className="font-semibold flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-primary" />
-                    Canva & Doc
-                  </Label>
-                  {student.canvaDocUrl ? (
-                    <p className="text-sm">
-                      <a
-                        href={student.canvaDocUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline flex items-center gap-1"
-                      >
-                        {student.canvaDocUrl}
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    </p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">N/A</p>
-                  )}
-                </div>
               </div>
             </CardContent>
           </Card>
@@ -803,6 +842,10 @@ export default function StudentDetailPage() {
               <>
                 <TabsTrigger value="profile">Profile</TabsTrigger>
                 <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
+                <TabsTrigger value="canvaDocs">CanvaDocs</TabsTrigger>
+                {isAdmin && (
+                  <TabsTrigger value="penalizations">Penalizations</TabsTrigger>
+                )}
                 <TabsTrigger value="attendance">Attendance</TabsTrigger>
                 <TabsTrigger value="notifications">Notifications</TabsTrigger>
               </>
@@ -810,6 +853,10 @@ export default function StudentDetailPage() {
               <>
                 <TabsTrigger value="details">Student Details</TabsTrigger>
                 <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
+                <TabsTrigger value="canvaDocs">CanvaDocs</TabsTrigger>
+                {isAdmin && (
+                  <TabsTrigger value="penalizations">Penalizations</TabsTrigger>
+                )}
                 <TabsTrigger value="attendance">Attendance</TabsTrigger>
                 <TabsTrigger value="notifications">Notifications</TabsTrigger>
               </>
@@ -922,27 +969,6 @@ export default function StudentDetailPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label className="font-semibold flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-primary" />
-                        Canva & Doc
-                      </Label>
-                      {student.canvaDocUrl ? (
-                        <p className="text-sm">
-                          <a
-                            href={student.canvaDocUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary hover:underline flex items-center gap-1"
-                          >
-                            {student.canvaDocUrl}
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
-                        </p>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">N/A</p>
-                      )}
-                    </div>
                     {student.disenrollmentReason && (
                       <div className="space-y-2">
                         <Label className="font-semibold flex items-center gap-2">
@@ -984,75 +1010,72 @@ export default function StudentDetailPage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      {/* Avatar Section */}
-                      <div className="flex items-center gap-4 mb-6 pb-6 border-b">
-                        <Avatar className="h-24 w-24">
-                          {studentAvatar ? (
-                            <AvatarImage src={studentAvatar} alt={student.name} />
-                          ) : null}
-                          <AvatarFallback className="text-lg">
-                            {getInitials(student.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <Label className="font-semibold text-base">Avatar</Label>
-                          <p className="text-sm text-muted-foreground">
-                            {studentAvatar ? "Avatar uploaded" : "No avatar set"}
-                          </p>
+                      <div className="flex flex-col md:flex-row gap-6">
+                        {/* Avatar Section - Left */}
+                        <div className="flex-shrink-0">
+                          <Avatar className="h-32 w-32">
+                            {studentAvatar ? (
+                              <AvatarImage src={studentAvatar} alt={student.name} />
+                            ) : null}
+                            <AvatarFallback className="text-2xl">
+                              {getInitials(student.name)}
+                            </AvatarFallback>
+                          </Avatar>
                         </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-2">
-                          <Label className="font-semibold flex items-center gap-2">
-                            <User className="h-4 w-4 text-primary" />
-                            Full Name
-                          </Label>
-                          <p className="text-sm font-semibold">{student.name}</p>
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="font-semibold flex items-center gap-2">
-                            <Hash className="h-4 w-4 text-primary" />
-                            Student Code
-                          </Label>
-                          <p className="text-sm font-semibold">
-                            {student.studentCode}
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="font-semibold flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-primary" />
-                            Date of Birth
-                          </Label>
-                          <p className="text-sm">
-                            {student.dob
-                              ? formatDateForDisplay(student.dob)
-                              : "N/A"}
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="font-semibold flex items-center gap-2">
-                            <User className="h-4 w-4 text-primary" />
-                            Gender
-                          </Label>
-                          <p className="text-sm">{student.gender || "N/A"}</p>
-                        </div>
-                        {student.representativeName && (
+                        {/* Student Information - Right */}
+                        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6">
                           <div className="space-y-2">
                             <Label className="font-semibold flex items-center gap-2">
                               <User className="h-4 w-4 text-primary" />
-                              Representative
+                              Full Name
                             </Label>
-                            <p className="text-sm">
-                              {student.representativeName}
+                            <p className="text-sm font-semibold">{student.name}</p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="font-semibold flex items-center gap-2">
+                              <Hash className="h-4 w-4 text-primary" />
+                              Student Code
+                            </Label>
+                            <p className="text-sm font-semibold">
+                              {student.studentCode}
                             </p>
                           </div>
-                        )}
-                        <div className="space-y-2">
-                          <Label className="font-semibold flex items-center gap-2">
-                            <Info className="h-4 w-4 text-primary" />
-                            Occupation
-                          </Label>
-                          <p className="text-sm">{student.occupation || "N/A"}</p>
+                          <div className="space-y-2">
+                            <Label className="font-semibold flex items-center gap-2">
+                              <Calendar className="h-4 w-4 text-primary" />
+                              Date of Birth
+                            </Label>
+                            <p className="text-sm">
+                              {student.dob
+                                ? formatDateForDisplay(student.dob)
+                                : "N/A"}
+                            </p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="font-semibold flex items-center gap-2">
+                              <User className="h-4 w-4 text-primary" />
+                              Gender
+                            </Label>
+                            <p className="text-sm">{student.gender || "N/A"}</p>
+                          </div>
+                          {student.representativeName && (
+                            <div className="space-y-2">
+                              <Label className="font-semibold flex items-center gap-2">
+                                <User className="h-4 w-4 text-primary" />
+                                Representative
+                              </Label>
+                              <p className="text-sm">
+                                {student.representativeName}
+                              </p>
+                            </div>
+                          )}
+                          <div className="space-y-2">
+                            <Label className="font-semibold flex items-center gap-2">
+                              <Info className="h-4 w-4 text-primary" />
+                              Occupation
+                            </Label>
+                            <p className="text-sm">{student.occupation || "N/A"}</p>
+                          </div>
                         </div>
                       </div>
                     </CardContent>
@@ -1135,27 +1158,6 @@ export default function StudentDetailPage() {
                               ? "Active"
                               : "Inactive"}
                           </span>
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="font-semibold flex items-center gap-2">
-                            <FileText className="h-4 w-4 text-primary" />
-                            Canva & Doc
-                          </Label>
-                          {student.canvaDocUrl ? (
-                            <p className="text-sm">
-                              <a
-                                href={student.canvaDocUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary hover:underline flex items-center gap-1"
-                              >
-                                {student.canvaDocUrl}
-                                <ExternalLink className="h-3 w-3" />
-                              </a>
-                            </p>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">N/A</p>
-                          )}
                         </div>
                       </div>
                     </CardContent>
@@ -1268,7 +1270,7 @@ export default function StudentDetailPage() {
                           )}
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          Image files only, max 5MB
+                          Image files only, max 300KB
                         </p>
                         <input
                           ref={fileInputRef}
@@ -1410,21 +1412,6 @@ export default function StudentDetailPage() {
                       </div>
                     </div>
                   </fieldset>
-                  <fieldset className="border p-4 rounded-md">
-                    <legend className="px-1 text-sm">Canva & Doc</legend>
-                    <div className="mt-2">
-                      <div className="space-y-2">
-                        <Label>Canva Document URL</Label>
-                        <Input
-                          name="canvaDocUrl"
-                          type="url"
-                          placeholder="https://..."
-                          value={formData.canvaDocUrl || ""}
-                          onChange={handleFormChange}
-                        />
-                      </div>
-                    </div>
-                  </fieldset>
                   <div className="space-y-4">
                     <h3 className="text-lg font-medium">Notes</h3>
                     {(formData.notes || []).map((note, index) => (
@@ -1480,185 +1467,13 @@ export default function StudentDetailPage() {
 
         {/* Tab: Enrollments */}
         <TabsContent value="enrollments">
-          {isStudent ? (
-            // Vista de Estudiante: Balance + Enrollments activos
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BookOpen className="h-5 w-5" />
-                  Enrollments & Balance
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Balance Total */}
-                {studentInfo && (
-                  <div className="bg-secondary/10 p-4 rounded-lg">
-                    <Label className="text-sm text-muted-foreground">
-                      Total Available Balance
-                    </Label>
-                    <p className="text-3xl font-bold text-secondary">
-                      ${studentInfo.totalAvailableBalance.toFixed(2)}
-                    </p>
-                  </div>
-                )}
-
-                {/* Lista de Enrollments */}
-                {studentInfo && studentInfo.enrollmentDetails.length > 0 ? (
-                  <div className="space-y-6">
-                    <Label className="text-lg font-semibold">Active Enrollments</Label>
-                    {studentInfo.enrollmentDetails.map((enrollment, index) => (
-                      <div key={enrollment.enrollmentId}>
-                        <div className="flex items-start justify-between">
-                          <div className="space-y-2 flex-1">
-                            <div className="flex items-center gap-2">
-                              <BookOpen className="h-4 w-4 text-muted-foreground" />
-                              <Label className="font-semibold">
-                                {enrollment.planName}
-                              </Label>
-                              <span className="text-sm text-muted-foreground capitalize">
-                                ({enrollment.enrollmentType})
-                              </span>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                              <div className="flex items-center gap-1">
-                                <Calendar className="h-4 w-4 text-muted-foreground" />
-                                <span>
-                                  {formatDateForDisplay(enrollment.startDate)} /{" "}
-                                  {formatDateForDisplay(enrollment.endDate)}
-                                </span>
-                              </div>
-                              <div>
-                                <Label className="text-muted-foreground">
-                                  Available Balance
-                                </Label>
-                                <p className="font-semibold text-secondary">
-                                  ${enrollment.amount.toFixed(2)}
-                                </p>
-                              </div>
-                              {enrollment.rescheduleHours > 0 && (
-                                <div>
-                                  <Label className="text-muted-foreground">
-                                    Reschedule Hours
-                                  </Label>
-                                  <p>{enrollment.rescheduleHours} hours</p>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleViewEnrollment(enrollment.enrollmentId)}
-                            className="ml-4"
-                          >
-                            <Eye className="h-4 w-4 mr-2" />
-                            View Details
-                          </Button>
-                        </div>
-                        {index < studentInfo.enrollmentDetails.length - 1 && (
-                          <div className="border-t my-6" />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground text-center py-8">
-                    No active enrollments found.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          ) : (
-            // Vista de Admin: Balance + Enrollments activos
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BookOpen className="h-5 w-5" />
-                  Enrollments & Balance
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Balance Total */}
-                {studentInfo && (
-                  <div className="bg-secondary/10 p-4 rounded-lg">
-                    <Label className="text-sm text-muted-foreground">
-                      Total Available Balance
-                    </Label>
-                    <p className="text-3xl font-bold text-secondary">
-                      ${studentInfo.totalAvailableBalance.toFixed(2)}
-                    </p>
-                  </div>
-                )}
-
-                {/* Lista de Enrollments */}
-                {studentInfo && studentInfo.enrollmentDetails.length > 0 ? (
-                  <div className="space-y-6">
-                    <Label className="text-lg font-semibold">Active Enrollments</Label>
-                    {studentInfo.enrollmentDetails.map((enrollment, index) => (
-                      <div key={enrollment.enrollmentId}>
-                        <div className="flex items-start justify-between">
-                          <div className="space-y-2 flex-1">
-                            <div className="flex items-center gap-2">
-                              <BookOpen className="h-4 w-4 text-muted-foreground" />
-                              <Label className="font-semibold">
-                                {enrollment.planName}
-                              </Label>
-                              <span className="text-sm text-muted-foreground capitalize">
-                                ({enrollment.enrollmentType})
-                              </span>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                              <div className="flex items-center gap-1">
-                                <Calendar className="h-4 w-4 text-muted-foreground" />
-                                <span>
-                                  {formatDateForDisplay(enrollment.startDate)} /{" "}
-                                  {formatDateForDisplay(enrollment.endDate)}
-                                </span>
-                              </div>
-                              <div>
-                                <Label className="text-muted-foreground">
-                                  Available Balance
-                                </Label>
-                                <p className="font-semibold text-secondary">
-                                  ${enrollment.amount.toFixed(2)}
-                                </p>
-                              </div>
-                              {enrollment.rescheduleHours > 0 && (
-                                <div>
-                                  <Label className="text-muted-foreground">
-                                    Reschedule Hours
-                                  </Label>
-                                  <p>{enrollment.rescheduleHours} hours</p>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleViewEnrollment(enrollment.enrollmentId)}
-                            className="ml-4"
-                          >
-                            <Eye className="h-4 w-4 mr-2" />
-                            View Details
-                          </Button>
-                        </div>
-                        {index < studentInfo.enrollmentDetails.length - 1 && (
-                          <div className="border-t my-6" />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground text-center py-8">
-                    {studentInfo 
-                      ? "No active enrollments found."
-                      : "Loading enrollment information..."}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          )}
+          <EnrollmentsBalanceCard
+            totalBalance={studentInfo?.totalAvailableBalance ?? 0}
+            enrollments={studentInfo?.enrollmentDetails ?? []}
+            onViewEnrollment={handleViewEnrollment}
+            isLoading={!studentInfo}
+            studentId={studentId}
+          />
 
           {/* Income History - Solo Admin y Estudiante */}
           {(isAdmin || isStudent) && studentInfo?.incomeHistory && studentInfo.incomeHistory.length > 0 && (
@@ -1734,6 +1549,22 @@ export default function StudentDetailPage() {
           )}
         </TabsContent>
 
+        {/* Tab: CanvaDocs */}
+        <TabsContent value="canvaDocs">
+          <CanvaDocsSection studentId={studentId} />
+        </TabsContent>
+
+        {/* Tab: Penalizations (Admin only) */}
+        {isAdmin && (
+          <TabsContent value="penalizations">
+            <PenalizationsSection
+              entityId={studentId}
+              entityType="student"
+              entityName={student?.name}
+            />
+          </TabsContent>
+        )}
+
         {/* Tab: Attendance */}
         <TabsContent value="attendance">
           <Card>
@@ -1797,7 +1628,78 @@ export default function StudentDetailPage() {
                     </p>
                   </div>
                 )}
+                {isAdmin && studentInfo?.classLostClasses && (
+                  <div className="space-y-2">
+                    <Label className="font-semibold text-red-600">Class Lost (Auto)</Label>
+                    <p className="text-2xl font-bold text-red-600">
+                      {studentInfo.classLostClasses.total}
+                    </p>
+                  </div>
+                )}
               </div>
+
+              {/* Enrollment Statistics - Detailed Statistics by Enrollment */}
+              {studentInfo?.enrollmentStatistics && studentInfo.enrollmentStatistics.length > 0 && (
+                <div className="mt-8 pt-8 border-t">
+                  <h3 className="text-lg font-semibold mb-4">Statistics by Enrollment</h3>
+                  <div className="space-y-6">
+                    {studentInfo.enrollmentStatistics.map((stat, index) => (
+                      <Card key={stat.enrollmentId || index} className="bg-muted/30">
+                        <CardHeader>
+                          <CardTitle className="text-base">
+                            {stat.enrollmentInfo.planName} ({stat.enrollmentInfo.enrollmentType})
+                          </CardTitle>
+                          <div className="text-sm text-muted-foreground">
+                            {formatDateForDisplay(stat.enrollmentInfo.startDate)} - {formatDateForDisplay(stat.enrollmentInfo.endDate)}
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            {stat.rescheduleTime && (
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground">Reschedule Time</Label>
+                                <p className="font-semibold">
+                                  {stat.rescheduleTime.totalAvailableHours.toFixed(2)} hrs
+                                </p>
+                              </div>
+                            )}
+                            {stat.rescheduleClasses && (
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground">Reschedule Classes</Label>
+                                <p className="font-semibold">{stat.rescheduleClasses.total}</p>
+                              </div>
+                            )}
+                            {stat.viewedClasses && (
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground">Viewed Classes</Label>
+                                <p className="font-semibold text-secondary">{stat.viewedClasses.total}</p>
+                              </div>
+                            )}
+                            {stat.pendingClasses && (
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground">Pending Classes</Label>
+                                <p className="font-semibold">{stat.pendingClasses.total}</p>
+                              </div>
+                            )}
+                            {isAdmin && stat.lostClasses && stat.lostClasses.total > 0 && (
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground text-red-600">Lost Classes</Label>
+                                <p className="font-semibold text-red-600">{stat.lostClasses.total}</p>
+                              </div>
+                            )}
+                            {!isStudent && stat.noShowClasses && stat.noShowClasses.total > 0 && (
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground text-orange-600">No Show Classes</Label>
+                                <p className="font-semibold text-orange-600">{stat.noShowClasses.total}</p>
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

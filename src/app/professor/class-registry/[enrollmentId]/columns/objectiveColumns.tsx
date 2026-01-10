@@ -63,6 +63,8 @@ export const useObjectiveColumns = ({
     {
       id: "objective",
       header: "Objective",
+      size: 200,
+      maxSize: 200,
       cell: ({ row }) => {
         const objective = row.original;
         const isEditing = editingObjectiveId === objective._id;
@@ -81,7 +83,12 @@ export const useObjectiveColumns = ({
             />
           );
         }
-        return <span className="text-sm">{objective.objective || "-"}</span>;
+        return (
+          <div
+            className="text-sm max-w-[200px] break-words [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-1 [&_ul]:ml-4 [&_ol]:my-1 [&_ol]:ml-4 [&_li]:my-0.5 [&_strong]:font-semibold [&_em]:italic"
+            dangerouslySetInnerHTML={{ __html: objective.objective || "-" }}
+          />
+        );
       },
     },
     {
@@ -112,6 +119,8 @@ export const useObjectiveColumns = ({
     {
       id: "teachersNote",
       header: "Teacher's Note",
+      size: 200,
+      maxSize: 200,
       cell: ({ row }) => {
         const objective = row.original;
         const isEditing = editingObjectiveId === objective._id;
@@ -130,7 +139,12 @@ export const useObjectiveColumns = ({
             />
           );
         }
-        return <span className="text-sm">{objective.teachersNote || "-"}</span>;
+        return (
+          <div
+            className="text-sm max-w-[200px] break-words [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-1 [&_ul]:ml-4 [&_ol]:my-1 [&_ol]:ml-4 [&_li]:my-0.5 [&_strong]:font-semibold [&_em]:italic"
+            dangerouslySetInnerHTML={{ __html: objective.teachersNote || "-" }}
+          />
+        );
       },
     },
     {

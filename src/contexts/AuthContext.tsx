@@ -8,6 +8,7 @@ import React, {
   ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
+import { apiClient } from "@/lib/api";
 
 // Definimos los tipos para el usuario y el contexto
 interface User {
@@ -90,16 +91,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const logout = () => {
-    // Limpiamos el estado y el localStorage
-    setToken(null);
-    setUser(null);
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("user");
-    // Eliminamos la cookie
-    document.cookie =
-      "authToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;";
-    router.push("/login"); // Redirigimos a la página de login
+  const logout = async () => {
+    try {
+      // Llamar al endpoint de logout del backend antes del cleanup local
+      // Usamos skipAutoRedirect para evitar que redirija automáticamente si falla
+      await apiClient("api/users/logout", {
+        method: "POST",
+        skipAutoRedirect: true,
+      });
+    } catch (error) {
+      // Si falla el logout del backend, continuar con el cleanup local
+      // Esto es importante para asegurar que el usuario siempre pueda cerrar sesión
+      console.warn("Failed to call logout endpoint, continuing with local cleanup:", error);
+    } finally {
+      // Limpiamos el estado y el localStorage
+      setToken(null);
+      setUser(null);
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("authToken");
+        localStorage.removeItem("user");
+        // Eliminamos la cookie
+        document.cookie =
+          "authToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;";
+      }
+      router.push("/login"); // Redirigimos a la página de login
+    }
   };
 
   return (

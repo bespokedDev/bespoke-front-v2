@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { DataTable } from "@/components/ui/data-table";
 import {
   Plus,
@@ -27,15 +26,31 @@ import {
   X,
   AlertCircle,
   CheckCircle2,
+  Trash2,
 } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { apiClient } from "@/lib/api";
 import { handleApiError, getFriendlyErrorMessage } from "@/lib/errorHandler";
 
+import type { PenalizationLevel } from "@/app/penalization-registry/types";
+
+interface PenalizationLevelFormData {
+  tipo: string;
+  nivel: number;
+  description?: string;
+}
+
+// Initialize form data helper
+const createEmptyLevel = (): PenalizationLevelFormData => ({
+  tipo: "",
+  nivel: 1,
+  description: "",
+});
+
 interface Penalty {
   _id: string;
   name: string;
-  description?: string | null;
+  penalizationLevels?: PenalizationLevel[];
   status: number;
   statusText: string;
   createdAt: string;
@@ -44,12 +59,12 @@ interface Penalty {
 
 interface CreatePenaltyData {
   name: string;
-  description?: string;
+  penalizationLevels?: PenalizationLevelFormData[];
 }
 
 interface UpdatePenaltyData {
   name: string;
-  description?: string;
+  penalizationLevels?: PenalizationLevelFormData[];
 }
 
 export default function PenaltiesPage() {
@@ -66,13 +81,35 @@ export default function PenaltiesPage() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [dialogError, setDialogError] = useState<string | null>(null);
 
+  // State for managing penalization levels in the form
+  const [penalizationLevels, setPenalizationLevels] = useState<PenalizationLevelFormData[]>([]);
+  const [levelErrors, setLevelErrors] = useState<Record<number, Record<string, string>>>({});
+
   // Fetch penalties from API
   const fetchPenalties = async () => {
     try {
       setIsLoading(true);
       setError(null);
       const data = await apiClient("api/penalties");
-      setPenalties(data || []);
+      // Ensure penalizationLevels are properly mapped
+      const penaltiesData = Array.isArray(data) ? data : [];
+      const mappedPenalties: Penalty[] = penaltiesData.map((penalty: any) => ({
+        _id: penalty._id,
+        name: penalty.name,
+        penalizationLevels: Array.isArray(penalty.penalizationLevels)
+          ? penalty.penalizationLevels.map((level: any) => ({
+              _id: level._id || level.tipo + "-" + level.nivel,
+              tipo: level.tipo,
+              nivel: level.nivel,
+              description: level.description || undefined,
+            }))
+          : [],
+        status: penalty.status,
+        statusText: penalty.status === 1 ? "Active" : "Deactivated",
+        createdAt: penalty.createdAt,
+        updatedAt: penalty.updatedAt,
+      }));
+      setPenalties(mappedPenalties);
     } catch (err: unknown) {
       const errorMessage = getFriendlyErrorMessage(
         err,
@@ -99,7 +136,25 @@ export default function PenaltiesPage() {
         throw new Error("Invalid response structure from server");
       }
       
-      setPenalties((prev) => [...prev, response.penalizacion]);
+      const createdPenalty = response.penalizacion;
+      const newPenalty: Penalty = {
+        _id: createdPenalty._id,
+        name: createdPenalty.name,
+        penalizationLevels: Array.isArray(createdPenalty.penalizationLevels)
+          ? createdPenalty.penalizationLevels.map((level: any) => ({
+              _id: level._id || level.tipo + "-" + level.nivel,
+              tipo: level.tipo,
+              nivel: level.nivel,
+              description: level.description || undefined,
+            }))
+          : [],
+        status: createdPenalty.status,
+        statusText: createdPenalty.status === 1 ? "Active" : "Deactivated",
+        createdAt: createdPenalty.createdAt,
+        updatedAt: createdPenalty.updatedAt,
+      };
+      
+      setPenalties((prev) => [...prev, newPenalty]);
       setSuccessMessage("Penalty created successfully");
       handleClose();
     } catch (err: unknown) {
@@ -144,9 +199,27 @@ export default function PenaltiesPage() {
         throw new Error("Invalid response structure from server");
       }
       
+      const updatedPenaltyResponse = response.penalizacion;
+      const updatedPenalty: Penalty = {
+        _id: updatedPenaltyResponse._id,
+        name: updatedPenaltyResponse.name,
+        penalizationLevels: Array.isArray(updatedPenaltyResponse.penalizationLevels)
+          ? updatedPenaltyResponse.penalizationLevels.map((level: any) => ({
+              _id: level._id || level.tipo + "-" + level.nivel,
+              tipo: level.tipo,
+              nivel: level.nivel,
+              description: level.description || undefined,
+            }))
+          : [],
+        status: updatedPenaltyResponse.status,
+        statusText: updatedPenaltyResponse.status === 1 ? "Active" : "Deactivated",
+        createdAt: updatedPenaltyResponse.createdAt,
+        updatedAt: updatedPenaltyResponse.updatedAt,
+      };
+      
       setPenalties((prev) =>
         prev.map((p) =>
-          p._id === penaltyId ? response.penalizacion : p
+          p._id === penaltyId ? updatedPenalty : p
         )
       );
       setSuccessMessage("Penalty updated successfully");
@@ -194,9 +267,27 @@ export default function PenaltiesPage() {
         throw new Error("Invalid response structure from server");
       }
       
+      const penaltyData = response.penalizacion;
+      const deactivatedPenalty: Penalty = {
+        _id: penaltyData._id,
+        name: penaltyData.name,
+        penalizationLevels: Array.isArray(penaltyData.penalizationLevels)
+          ? penaltyData.penalizationLevels.map((level: any) => ({
+              _id: level._id || level.tipo + "-" + level.nivel,
+              tipo: level.tipo,
+              nivel: level.nivel,
+              description: level.description || undefined,
+            }))
+          : [],
+        status: penaltyData.status,
+        statusText: "Deactivated",
+        createdAt: penaltyData.createdAt,
+        updatedAt: penaltyData.updatedAt,
+      };
+      
       setPenalties((prev) =>
         prev.map((p) =>
-          p._id === penaltyId ? response.penalizacion : p
+          p._id === penaltyId ? deactivatedPenalty : p
         )
       );
       setSuccessMessage("Penalty deactivated successfully");
@@ -235,9 +326,27 @@ export default function PenaltiesPage() {
         throw new Error("Invalid response structure from server");
       }
       
+      const penaltyData = response.penalizacion;
+      const activatedPenalty: Penalty = {
+        _id: penaltyData._id,
+        name: penaltyData.name,
+        penalizationLevels: Array.isArray(penaltyData.penalizationLevels)
+          ? penaltyData.penalizationLevels.map((level: any) => ({
+              _id: level._id || level.tipo + "-" + level.nivel,
+              tipo: level.tipo,
+              nivel: level.nivel,
+              description: level.description || undefined,
+            }))
+          : [],
+        status: penaltyData.status,
+        statusText: "Active",
+        createdAt: penaltyData.createdAt,
+        updatedAt: penaltyData.updatedAt,
+      };
+      
       setPenalties((prev) =>
         prev.map((p) =>
-          p._id === penaltyId ? response.penalizacion : p
+          p._id === penaltyId ? activatedPenalty : p
         )
       );
       setSuccessMessage("Penalty activated successfully");
@@ -277,6 +386,23 @@ export default function PenaltiesPage() {
     penalty?: Penalty
   ) => {
     setSelectedPenalty(penalty || null);
+    if (type === "create") {
+      setPenalizationLevels([]);
+      setLevelErrors({});
+    } else if (type === "edit" && penalty) {
+      // Pre-fill levels from existing penalty
+      const levels = penalty.penalizationLevels?.map((level) => ({
+        tipo: level.tipo,
+        nivel: level.nivel,
+        description: level.description || "",
+      })) || [];
+      setPenalizationLevels(levels);
+      setLevelErrors({});
+    } else if (type === "view" && penalty) {
+      // Just display, don't modify
+      setPenalizationLevels([]);
+      setLevelErrors({});
+    }
     setOpenDialog(type);
   };
 
@@ -287,6 +413,75 @@ export default function PenaltiesPage() {
     setError(null);
     setDialogError(null);
     setSuccessMessage(null);
+    setPenalizationLevels([]);
+    setLevelErrors({});
+  };
+
+  // Add a new level
+  const addLevel = () => {
+    setPenalizationLevels((prev) => [...prev, createEmptyLevel()]);
+  };
+
+  // Remove a level by index
+  const removeLevel = (index: number) => {
+    setPenalizationLevels((prev) => prev.filter((_, i) => i !== index));
+    setLevelErrors((prev) => {
+      const newErrors = { ...prev };
+      delete newErrors[index];
+      // Reindex errors for levels after the removed one
+      const reindexed: Record<number, Record<string, string>> = {};
+      Object.keys(newErrors).forEach((key) => {
+        const oldIndex = parseInt(key);
+        if (oldIndex < index) {
+          reindexed[oldIndex] = newErrors[oldIndex];
+        } else if (oldIndex > index) {
+          reindexed[oldIndex - 1] = newErrors[oldIndex];
+        }
+      });
+      return reindexed;
+    });
+  };
+
+  // Update a level field
+  const updateLevel = (index: number, field: keyof PenalizationLevelFormData, value: string | number) => {
+    setPenalizationLevels((prev) =>
+      prev.map((level, i) => (i === index ? { ...level, [field]: value } : level))
+    );
+    // Clear error for this field if it exists
+    if (levelErrors[index]?.[field]) {
+      setLevelErrors((prev) => {
+        const levelError = { ...prev[index] };
+        delete levelError[field];
+        return { ...prev, [index]: levelError };
+      });
+    }
+  };
+
+  // Validate penalization levels
+  const validateLevels = (): boolean => {
+    const errors: Record<number, Record<string, string>> = {};
+    let hasErrors = false;
+
+    penalizationLevels.forEach((level, index) => {
+      const levelError: Record<string, string> = {};
+
+      if (!level.tipo?.trim()) {
+        levelError.tipo = "Type is required";
+        hasErrors = true;
+      }
+
+      if (!level.nivel || level.nivel < 1) {
+        levelError.nivel = "Level must be at least 1";
+        hasErrors = true;
+      }
+
+      if (levelError.tipo || levelError.nivel) {
+        errors[index] = levelError;
+      }
+    });
+
+    setLevelErrors(errors);
+    return !hasErrors;
   };
 
   // Form validation
@@ -297,6 +492,14 @@ export default function PenaltiesPage() {
       errors.name = "Name is required";
     }
 
+    // Validate levels if any exist
+    if (penalizationLevels.length > 0) {
+      const levelsValid = validateLevels();
+      if (!levelsValid) {
+        errors.levels = "Please fix all level errors";
+      }
+    }
+
     return errors;
   };
 
@@ -305,11 +508,18 @@ export default function PenaltiesPage() {
     e.preventDefault();
 
     const formData = new FormData(e.target as HTMLFormElement);
-    const descriptionValue = formData.get("description") as string;
-    const penaltyData = {
+    const penaltyData: CreatePenaltyData | UpdatePenaltyData = {
       name: formData.get("name") as string,
-      description: descriptionValue?.trim() || undefined,
     };
+
+    // Include penalizationLevels if any exist
+    if (penalizationLevels.length > 0) {
+      penaltyData.penalizationLevels = penalizationLevels.map((level) => ({
+        tipo: level.tipo.trim(),
+        nivel: level.nivel,
+        description: level.description?.trim() || undefined,
+      }));
+    }
 
     const errors = validateForm(penaltyData);
     if (Object.keys(errors).length > 0) {
@@ -353,6 +563,32 @@ export default function PenaltiesPage() {
         </Button>
       ),
       sortingFn: stringLocaleSort(),
+    },
+    {
+      id: "penalizationLevels",
+      header: "Levels",
+      cell: ({ row }) => {
+        const levels = row.original.penalizationLevels || [];
+        if (levels.length === 0) {
+          return <span className="text-sm text-muted-foreground">No levels</span>;
+        }
+        const uniqueTypes = new Set(levels.map((l) => l.tipo));
+        return (
+          <div className="space-y-1">
+            <span className="text-sm font-medium">{levels.length} level(s)</span>
+            <div className="flex flex-wrap gap-1">
+              {Array.from(uniqueTypes).map((tipo) => (
+                <span
+                  key={tipo}
+                  className="px-2 py-0.5 bg-secondary/20 text-secondary rounded text-xs"
+                >
+                  {tipo}
+                </span>
+              ))}
+            </div>
+          </div>
+        );
+      },
     },
     {
       accessorKey: "statusText",
@@ -487,7 +723,7 @@ export default function PenaltiesPage() {
       )}
 
       <Dialog open={openDialog !== null} onOpenChange={handleClose}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {openDialog === "create" && "Add penalty"}
@@ -501,9 +737,11 @@ export default function PenaltiesPage() {
           </DialogHeader>
 
           {(openDialog === "create" || openDialog === "edit") && (
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="name">Name *</Label>
+                <Label htmlFor="name">
+                  Name <span className="text-red-500">*</span>
+                </Label>
                 <Input
                   id="name"
                   name="name"
@@ -515,18 +753,102 @@ export default function PenaltiesPage() {
                   <p className="text-red-500 text-sm">{formErrors.name}</p>
                 )}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  name="description"
-                  placeholder="Enter a detailed description of the penalty (optional)"
-                  defaultValue={selectedPenalty?.description || ""}
-                  rows={4}
-                  className={formErrors.description ? "border-red-500" : ""}
-                />
-                {formErrors.description && (
-                  <p className="text-red-500 text-sm">{formErrors.description}</p>
+
+              {/* Divider */}
+              <div className="border-t border-border my-4" />
+
+              {/* Penalization Levels Section */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label className="text-base font-semibold">Penalization Levels (Optional)</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addLevel}
+                    className="flex items-center gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Level
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Add levels to this penalty type. Each level must have a type (string) and level number (≥ 1).
+                  Description is optional.
+                </p>
+
+                {penalizationLevels.length === 0 ? (
+                  <p className="text-sm text-muted-foreground italic">
+                    No levels added. Click &apos;Add Level&apos; to create one.
+                  </p>
+                ) : (
+                  <div className="space-y-4">
+                    {penalizationLevels.map((level, index) => (
+                      <Card key={index} className="p-4">
+                        <div className="flex items-start justify-between mb-3">
+                          <h4 className="font-semibold text-sm">Level {index + 1}</h4>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeLevel(index)}
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor={`level-${index}-tipo`}>
+                              Type <span className="text-red-500">*</span>
+                            </Label>
+                            <Input
+                              id={`level-${index}-tipo`}
+                              value={level.tipo}
+                              onChange={(e) => updateLevel(index, "tipo", e.target.value)}
+                              placeholder="e.g., Warning, Severe, etc."
+                              className={levelErrors[index]?.tipo ? "border-red-500" : ""}
+                            />
+                            {levelErrors[index]?.tipo && (
+                              <p className="text-red-500 text-xs">{levelErrors[index].tipo}</p>
+                            )}
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`level-${index}-nivel`}>
+                              Level Number <span className="text-red-500">*</span>
+                            </Label>
+                            <Input
+                              id={`level-${index}-nivel`}
+                              type="number"
+                              min="1"
+                              value={level.nivel || ""}
+                              onChange={(e) =>
+                                updateLevel(index, "nivel", parseInt(e.target.value) || 1)
+                              }
+                              placeholder="1"
+                              className={levelErrors[index]?.nivel ? "border-red-500" : ""}
+                            />
+                            {levelErrors[index]?.nivel && (
+                              <p className="text-red-500 text-xs">{levelErrors[index].nivel}</p>
+                            )}
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`level-${index}-description`}>Description</Label>
+                            <Input
+                              id={`level-${index}-description`}
+                              value={level.description || ""}
+                              onChange={(e) => updateLevel(index, "description", e.target.value)}
+                              placeholder="Optional description"
+                            />
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+
+                {formErrors.levels && (
+                  <p className="text-red-500 text-sm">{formErrors.levels}</p>
                 )}
               </div>
             </form>
@@ -541,14 +863,6 @@ export default function PenaltiesPage() {
                     {selectedPenalty.name}
                   </p>
                 </div>
-                {selectedPenalty.description && (
-                  <div>
-                    <Label className="text-sm font-semibold">Description</Label>
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                      {selectedPenalty.description}
-                    </p>
-                  </div>
-                )}
                 <div>
                   <Label className="text-sm font-semibold">Status</Label>
                   <span
@@ -562,6 +876,35 @@ export default function PenaltiesPage() {
                       (selectedPenalty.status === 1 ? "Active" : "Deactivated")}
                   </span>
                 </div>
+                {selectedPenalty.penalizationLevels && selectedPenalty.penalizationLevels.length > 0 && (
+                  <div>
+                    <Label className="text-sm font-semibold mb-2 block">
+                      Penalization Levels ({selectedPenalty.penalizationLevels.length})
+                    </Label>
+                    <div className="space-y-3">
+                      {selectedPenalty.penalizationLevels.map((level, index) => (
+                        <Card key={index} className="p-3 bg-accent/50">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+                            <div>
+                              <Label className="text-xs text-muted-foreground">Type</Label>
+                              <p className="font-medium">{level.tipo}</p>
+                            </div>
+                            <div>
+                              <Label className="text-xs text-muted-foreground">Level</Label>
+                              <p className="font-medium">Nivel {level.nivel}</p>
+                            </div>
+                            {level.description && (
+                              <div className="md:col-span-3">
+                                <Label className="text-xs text-muted-foreground">Description</Label>
+                                <p className="text-sm">{level.description}</p>
+                              </div>
+                            )}
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -131,6 +131,7 @@ export default function StudentsPage() {
   const [deactivationReason, setDeactivationReason] = useState("");
   const [studentAvatar, setStudentAvatar] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [canvaDocDescription, setCanvaDocDescription] = useState<string>("");
 
   // --- OBTENCIÓN DE DATOS ---
   const fetchStudents = async () => {
@@ -182,6 +183,7 @@ export default function StudentsPage() {
     setIsSubmitting(false);
     setDialogError(null);
     setStudentAvatar(null);
+    setCanvaDocDescription("");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -294,7 +296,7 @@ export default function StudentsPage() {
       // Enviar solo la fecha en formato YYYY-MM-DD (sin hora)
       const payload: Partial<StudentFormData> = {
         ...formData,
-        kid: formData.kid ?? 0, // Asegurar que kid esté presente (obligatorio)
+        kid: formData.kid ?? 0, // Inicializar en 0 si no está definido (0 = no kid, 1 = kid)
         status: 1, // Siempre activo al crear
         dob: formData.dob || undefined,
         representativeName: formData.kid === 1 ? formData.representativeName : null,
@@ -314,13 +316,31 @@ export default function StudentsPage() {
       };
 
       if (openDialog === "create") {
-        await apiClient("api/students", {
+        const response = await apiClient("api/students", {
           method: "POST",
           body: JSON.stringify(payload),
         });
+        
+        // Si se proporcionó una descripción de CanvaDoc, crear el documento
+        if (canvaDocDescription && canvaDocDescription.trim() && response?._id) {
+          try {
+            await apiClient("api/canva-docs", {
+              method: "POST",
+              body: JSON.stringify({
+                description: canvaDocDescription.trim(),
+                studentId: response._id,
+                isActive: true,
+              }),
+            });
+          } catch (canvaDocError) {
+            // Si falla la creación del CanvaDoc, no fallar toda la creación del estudiante
+            console.error("Failed to create CanvaDoc:", canvaDocError);
+          }
+        }
       }
       await fetchStudents();
       handleClose();
+      setCanvaDocDescription(""); // Limpiar el campo después de crear
     } catch (err: unknown) {
       const errorInfo = handleApiError(err);
       const errorMessage = getFriendlyErrorMessage(
@@ -875,6 +895,22 @@ export default function StudentsPage() {
                   )}
                 </div>
               </fieldset>
+              <fieldset className="border p-4 rounded-md">
+                <legend className="px-1 text-sm">CanvaDoc (Optional)</legend>
+                <div className="space-y-2 mt-2">
+                  <Label>CanvaDoc Description</Label>
+                  <Textarea
+                    value={canvaDocDescription}
+                    onChange={(e) => setCanvaDocDescription(e.target.value)}
+                    placeholder="Enter CanvaDoc description (optional)..."
+                    rows={3}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    If provided, a CanvaDoc will be created for this student automatically.
+                  </p>
+                </div>
+              </fieldset>
+              
               <div className="space-y-4">
                 <h3 className="text-lg font-medium">Notes</h3>
                 {(formData.notes || []).map((note, index) => (

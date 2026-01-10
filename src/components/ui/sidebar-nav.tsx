@@ -29,6 +29,7 @@ import {
   FolderTree, // Icono para Class Categories
   Bell, // Icono para Category Notifications
   User, // Icono para Profile
+  ClipboardList, // Icono para Penalization Registry
 } from "lucide-react";
 
 // --- ESTRUCTURA COMPLETA DE NAVEGACIÓN ---
@@ -38,12 +39,15 @@ const allNavItems = [
   { title: "Teachers", href: "/teachers", icon: UserCircle, roles: ["admin"] },
   { title: "Students", href: "/students", icon: Users, roles: ["admin"] },
   { title: "Enrollments", href: "/enrollments", icon: FileBadge, roles: ["admin"] },
+  { title: "Penalization Registry", href: "/penalization-registry", icon: ClipboardList, roles: ["admin"] },
   // Professor items
   { title: "Dashboard", href: "/professor/dashboard", icon: LayoutDashboard, roles: ["professor"] },
   { title: "Enrollments", href: "/professor/class-registry", icon: FileBadge, roles: ["professor"] },
+  { title: "My Penalizations", href: "/my-penalizations", icon: ClipboardList, roles: ["professor"] },
   // Student items
   { title: "Dashboard", href: "/student/dashboard", icon: LayoutDashboard, roles: ["student"] },
   { title: "Profile", href: "/student/profile", icon: User, roles: ["student"] },
+  { title: "My Penalizations", href: "/my-penalizations", icon: ClipboardList, roles: ["student"] },
   // Nuevo grupo para Contabilidad (solo admin)
   {
     title: "Accounting",
@@ -71,6 +75,7 @@ const allNavItems = [
       { title: "Income Categories", href: "/settings/category-money", icon: Tags },
       { title: "Class Categories", href: "/settings/category-class", icon: FolderTree },
       { title: "Notification Categories", href: "/settings/category-notifications", icon: Bell },
+      { title: "Notifications", href: "/settings/notifications", icon: Bell },
     ],
   },
 ];

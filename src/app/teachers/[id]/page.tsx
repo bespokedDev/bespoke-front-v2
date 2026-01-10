@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { PenalizationsSection } from "@/components/penalizations/PenalizationsSection";
 import {
   Popover,
   PopoverContent,
@@ -243,11 +244,11 @@ export default function TeacherDetailPage() {
       // Solo actualizar el estado si el error no es 404 (Not Found) durante navegación
       const errorInfo = handleApiError(err);
       if (errorInfo.statusCode !== 404) {
-        const errorMessage = getFriendlyErrorMessage(
-          err,
-          "Failed to load teacher. Please try again."
-        );
-        setError(errorMessage);
+      const errorMessage = getFriendlyErrorMessage(
+        err,
+        "Failed to load teacher. Please try again."
+      );
+      setError(errorMessage);
       }
     } finally {
       setIsLoading(false);
@@ -269,9 +270,12 @@ export default function TeacherDetailPage() {
       fetchTeacher();
       fetchProfessorTypes();
       // Initialize bonus form data when teacherId is available
-      if (teacherId && !bonusFormData.professorId) {
-        setBonusFormData((prev) => ({ ...prev, professorId: teacherId }));
-      }
+      setBonusFormData((prev) => {
+        if (!prev.professorId || prev.professorId !== teacherId) {
+          return { ...prev, professorId: teacherId };
+        }
+        return prev;
+      });
     }
   }, [teacherId, fetchTeacher, fetchProfessorTypes]);
 
@@ -619,6 +623,7 @@ export default function TeacherDetailPage() {
           <TabsTrigger value="bonuses" onClick={fetchBonuses}>
             Bonuses
           </TabsTrigger>
+          <TabsTrigger value="penalizations">Penalizations</TabsTrigger>
         </TabsList>
 
         <TabsContent value="information">
@@ -1362,6 +1367,14 @@ export default function TeacherDetailPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="penalizations">
+          <PenalizationsSection
+            entityId={teacherId}
+            entityType="professor"
+            entityName={teacher?.name}
+          />
         </TabsContent>
       </Tabs>
 

@@ -74,6 +74,10 @@ interface ProfessorReport {
     total: number;
     details: ProfessorBonusDetail[];
   };
+  penalizations?: {
+    count: number;
+    totalMoney: number;
+  };
 }
 
 interface SpecialReportDetail {
@@ -112,6 +116,10 @@ interface SpecialProfessorReport {
   abonos?: {
     total: number;
     details: ProfessorBonusDetail[];
+  };
+  penalizations?: {
+    count: number;
+    totalMoney: number;
   };
 }
 
@@ -258,6 +266,8 @@ function NewReportComponent() {
         ...prof,
         // Preservar abonos si viene de la API
         abonos: prof.abonos || undefined,
+        // Preservar penalizations si viene de la API
+        penalizations: prof.penalizations || undefined,
         // Preservar totalTeacher, totalBespoke, totalBalanceRemaining que vienen directamente del objeto prof
         totalTeacher: prof.totalTeacher || 0,
         totalBespoke: prof.totalBespoke || 0,
@@ -278,6 +288,8 @@ function NewReportComponent() {
             ...response.specialProfessorReport,
             // Preservar abonos si viene de la API
             abonos: response.specialProfessorReport.abonos || undefined,
+            // Preservar penalizations si viene de la API
+            penalizations: response.specialProfessorReport.penalizations || undefined,
             // Preservar subtotal que viene de la API
             subtotal: response.specialProfessorReport.subtotal || {
               total: 0,
@@ -1121,15 +1133,15 @@ function NewReportComponent() {
                             {detail.period}
                           </TableCell>
                           <TableCell>
-                            <span className="px-1">{detail.plan}</span>
+                              <span className="px-1">{detail.plan}</span>
                           </TableCell>
                           <TableCell>
-                            <span className="font-medium px-1">
-                              {detail.enrollmentId
-                                ? formatEnrollmentName(
-                                    enrollments.find(
-                                      (e) => e._id === detail.enrollmentId
-                                    )!
+                              <span className="font-medium px-1">
+                                    {detail.enrollmentId
+                                      ? formatEnrollmentName(
+                                          enrollments.find(
+                                            (e) => e._id === detail.enrollmentId
+                                          )!
                                   ) || detail.studentName
                                 : detail.studentName}
                             </span>
@@ -1252,6 +1264,28 @@ function NewReportComponent() {
                   </Table>
                 </div>
               )}
+
+              {/* Sección de Penalizaciones */}
+              {profReport.penalizations && profReport.penalizations.count > 0 && (
+                <div className="mt-6 pt-6 border-t">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold">Penalizations</h3>
+                    <div className="flex items-center gap-4">
+                      <div className="text-sm text-muted-foreground">
+                        Count: <span className="font-semibold">{profReport.penalizations.count}</span>
+                      </div>
+                      <div className="text-lg font-bold text-destructive">
+                        Total: ${profReport.penalizations.totalMoney.toFixed(2)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-3 bg-destructive/10 rounded-md border border-destructive/20">
+                    <p className="text-sm text-muted-foreground">
+                      This professor has {profReport.penalizations.count} active monetary penalization{profReport.penalizations.count !== 1 ? 's' : ''} with a total amount of ${profReport.penalizations.totalMoney.toFixed(2)}.
+                    </p>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         ))}
@@ -1339,15 +1373,15 @@ function NewReportComponent() {
                               {detail.period}
                             </TableCell>
                             <TableCell>
-                              <span className="px-1">{detail.plan}</span>
+                                <span className="px-1">{detail.plan}</span>
                             </TableCell>
                             <TableCell>
-                              <span className="font-medium px-1">
-                                {detail.enrollmentId
-                                  ? formatEnrollmentName(
-                                      enrollments.find(
+                                <span className="font-medium px-1">
+                                      {detail.enrollmentId
+                                        ? formatEnrollmentName(
+                                            enrollments.find(
                                         (e) => e._id === detail.enrollmentId
-                                      )!
+                                            )!
                                     ) || detail.studentName
                                   : detail.studentName}
                               </span>
@@ -1428,6 +1462,64 @@ function NewReportComponent() {
                   </TableFooter>
                 </Table>
               </div>
+
+              {/* Sección de Abonos para Special Professor */}
+              {calculatedData.specialReport.abonos && calculatedData.specialReport.abonos.details.length > 0 && (
+                <div className="mt-6 pt-6 border-t">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold">Bonuses</h3>
+                    <div className="text-lg font-bold">
+                      Total: ${calculatedData.specialReport.abonos.total.toFixed(2)}
+                    </div>
+                  </div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Month</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {calculatedData.specialReport.abonos.details.map((bonus) => (
+                        <TableRow key={bonus.bonusId}>
+                          <TableCell>
+                            {formatDateForDisplay(bonus.bonusDate)}
+                          </TableCell>
+                          <TableCell>{bonus.description}</TableCell>
+                          <TableCell>{bonus.month}</TableCell>
+                          <TableCell className="text-right font-medium">
+                            ${bonus.amount.toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+
+              {/* Sección de Penalizaciones para Special Professor */}
+              {calculatedData.specialReport.penalizations && calculatedData.specialReport.penalizations.count > 0 && (
+                <div className="mt-6 pt-6 border-t">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold">Penalizations</h3>
+                    <div className="flex items-center gap-4">
+                      <div className="text-sm text-muted-foreground">
+                        Count: <span className="font-semibold">{calculatedData.specialReport.penalizations.count}</span>
+                      </div>
+                      <div className="text-lg font-bold text-destructive">
+                        Total: ${calculatedData.specialReport.penalizations.totalMoney.toFixed(2)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-3 bg-destructive/10 rounded-md border border-destructive/20">
+                    <p className="text-sm text-muted-foreground">
+                      This professor has {calculatedData.specialReport.penalizations.count} active monetary penalization{calculatedData.specialReport.penalizations.count !== 1 ? 's' : ''} with a total amount of ${calculatedData.specialReport.penalizations.totalMoney.toFixed(2)}.
+                    </p>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

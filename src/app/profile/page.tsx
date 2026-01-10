@@ -35,7 +35,16 @@ interface ProfessorUpdatePayload {
 }
 
 interface PasswordUpdatePayload {
-  password: string;
+  currentPassword: string;
+  newPassword: string;
+}
+
+interface PasswordValidation {
+  minLength: boolean;
+  hasUpperCase: boolean;
+  hasLowerCase: boolean;
+  hasNumber: boolean;
+  hasSpecialChar: boolean;
 }
 
 export default function ProfilePage() {
@@ -48,6 +57,13 @@ export default function ProfilePage() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [passwordSuccessMessage, setPasswordSuccessMessage] = useState<string | null>(null);
+  const [passwordValidation, setPasswordValidation] = useState<PasswordValidation>({
+    minLength: false,
+    hasUpperCase: false,
+    hasLowerCase: false,
+    hasNumber: false,
+    hasSpecialChar: false,
+  });
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
   const [formData, setFormData] = useState<ProfileFormData>({
     name: "",
@@ -100,9 +116,27 @@ export default function ProfilePage() {
     setSuccessMessage(null);
   };
 
+  const validatePassword = (password: string): PasswordValidation => {
+    const specialChars = /[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/;
+    return {
+      minLength: password.length >= 8,
+      hasUpperCase: /[A-Z]/.test(password),
+      hasLowerCase: /[a-z]/.test(password),
+      hasNumber: /[0-9]/.test(password),
+      hasSpecialChar: specialChars.test(password),
+    };
+  };
+
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setPasswordData((prev) => ({ ...prev, [name]: value }));
+    setPasswordData((prev) => {
+      const updated = { ...prev, [name]: value };
+      // Validar la nueva contraseña en tiempo real
+      if (name === "newPassword") {
+        setPasswordValidation(validatePassword(value));
+      }
+      return updated;
+    });
     setPasswordError(null);
     setPasswordSuccessMessage(null);
   };
@@ -166,13 +200,36 @@ export default function ProfilePage() {
     if (!user) return;
 
     // Validaciones
+    if (!passwordData.currentPassword || passwordData.currentPassword.trim() === "") {
+      setPasswordError("Current password is required");
+      return;
+    }
+
+    if (!passwordData.newPassword || passwordData.newPassword.trim() === "") {
+      setPasswordError("New password is required");
+      return;
+    }
+
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       setPasswordError("New passwords do not match");
       return;
     }
 
-    if (passwordData.newPassword.length < 6) {
-      setPasswordError("Password must be at least 6 characters long");
+    if (passwordData.newPassword === passwordData.currentPassword) {
+      setPasswordError("New password must be different from current password");
+      return;
+    }
+
+    // Validar criterios de seguridad
+    const validation = validatePassword(passwordData.newPassword);
+    if (!validation.minLength || !validation.hasUpperCase || !validation.hasLowerCase || !validation.hasNumber || !validation.hasSpecialChar) {
+      const errors: string[] = [];
+      if (!validation.minLength) errors.push("Password must be at least 8 characters long");
+      if (!validation.hasUpperCase) errors.push("Password must contain at least one uppercase letter");
+      if (!validation.hasLowerCase) errors.push("Password must contain at least one lowercase letter");
+      if (!validation.hasNumber) errors.push("Password must contain at least one number");
+      if (!validation.hasSpecialChar) errors.push("Password must contain at least one special character (!@#$%^&*()_+-=[]{}|;:,.<>?)");
+      setPasswordError(errors.join(". "));
       return;
     }
 
@@ -181,25 +238,45 @@ export default function ProfilePage() {
     setPasswordSuccessMessage(null);
 
     try {
-      // Solo profesores pueden cambiar su contraseña
-      if (user.role?.toLowerCase() === "professor") {
-        const endpoint = `api/professors/${user.id}`;
-        const payload: PasswordUpdatePayload = {
-          password: passwordData.newPassword,
-        };
-
-        await apiClient(endpoint, {
-          method: "PUT",
-          body: JSON.stringify(payload),
-        });
-
-        setPasswordSuccessMessage("Password changed successfully!");
-        setPasswordData({
-          currentPassword: "",
-          newPassword: "",
-          confirmPassword: "",
-        });
+      const role = user.role?.toLowerCase();
+      let endpoint = "";
+      
+      // Determinar el endpoint según el rol del usuario
+      if (role === "admin" || role === "user") {
+        endpoint = `api/users/${user.id}/change-password`;
+      } else if (role === "professor") {
+        endpoint = `api/professors/${user.id}/change-password`;
+      } else if (role === "student") {
+        endpoint = `api/students/${user.id}/change-password`;
+      } else {
+        setPasswordError("User role not recognized");
+        setIsChangingPassword(false);
+        return;
       }
+
+      const payload: PasswordUpdatePayload = {
+        currentPassword: passwordData.currentPassword.trim(),
+        newPassword: passwordData.newPassword.trim(),
+      };
+
+      await apiClient(endpoint, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+
+      setPasswordSuccessMessage("Password changed successfully!");
+      setPasswordData({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+      setPasswordValidation({
+        minLength: false,
+        hasUpperCase: false,
+        hasLowerCase: false,
+        hasNumber: false,
+        hasSpecialChar: false,
+      });
     } catch (err: unknown) {
       const errorMessage = getFriendlyErrorMessage(
         err,
@@ -417,87 +494,111 @@ export default function ProfilePage() {
             </CardContent>
           </Card>
 
-          {/* Cambio de contraseña - Solo para profesores */}
-          {isProfessor && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Change Password</CardTitle>
-                <CardDescription>Update your account password</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handlePasswordSubmit} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="currentPassword">Current Password</Label>
-                    <Input
-                      id="currentPassword"
-                      name="currentPassword"
-                      type="password"
-                      value={passwordData.currentPassword}
-                      onChange={handlePasswordChange}
-                      disabled={isChangingPassword}
-                      placeholder="Enter current password"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="newPassword">New Password</Label>
-                    <Input
-                      id="newPassword"
-                      name="newPassword"
-                      type="password"
-                      value={passwordData.newPassword}
-                      onChange={handlePasswordChange}
-                      disabled={isChangingPassword}
-                      placeholder="Enter new password (min. 6 characters)"
-                      minLength={6}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="confirmPassword">Confirm New Password</Label>
-                    <Input
-                      id="confirmPassword"
-                      name="confirmPassword"
-                      type="password"
-                      value={passwordData.confirmPassword}
-                      onChange={handlePasswordChange}
-                      disabled={isChangingPassword}
-                      placeholder="Confirm new password"
-                      minLength={6}
-                    />
-                  </div>
-
-                  {passwordError && (
-                    <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
-                      {passwordError}
-                    </div>
-                  )}
-
-                  {passwordSuccessMessage && (
-                    <div className="p-3 text-sm text-green-600 bg-green-50 dark:bg-green-900/20 rounded-md">
-                      {passwordSuccessMessage}
-                    </div>
-                  )}
-
-                  <Button
-                    type="submit"
+          {/* Cambio de contraseña - Para todos los usuarios */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Change Password</CardTitle>
+              <CardDescription>Update your account password</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handlePasswordSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="currentPassword">Current Password *</Label>
+                  <Input
+                    id="currentPassword"
+                    name="currentPassword"
+                    type="password"
+                    value={passwordData.currentPassword}
+                    onChange={handlePasswordChange}
                     disabled={isChangingPassword}
-                    className="w-full"
-                    variant="outline"
-                  >
-                    {isChangingPassword ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Changing Password...
-                      </>
-                    ) : (
-                      "Change Password"
-                    )}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          )}
+                    placeholder="Enter current password"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="newPassword">New Password *</Label>
+                  <Input
+                    id="newPassword"
+                    name="newPassword"
+                    type="password"
+                    value={passwordData.newPassword}
+                    onChange={handlePasswordChange}
+                    disabled={isChangingPassword}
+                    placeholder="Enter new password"
+                    required
+                  />
+                  {/* Indicadores de validación de contraseña */}
+                  {passwordData.newPassword && (
+                    <div className="space-y-1 mt-2 text-xs">
+                      <div className={`flex items-center gap-2 ${passwordValidation.minLength ? "text-green-600" : "text-muted-foreground"}`}>
+                        <span>{passwordValidation.minLength ? "✓" : "○"}</span>
+                        <span>At least 8 characters</span>
+                      </div>
+                      <div className={`flex items-center gap-2 ${passwordValidation.hasUpperCase ? "text-green-600" : "text-muted-foreground"}`}>
+                        <span>{passwordValidation.hasUpperCase ? "✓" : "○"}</span>
+                        <span>One uppercase letter (A-Z)</span>
+                      </div>
+                      <div className={`flex items-center gap-2 ${passwordValidation.hasLowerCase ? "text-green-600" : "text-muted-foreground"}`}>
+                        <span>{passwordValidation.hasLowerCase ? "✓" : "○"}</span>
+                        <span>One lowercase letter (a-z)</span>
+                      </div>
+                      <div className={`flex items-center gap-2 ${passwordValidation.hasNumber ? "text-green-600" : "text-muted-foreground"}`}>
+                        <span>{passwordValidation.hasNumber ? "✓" : "○"}</span>
+                        <span>One number (0-9)</span>
+                      </div>
+                      <div className={`flex items-center gap-2 ${passwordValidation.hasSpecialChar ? "text-green-600" : "text-muted-foreground"}`}>
+                        <span>{passwordValidation.hasSpecialChar ? "✓" : "○"}</span>
+                        <span>One special character (e.g., !@#$%^&*)</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Confirm New Password *</Label>
+                  <Input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type="password"
+                    value={passwordData.confirmPassword}
+                    onChange={handlePasswordChange}
+                    disabled={isChangingPassword}
+                    placeholder="Confirm new password"
+                    required
+                  />
+                </div>
+
+                {passwordError && (
+                  <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md whitespace-pre-line">
+                    {passwordError}
+                  </div>
+                )}
+
+                {passwordSuccessMessage && (
+                  <div className="p-3 text-sm text-green-600 bg-green-50 dark:bg-green-900/20 rounded-md">
+                    {passwordSuccessMessage}
+                  </div>
+                )}
+
+                <Button
+                  type="submit"
+                  disabled={isChangingPassword}
+                  className="w-full"
+                  variant="outline"
+                >
+                  {isChangingPassword ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Changing Password...
+                    </>
+                  ) : (
+                    "Change Password"
+                  )}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

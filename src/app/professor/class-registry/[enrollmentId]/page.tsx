@@ -71,6 +71,8 @@ import { CreateEvaluationDialog } from "./components/Dialogs/CreateEvaluationDia
 import { EnrollmentInfoCard } from "./components/Sections/EnrollmentInfoCard";
 import { ObjectivesSection } from "./components/Sections/ObjectivesSection";
 import { ClassRegistriesSection } from "./components/Sections/ClassRegistriesSection";
+import { ClassesHistorySection } from "./components/Sections/ClassesHistorySection";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useEnrollmentData } from "./hooks/useEnrollmentData";
 import { useObjectives } from "./hooks/useObjectives";
 import { useClassRegistries } from "./hooks/useClassRegistries";
@@ -86,6 +88,8 @@ export default function ClassRegistryDetailPage() {
 
   // Estado local para el tab activo (necesario para useEvaluations)
   const [activeTab, setActiveTab] = useState("classes");
+  // Estado para el modo de período (current period o all history)
+  const [periodMode, setPeriodMode] = useState<"current" | "all">("current");
 
   // Custom hooks
   const {
@@ -96,8 +100,12 @@ export default function ClassRegistryDetailPage() {
     error,
   } = useEnrollmentData(enrollmentId);
 
+  // Extract dates from enrollment for current period
+  const startDate = enrollment?.startDate ? extractDatePart(enrollment.startDate) : undefined;
+  const endDate = enrollment?.endDate ? extractDatePart(enrollment.endDate) : undefined;
+
   // Note: We need to initialize classRegistriesHook first, but we'll update the evaluation cache later
-  const classRegistriesHook = useClassRegistries(enrollmentId);
+  const classRegistriesHook = useClassRegistries(enrollmentId, periodMode, startDate, endDate);
 
   const objectivesHook = useObjectives(enrollmentId, enrollment, contentClasses);
 
@@ -109,13 +117,16 @@ export default function ClassRegistryDetailPage() {
     classRegistriesHook.fetchClassRegistries
   );
 
-  // Load class registries when enrollment data is loaded
+  // Load class registries when enrollment data is loaded or period mode changes
   useEffect(() => {
     if (!isLoadingEnrollment && enrollment) {
+      // Only fetch if we have dates for current period, or if mode is "all"
+      if (periodMode === "all" || (periodMode === "current" && startDate && endDate)) {
       classRegistriesHook.fetchClassRegistries();
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoadingEnrollment, enrollment]);
+  }, [isLoadingEnrollment, enrollment, periodMode, startDate, endDate]);
 
   // Update evaluation cache when class registries are loaded (only update ref to avoid re-renders)
   // This effect is only needed to sync the cache when registries change
@@ -294,7 +305,8 @@ export default function ClassRegistryDetailPage() {
       }
 
       // Confirmación para profesores: después de guardar no podrá editar (porque classViewed será diferente de 0)
-      if (isProfessor && classViewedValue !== 0) {
+      // Nota: classViewed: 4 (Class Lost) solo puede ser asignado por cronjob, no manualmente
+      if (isProfessor && classViewedValue !== 0 && classViewedValue !== 4) {
         const confirmed = window.confirm(
           "After saving this class registry, you will not be able to edit it again because the class will be marked as viewed. Do you want to continue?"
         );
@@ -456,6 +468,8 @@ export default function ClassRegistryDetailPage() {
         }
         
         const isReschedule = registry.originalClassId !== null && registry.originalClassId !== undefined;
+        // Bloquear si es profesor y classViewed !== 0 (incluye 1, 2, 3, 4)
+        // classViewed: 4 (Class Lost) está siempre bloqueado (asignado por cronjob)
         const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
         
         if (isLocked) {
@@ -513,6 +527,8 @@ export default function ClassRegistryDetailPage() {
         
         const displayText = selectedName || "Select...";
         const isReschedule = registry.originalClassId !== null && registry.originalClassId !== undefined;
+        // Bloquear si es profesor y classViewed !== 0 (incluye 1, 2, 3, 4)
+        // classViewed: 4 (Class Lost) está siempre bloqueado (asignado por cronjob)
         const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
         
         if (isLocked) {
@@ -653,6 +669,8 @@ export default function ClassRegistryDetailPage() {
           ? selectedNames.join(", ")
           : "Select...";
         const isReschedule = registry.originalClassId !== null && registry.originalClassId !== undefined;
+        // Bloquear si es profesor y classViewed !== 0 (incluye 1, 2, 3, 4)
+        // classViewed: 4 (Class Lost) está siempre bloqueado (asignado por cronjob)
         const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
         
         if (isLocked) {
@@ -678,17 +696,17 @@ export default function ClassRegistryDetailPage() {
                 variant="outline"
                 role="combobox"
                 aria-expanded={open}
-                className={`w-full justify-between ${isReschedule ? "bg-white" : ""}`}
+                className={`w-full justify-between max-w-[300px] min-h-[2.5rem] h-auto py-2 ${isReschedule ? "bg-white" : ""}`}
               >
-                <span className="truncate text-left flex-1">{displayText}</span>
-                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                <span className="text-left flex-1 break-words whitespace-normal leading-relaxed pr-2">{displayText}</span>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50 self-start mt-0.5" />
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-full p-0">
               <Command>
                 <CommandInput placeholder="Search content types..." />
                 <CommandEmpty>No content type found.</CommandEmpty>
-                <CommandGroup>
+                <CommandGroup className="max-h-[300px] overflow-y-auto">
                   {contentClasses.map((type) => (
                     <CommandItem
                       key={type._id}
@@ -777,13 +795,15 @@ export default function ClassRegistryDetailPage() {
         }
         
         const isReschedule = registry.originalClassId !== null && registry.originalClassId !== undefined;
+        // Bloquear si es profesor y classViewed !== 0 (incluye 1, 2, 3, 4)
+        // classViewed: 4 (Class Lost) está siempre bloqueado (asignado por cronjob)
         const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
         
         if (isLocked) {
           return (
-            <span className="text-sm font-medium">
+            <div className="text-sm font-medium max-w-[400px] break-words">
               {registry.vocabularyContent || "—"}
-            </span>
+            </div>
           );
         }
         
@@ -825,6 +845,8 @@ export default function ClassRegistryDetailPage() {
         }
         
         const isReschedule = registry.originalClassId !== null && registry.originalClassId !== undefined;
+        // Bloquear si es profesor y classViewed !== 0 (incluye 1, 2, 3, 4)
+        // classViewed: 4 (Class Lost) está siempre bloqueado (asignado por cronjob)
         const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
         
         if (isLocked) {
@@ -866,6 +888,8 @@ export default function ClassRegistryDetailPage() {
     {
       accessorKey: "note",
       header: "Note",
+      size: 200,
+      maxSize: 200,
       cell: ({ row }) => {
         const registry = row.original;
         const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
@@ -875,20 +899,19 @@ export default function ClassRegistryDetailPage() {
         const noteFromState = editData?.note || classRegistriesHook.editingRegistryDataRef.current[registry._id]?.note;
         const noteContent = noteFromState?.content || registry.note?.content || "";
         const hasNote = noteContent.trim().length > 0;
-        const truncatedNote = noteContent.length > 50 
-          ? `${noteContent.substring(0, 50)}...` 
-          : noteContent;
+        
+        // Crear una versión de texto plano para el tooltip (remover HTML tags)
+        const plainText = noteContent.replace(/<[^>]*>/g, '').trim();
         
         return (
-          <div className="flex items-center gap-2 min-w-[150px] md:min-w-[200px]">
+          <div className="flex items-center gap-2 min-w-[150px] md:min-w-[200px] max-w-[400px]">
             {hasNote ? (
               <>
-                <span 
-                  className="text-sm flex-1 truncate" 
-                  title={noteContent}
-                >
-                  {truncatedNote}
-                </span>
+                <div 
+                  className="text-sm flex-1 max-w-[400px] break-words [&_p]:my-0.5 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-0.5 [&_ul]:ml-4 [&_ol]:my-0.5 [&_ol]:ml-4 [&_li]:my-0 [&_strong]:font-semibold [&_em]:italic line-clamp-2"
+                  title={plainText}
+                  dangerouslySetInnerHTML={{ __html: noteContent }}
+                />
                 {!isLocked && (
                 <Button
                   variant="ghost"
@@ -968,6 +991,8 @@ export default function ClassRegistryDetailPage() {
         }
         
         const isReschedule = registry.originalClassId !== null && registry.originalClassId !== undefined;
+        // Bloquear si es profesor y classViewed !== 0 (incluye 1, 2, 3, 4)
+        // classViewed: 4 (Class Lost) está siempre bloqueado (asignado por cronjob)
         const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
         
         if (isLocked) {
@@ -1027,6 +1052,19 @@ export default function ClassRegistryDetailPage() {
         const isLocked = isProfessor && registry.classViewed !== 0 && registry.classViewed !== null && registry.classViewed !== undefined;
         
         return (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                syncRefToState(registry._id);
+                void handleSaveRegistry(registry);
+              }}
+              disabled={isLocked}
+            >
+              <Save className="h-4 w-4" />
+              Save
+            </Button>
           <DropdownMenu 
             open={isMenuOpen} 
             onOpenChange={async (open) => {
@@ -1042,18 +1080,6 @@ export default function ClassRegistryDetailPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={() => {
-                  syncRefToState(registry._id);
-                  void handleSaveRegistry(registry);
-                  evaluationsHook.setOpenMenuRegistryId(null);
-                }}
-                disabled={isLocked}
-              >
-                <Save className="h-4 w-4 mr-2" />
-                Save changes
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               {canReschedule && (
                 <DropdownMenuItem
                   onClick={() => {
@@ -1093,6 +1119,7 @@ export default function ClassRegistryDetailPage() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          </div>
         );
       },
     },
@@ -1173,20 +1200,45 @@ export default function ClassRegistryDetailPage() {
             </div>
               </div>
 
-      {/* Class Registries Table - Full Width */}
-      <ClassRegistriesSection
-        classRegistries={classRegistriesHook.classRegistries}
-        registryColumns={registryColumns}
-        evaluations={evaluationsHook.evaluations}
-        EvaluationsTable={EvaluationsTable}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        registrySuccessMessage={classRegistriesHook.registrySuccessMessage}
-        registryErrorMessage={classRegistriesHook.registryErrorMessage}
-        isLoadingEvaluations={evaluationsHook.isLoadingEvaluations}
-        onDismissSuccess={() => classRegistriesHook.setRegistrySuccessMessage(null)}
-        onDismissError={() => classRegistriesHook.setRegistryErrorMessage(null)}
-      />
+      {/* Period Mode Tabs - Outside Card */}
+      <Tabs
+        value={periodMode}
+        onValueChange={(value) => setPeriodMode(value as "current" | "all")}
+        className="mb-6"
+      >
+        <TabsList>
+          <TabsTrigger value="current">Current Period</TabsTrigger>
+          <TabsTrigger value="all">Classes History</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="current" className="space-y-4">
+          <ClassRegistriesSection
+            classRegistries={classRegistriesHook.classRegistries}
+            registryColumns={registryColumns}
+            evaluations={evaluationsHook.evaluations}
+            EvaluationsTable={EvaluationsTable}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            periodMode={periodMode}
+            registrySuccessMessage={classRegistriesHook.registrySuccessMessage}
+            registryErrorMessage={classRegistriesHook.registryErrorMessage}
+            isLoadingEvaluations={evaluationsHook.isLoadingEvaluations}
+            onDismissSuccess={() => classRegistriesHook.setRegistrySuccessMessage(null)}
+            onDismissError={() => classRegistriesHook.setRegistryErrorMessage(null)}
+          />
+        </TabsContent>
+
+        <TabsContent value="all" className="space-y-4">
+          <ClassesHistorySection
+            classRegistries={classRegistriesHook.classRegistries}
+            registryColumns={registryColumns}
+            registrySuccessMessage={classRegistriesHook.registrySuccessMessage}
+            registryErrorMessage={classRegistriesHook.registryErrorMessage}
+            onDismissSuccess={() => classRegistriesHook.setRegistrySuccessMessage(null)}
+            onDismissError={() => classRegistriesHook.setRegistryErrorMessage(null)}
+          />
+        </TabsContent>
+      </Tabs>
 
       {/* Reschedule Modal */}
       <RescheduleDialog

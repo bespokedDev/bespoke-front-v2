@@ -84,8 +84,8 @@ export const EditableVocabularyContentField = ({ registryId, initialValue, onUpd
   }, [initialValue]);
 
   return (
-    <Input
-      key={`vocabularyContent-input-${registryId}`}
+    <Textarea
+      key={`vocabularyContent-textarea-${registryId}`}
       value={value}
       onChange={(e) => {
         const newValue = e.target.value;
@@ -93,7 +93,7 @@ export const EditableVocabularyContentField = ({ registryId, initialValue, onUpd
         onUpdate(newValue);
       }}
       disabled={disabled}
-      className={`w-full min-w-[120px] md:min-w-[150px] ${isReschedule ? "bg-white" : ""}`}
+      className={`min-h-[60px] w-full min-w-[150px] md:min-w-[200px] max-w-[400px] ${isReschedule ? "bg-white" : ""}`}
     />
   );
 };
@@ -168,6 +168,21 @@ export const EditableClassViewedField = ({ registryId, initialValue, onUpdate, i
     setValue(initialValue);
   }, [initialValue]);
 
+  // Class Lost (4) es asignado automáticamente por cronjob, no puede ser seleccionado manualmente
+  const isClassLost = value === 4;
+
+  // Mapear valores a etiquetas
+  const getDisplayLabel = (val: number): string => {
+    switch (val) {
+      case 0: return "Pending";
+      case 1: return "Viewed";
+      case 2: return "Partially Viewed";
+      case 3: return "No Show";
+      case 4: return "Class Lost (Auto)";
+      default: return "Unknown";
+    }
+  };
+
   return (
     <Select
       key={`classViewed-select-${registryId}`}
@@ -177,16 +192,19 @@ export const EditableClassViewedField = ({ registryId, initialValue, onUpdate, i
         setValue(newClassViewed);
         onUpdate(newClassViewed);
       }}
-      disabled={disabled}
+      disabled={disabled || isClassLost}
     >
-      <SelectTrigger className={`w-full ${isReschedule ? "bg-white" : ""}`}>
-        <SelectValue />
+      <SelectTrigger className={`w-full ${isReschedule ? "bg-white" : ""} ${isClassLost ? "bg-red-50 border-red-300 text-red-700" : ""}`}>
+        <SelectValue placeholder={getDisplayLabel(value)}>
+          {getDisplayLabel(value)}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="0">Pending</SelectItem>
         <SelectItem value="1">Viewed</SelectItem>
         <SelectItem value="2">Partially Viewed</SelectItem>
         <SelectItem value="3">No Show</SelectItem>
+        <SelectItem value="4" disabled className="text-red-600 font-semibold">Class Lost (Auto)</SelectItem>
       </SelectContent>
     </Select>
   );

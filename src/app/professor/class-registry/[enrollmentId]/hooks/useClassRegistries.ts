@@ -119,7 +119,10 @@ interface UseClassRegistriesReturn {
 }
 
 export function useClassRegistries(
-  enrollmentId: string
+  enrollmentId: string,
+  periodMode: "current" | "all" = "current",
+  startDate?: string,
+  endDate?: string
 ): UseClassRegistriesReturn {
   const [classRegistries, setClassRegistries] = useState<ClassRegistry[]>([]);
   const [editingRegistryData, setEditingRegistryData] = useState<Record<string, {
@@ -186,9 +189,20 @@ export function useClassRegistries(
   // Fetch class registries
   const fetchClassRegistries = useCallback(async () => {
     try {
-      const response = await apiClient(
+      let response;
+      if (periodMode === "current" && startDate && endDate) {
+        // Use range endpoint for current period
+        const fromDate = extractDatePart(startDate);
+        const toDate = extractDatePart(endDate);
+        response = await apiClient(
+          `api/class-registry/range?enrollmentId=${enrollmentId}&from=${fromDate}&to=${toDate}`
+        );
+      } else {
+        // Use regular endpoint for all history
+        response = await apiClient(
         `api/class-registry?enrollmentId=${enrollmentId}`
       );
+      }
       console.log("response class registries", response);
       const registries = response.classes || [];
       setClassRegistries(registries);
@@ -202,7 +216,7 @@ export function useClassRegistries(
     } catch (err: unknown) {
       console.error("Error fetching class registries:", err);
     }
-  }, [enrollmentId]);
+  }, [enrollmentId, periodMode, startDate, endDate]);
 
   // Inicializar editingRegistryData y ref cuando se cargan los registros
   useEffect(() => {

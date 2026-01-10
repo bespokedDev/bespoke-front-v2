@@ -14,6 +14,7 @@ interface ClassRegistriesSectionProps {
   EvaluationsTable: React.ComponentType<{ evaluations: EvaluationWithClassDate[] }>;
   activeTab: string;
   onTabChange: (value: string) => void;
+  periodMode: "current" | "all";
   registrySuccessMessage: string | null;
   registryErrorMessage: string | null;
   isLoadingEvaluations: boolean;
@@ -28,12 +29,18 @@ export function ClassRegistriesSection({
   EvaluationsTable,
   activeTab,
   onTabChange,
+  periodMode,
   registrySuccessMessage,
   registryErrorMessage,
   isLoadingEvaluations,
   onDismissSuccess,
   onDismissError,
 }: ClassRegistriesSectionProps) {
+  // Solo mostrar este componente cuando periodMode es "current"
+  if (periodMode !== "current") {
+    return null;
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -70,6 +77,7 @@ export function ClassRegistriesSection({
             </button>
           </div>
         )}
+        {/* Classes/Evaluations Tabs */}
         <Tabs value={activeTab} onValueChange={onTabChange}>
           <TabsList>
             <TabsTrigger value="classes">Classes</TabsTrigger>

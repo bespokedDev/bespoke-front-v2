@@ -111,3 +111,79 @@
     font-family: var(--font-geist-sans), sans-serif;
   }
 }
+
+/* Tiptap Editor Styles */
+@layer components {
+  .tiptap {
+    outline: none;
+  }
+  
+  .tiptap p.is-editor-empty:first-child::before {
+    color: hsl(var(--muted-foreground));
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    pointer-events: none;
+  }
+  
+  .tiptap p {
+    margin: 0.5rem 0;
+  }
+  
+  .tiptap p:first-child {
+    margin-top: 0;
+  }
+  
+  .tiptap p:last-child {
+    margin-bottom: 0;
+  }
+  
+  .tiptap ul,
+  .tiptap ol {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+  }
+  
+  .tiptap ul {
+    list-style-type: disc;
+  }
+  
+  .tiptap ol {
+    list-style-type: decimal;
+  }
+  
+  .tiptap li {
+    margin: 0.25rem 0;
+  }
+  
+  .tiptap strong {
+    font-weight: 600;
+  }
+  
+  .tiptap em {
+    font-style: italic;
+  }
+  
+  /* Prevent horizontal overflow in editor */
+  .tiptap {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%;
+  }
+  
+  .tiptap * {
+    max-width: 100%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+  
+  /* Rich Text Editor Toolbar Active State */
+  button[data-active="true"] {
+    background-color: hsl(var(--accent));
+    color: hsl(var(--accent-foreground));
+  }
+  
+  button[data-active="true"]:hover {
+    background-color: hsl(var(--accent) / 0.9);
+  }
+}

@@ -1,0 +1,46 @@
+---
+description: Reglas maestras de arquitectura, desarrollo y UI para el proyecto Next.js. Estas reglas deben aplicarse en CADA interacción.
+alwaysApply: true
+globs: **/*
+---
+
+# 💻 [CONTEXTO DEL SISTEMA] PLATAFORMA EDUCATIVA (ESTÁNDAR PROFESIONAL)
+
+## 1. CUMPLIMIENTO Y MODO DE OPERACIÓN (MANDATORIO)
+
+- **Verificación de Reglas:** Antes de cada respuesta de código, la IA debe validar internamente que su propuesta cumple con este archivo `.mdc`.
+- **Aprobación Obligatoria:** NUNCA modifique archivos, cree nuevos o implemente lógica compleja sin **APROBACIÓN EXPLICITA**. Presente el plan en el chat y espere confirmación.
+- **Modo Asesoramiento:** Ante preguntas, la IA debe **ANALIZAR y EXPLICAR**. No generará código hasta recibir orden de implementación clara.
+- **Prohibición de Documentación Física:** **PROHIBIDO** generar archivos de documentación (.md, .txt, etc.). Toda comunicación es vía chat.
+
+## 2. STACK TECNOLÓGICO Y VERSIONES
+
+- **Versiones:** Utilizar siempre las versiones estables instaladas en el proyecto (`package.json`). No asumir versiones obsoletas.
+- **Prioridad RSC:** Server Components por defecto. `use client` solo para interactividad necesaria.
+- **Tipado:** TypeScript estricto. Prohibido el uso de `any`.
+- **UI:** Exclusivamente **Shadcn UI** y **Tailwind CSS**.
+- **Fechas:** Uso exclusivo de **date-fns**.
+
+## 3. ESTÁNDARES DE CÓDIGO (CLEAN CODE)
+
+- **Responsabilidad Única:** Funciones y componentes pequeños. Si un componente excede las 150 líneas, evaluar división.
+- **Manejo de Errores:** Implementar manejo de errores robusto tanto en Server Actions como en API Routes, utilizando los patrones de Next.js (`error.tsx`, `loading.tsx`).
+- **No Invención:** Si falta información sobre una API o modelo, la IA **DEBE PREGUNTAR**. Prohibido alucinar estructuras de datos.
+
+## 4. DISEÑO DE INTERFAZ (UI/UX) Y RESPONSIVIDAD
+
+- **Distribución Estética y Lógica:** Los cambios en la interfaz deben ser visualmente armoniosos.
+- **Optimización de Espacio:** Si dos campos/elementos contienen poca información, posicionarlos **horizontalmente (uno al lado del otro)** para evitar scroll innecesario y mejorar la estética.
+- **Mobile-First:** Uso obligatorio de prefijos responsivos de Tailwind (`sm:`, `md:`, `lg:`).
+- **Consistencia:** El código nuevo debe ser estilísticamente idéntico al existente. Si el código previo es deficiente, sugerir refactorización ANTES de aplicar cambios.
+
+## 5. OPTIMIZACIÓN Y RENDIMIENTO (VERCEL HOBBY)
+
+- **Eficiencia:** Diseñar código para minimizar Invocaciones Serverless y transferencia de datos.
+- **Caching:** Aprovechar al máximo el Data Cache y Full Route Cache de Next.js.
+
+## 6. ESTRATEGIA DE TESTING
+
+- **Herramientas:** Jest/Vitest + React Testing Library + MSW.
+- **Cobertura:** Mínimo **90%** en lógica contable, reportes y utilidades críticas.
+- **Ubicación:** Carpetas `__tests__` o archivos `.test.ts/tsx`.

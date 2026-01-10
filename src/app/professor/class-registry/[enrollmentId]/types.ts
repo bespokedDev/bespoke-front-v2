@@ -12,9 +12,8 @@ export interface Enrollment {
       name: string;
       email: string;
       dob?: string; // Fecha de nacimiento
-      photo?: string | null; // Imagen/foto del estudiante (base64 o URL)
+      avatar?: string | null; // Imagen/foto del estudiante (base64)
       representativeName?: string | null; // Nombre del representante
-      canvaDocUrl?: string | null; // URL del documento Canva
       createdAt?: string; // Fecha de creación del estudiante
       enrollmentDate?: string; // Fecha de inscripción
       avatarPermission?: boolean | null; // Autorización de imagen a redes sociales

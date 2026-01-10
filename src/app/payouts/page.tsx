@@ -264,7 +264,7 @@ const generatePayoutPDF = async (payout: Payout) => {
   const paidDate = formatDateForDisplay(payout.paidAt);
   const creationDate = formatDateForDisplay(payout.createdAt);
   const payoutCode = payout._id.slice(-6).toUpperCase();
-  
+
   // Formatear mes y año
   const [year, month] = payout.month.split("-");
   const monthNames = [
@@ -408,11 +408,11 @@ const generatePayoutPDF = async (payout: Payout) => {
   
   // Tabla Bespoke Students (Enrollments)
   if (payout.enrollmentsInfo && payout.enrollmentsInfo.length > 0) {
-    doc.setFontSize(12);
+  doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
     doc.text("Bespoke Students", 20, currentY);
     currentY += 5;
-    
+
     const enrollmentRows = payout.enrollmentsInfo.map((enrollment) => [
       enrollment.studentName,
       enrollment.plan,
@@ -453,15 +453,15 @@ const generatePayoutPDF = async (payout: Payout) => {
     const penalizationRows = payout.penalizationInfo.map((penalization) => [
       penalization.penalization_description || "Penalization",
       `-$${penalization.penalizationMoney.toFixed(2)}`,
-    ]);
+      ]);
     
-    autoTable(doc, {
+  autoTable(doc, {
       startY: currentY,
       head: [["Description", "Amount"]],
       body: penalizationRows,
       headStyles: { fillColor: primaryColor, textColor: 255, halign: "center" },
       styles: { fontSize: 9 },
-    });
+  });
     currentY = (doc as any).lastAutoTable.finalY + 15;
   }
   
@@ -522,7 +522,7 @@ const generatePayoutPDF = async (payout: Payout) => {
   doc.setFont("helvetica", "bold");
   doc.text("Payment Details", 20, currentY);
   currentY += 8;
-  
+
   if (paymentMethod) {
     const paymentMethodName = paymentMethod.bankName || "N/A";
     const confirmationNumber = ""; // Vacío por ahora
@@ -551,7 +551,7 @@ const generatePayoutPDF = async (payout: Payout) => {
   const signatureY = currentY;
   doc.line(signatureX - 60, signatureY + 20, signatureX, signatureY + 20);
   doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
+    doc.setFont("helvetica", "normal");
   doc.text("Signature", signatureX - 30, signatureY + 25, { align: "center" });
   
   doc.save(
@@ -634,26 +634,26 @@ export default function PayoutsPage() {
   const handleLoadPreview = async () => {
     if (!formData.professorId || !formData.month) {
       setDialogError("Please select both professor and month.");
-      return;
-    }
+        return;
+      }
     
-    setIsEnrollmentsLoading(true);
+      setIsEnrollmentsLoading(true);
     setDialogError(null);
     try {
       const preview = await apiClient(
         `api/payouts/preview/${formData.professorId}?month=${formData.month}`
-      );
+        );
       setFormData((prev) => ({ ...prev, preview }));
-    } catch (err: unknown) {
-      const errorMessage = getFriendlyErrorMessage(
-        err,
+      } catch (err: unknown) {
+        const errorMessage = getFriendlyErrorMessage(
+          err,
         "Could not load payout preview. Please try again."
-      );
-      setDialogError(errorMessage);
-    } finally {
-      setIsEnrollmentsLoading(false);
-    }
-  };
+        );
+        setDialogError(errorMessage);
+      } finally {
+        setIsEnrollmentsLoading(false);
+      }
+    };
 
   // --- CÁLCULO DE TOTALES (basado en preview) ---
   const totals = useMemo(() => {
@@ -691,7 +691,7 @@ export default function PayoutsPage() {
   // Actualizar métodos de pago cuando se selecciona un profesor
   useEffect(() => {
     if (formData.professorId && professors.length > 0) {
-      const professor = professors.find((p) => p._id === formData.professorId);
+    const professor = professors.find((p) => p._id === formData.professorId);
       if (professor) {
         const paymentMethods = Array.isArray(professor.paymentData) 
           ? professor.paymentData 
@@ -855,7 +855,7 @@ export default function PayoutsPage() {
         ignorePunctuation: true,
       });
     };
-  };
+    };
 
   const columns: ColumnDef<Payout>[] = [
     {
@@ -1058,12 +1058,12 @@ export default function PayoutsPage() {
                   <Select
                     value={formData.professorId}
                     onValueChange={(v) =>
-                    setFormData((p) => ({
-                      ...p,
-                      professorId: v,
+                      setFormData((p) => ({
+                        ...p,
+                        professorId: v,
                       preview: null,
-                      paymentMethodId: "",
-                    }))
+                        paymentMethodId: "",
+                      }))
                     }
                     required
                   >
@@ -1129,13 +1129,13 @@ export default function PayoutsPage() {
                     )}
                     {/* Enrollments Table */}
                     {formData.preview.enrollments.length > 0 && (
-                      <div>
-                        <h4 className="text-sm font-medium mb-2">
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">
                           Enrollments ({formData.preview.enrollments.length})
-                        </h4>
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
+                      </h4>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
                               <TableHead>Student</TableHead>
                               <TableHead>Plan</TableHead>
                               <TableHead>Period</TableHead>
@@ -1143,43 +1143,43 @@ export default function PayoutsPage() {
                               <TableHead className="text-right">Hours Seen</TableHead>
                               <TableHead className="text-right">Pay/Hour</TableHead>
                               <TableHead className="text-right">Subtotal</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
                             {formData.preview.enrollments.map((enrollment, index) => (
                               <TableRow key={enrollment.enrollmentId || index}>
-                                <TableCell className="max-w-xs truncate">
+                                    <TableCell className="max-w-xs truncate">
                                   {enrollment.studentName}
-                                </TableCell>
+                                    </TableCell>
                                 <TableCell>{enrollment.plan}</TableCell>
                                 <TableCell className="text-sm text-muted-foreground">
                                   {enrollment.period}
-                                </TableCell>
+                                    </TableCell>
                                 <TableCell className="text-right">
                                   {enrollment.totalHours}
-                                </TableCell>
+                                    </TableCell>
                                 <TableCell className="text-right">
                                   {enrollment.hoursSeen}
-                                </TableCell>
+                                    </TableCell>
                                 <TableCell className="text-right">
                                   ${enrollment.pPerHour.toFixed(2)}
-                                </TableCell>
+                                    </TableCell>
                                 <TableCell className="text-right font-medium">
                                   ${enrollment.subtotal.toFixed(2)}
-                                </TableCell>
-                              </TableRow>
+                                    </TableCell>
+                                  </TableRow>
                             ))}
-                          </TableBody>
-                        </Table>
-                      </div>
+                        </TableBody>
+                      </Table>
+                    </div>
                     )}
                     {/* Bonuses */}
                     {formData.preview.bonusInfo.length > 0 && (
-                      <div>
-                        <h4 className="text-sm font-medium mb-2">
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">
                           Bonuses ({formData.preview.bonusInfo.length})
-                        </h4>
-                        <div className="space-y-2">
+                      </h4>
+                      <div className="space-y-2">
                           {formData.preview.bonusInfo.map((bonus) => (
                             <div
                               key={bonus.id}
@@ -1197,7 +1197,7 @@ export default function PayoutsPage() {
                               </div>
                             </div>
                           ))}
-                        </div>
+                      </div>
                       </div>
                     )}
                     {/* Penalizations */}
@@ -1224,7 +1224,7 @@ export default function PayoutsPage() {
                               </div>
                             </div>
                           ))}
-                        </div>
+                    </div>
                       </div>
                     )}
                   </div>
@@ -1236,30 +1236,30 @@ export default function PayoutsPage() {
               </fieldset>
             )}
             {formData.professorId && (
-              <fieldset className="border p-4 rounded-md">
+            <fieldset className="border p-4 rounded-md">
                 <legend className="px-1 text-sm">Payment Information</legend>
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label>Payment Method</Label>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <Select
-                        value={formData.paymentMethodId}
-                        onValueChange={(v) =>
-                          setFormData((p) => ({ ...p, paymentMethodId: v }))
-                        }
-                        required
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a payment method..." />
-                        </SelectTrigger>
-                        <SelectContent>
+                    <Select
+                      value={formData.paymentMethodId}
+                      onValueChange={(v) =>
+                        setFormData((p) => ({ ...p, paymentMethodId: v }))
+                      }
+                      required
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a payment method..." />
+                      </SelectTrigger>
+                      <SelectContent>
                           {selectedProfessorPaymentData && selectedProfessorPaymentData.length > 0 ? (
                             selectedProfessorPaymentData.map((pm) => {
                                 const paymentMethodId = getPaymentMethodId(pm);
                                 return (
                                   <SelectItem key={paymentMethodId} value={paymentMethodId}>
                                     {pm.bankName || "Payment Method"} ({pm.accountNumber?.slice(-4) || "N/A"})
-                                  </SelectItem>
+                            </SelectItem>
                                 );
                               })
                           ) : (
@@ -1267,37 +1267,37 @@ export default function PayoutsPage() {
                               No payment methods available
                             </SelectItem>
                           )}
-                        </SelectContent>
-                      </Select>
-                      {selectedPaymentMethod && (
+                      </SelectContent>
+                    </Select>
+                    {selectedPaymentMethod && (
                         <div className="text-xs p-3 bg-muted/50 rounded-md space-y-1 border">
-                          <p>
+                        <p>
                             <strong>Bank:</strong>{" "}
                             {selectedPaymentMethod.bankName || "N/A"}
-                          </p>
-                          <p>
-                            <strong>Account:</strong>{" "}
+                        </p>
+                        <p>
+                          <strong>Account:</strong>{" "}
                             {selectedPaymentMethod.accountNumber || "N/A"}
-                          </p>
-                          <p>
-                            <strong>Type:</strong>{" "}
+                        </p>
+                        <p>
+                          <strong>Type:</strong>{" "}
                             {selectedPaymentMethod.accountType || "N/A"}
                           </p>
                           {selectedPaymentMethod.holderName && (
                             <p>
                               <strong>Holder:</strong>{" "}
                               {selectedPaymentMethod.holderName}
-                            </p>
+                        </p>
                           )}
                           {selectedPaymentMethod.holderEmail && (
-                            <p>
-                              <strong>Email:</strong>{" "}
-                              {selectedPaymentMethod.holderEmail}
-                            </p>
+                        <p>
+                          <strong>Email:</strong>{" "}
+                          {selectedPaymentMethod.holderEmail}
+                        </p>
                           )}
-                        </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
+                  </div>
                   </div>
                 </div>
               </fieldset>
@@ -1307,29 +1307,29 @@ export default function PayoutsPage() {
                 <legend className="px-1 text-sm">Summary</legend>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 mt-2">
                   <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>Date Paid</Label>
-                      <Input
-                        type="date"
+                  <div className="space-y-2">
+                    <Label>Date Paid</Label>
+                    <Input
+                      type="date"
                         max="9999-12-31"
-                        value={formData.paidAt}
-                        onChange={(e) =>
-                          setFormData((p) => ({ ...p, paidAt: e.target.value }))
-                        }
-                        required
-                      />
-                    </div>
+                      value={formData.paidAt}
+                      onChange={(e) =>
+                        setFormData((p) => ({ ...p, paidAt: e.target.value }))
+                      }
+                      required
+                    />
                   </div>
-                  <div className="bg-muted/50 p-4 rounded-md space-y-2 flex flex-col justify-center">
-                    <div className="flex justify-between">
+                </div>
+                <div className="bg-muted/50 p-4 rounded-md space-y-2 flex flex-col justify-center">
+                  <div className="flex justify-between">
                       <p>Subtotal Enrollments:</p>
                       <p>${totals.subtotalEnrollments.toFixed(2)}</p>
-                    </div>
+                  </div>
                     {totals.totalBonuses > 0 && (
                       <div className="flex justify-between text-green-600">
                         <p>Bonuses:</p>
                         <p>+${totals.totalBonuses.toFixed(2)}</p>
-                      </div>
+                  </div>
                     )}
                     {totals.totalPenalizations > 0 && (
                       <div className="flex justify-between text-destructive">
@@ -1337,13 +1337,13 @@ export default function PayoutsPage() {
                         <p>-${totals.totalPenalizations.toFixed(2)}</p>
                       </div>
                     )}
-                    <div className="flex justify-between font-bold border-t pt-2 mt-2">
-                      <p>Total to Pay:</p>
+                  <div className="flex justify-between font-bold border-t pt-2 mt-2">
+                    <p>Total to Pay:</p>
                       <p>${totals.grandTotal.toFixed(2)}</p>
-                    </div>
                   </div>
                 </div>
-              </fieldset>
+              </div>
+            </fieldset>
             )}
             <fieldset className="border p-4 rounded-md">
               <legend className="px-1 text-sm">Notes (Optional)</legend>

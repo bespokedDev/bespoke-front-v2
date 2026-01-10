@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import {
   Select,
   SelectContent,
@@ -46,15 +46,18 @@ export const EditableObjectiveCell = ({ initialValue, onUpdate }: EditableObject
   }, [initialValue]);
   
   return (
-    <Textarea
-      value={value}
-      onChange={(e) => {
-        const newValue = e.target.value;
-        setValue(newValue);
-        onUpdate?.(newValue);
-      }}
-      className="min-h-[60px]"
-    />
+    <div className="w-full max-w-[200px]">
+      <RichTextEditor
+        content={value || ""}
+        onChange={(newValue) => {
+          setValue(newValue);
+          onUpdate?.(newValue);
+        }}
+        placeholder="Enter objective..."
+        minHeight="60px"
+        className="w-full"
+      />
+    </div>
   );
 };
 
@@ -66,15 +69,18 @@ export const EditableTeachersNoteCell = ({ initialValue, onUpdate }: EditableTea
   }, [initialValue]);
   
   return (
-    <Textarea
-      value={value}
-      onChange={(e) => {
-        const newValue = e.target.value;
-        setValue(newValue);
-        onUpdate?.(newValue);
-      }}
-      className="min-h-[60px]"
-    />
+    <div className="w-full max-w-[200px]">
+      <RichTextEditor
+        content={value || ""}
+        onChange={(newValue) => {
+          setValue(newValue);
+          onUpdate?.(newValue);
+        }}
+        placeholder="Enter teacher's note..."
+        minHeight="60px"
+        className="w-full"
+      />
+    </div>
   );
 };
 

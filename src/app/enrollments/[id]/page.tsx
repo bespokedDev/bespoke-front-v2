@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiClient } from "@/lib/api";
 import { getFriendlyErrorMessage } from "@/lib/errorHandler";
 import { formatDateForDisplay } from "@/lib/dateUtils";
@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { PenalizationsSection } from "@/components/penalizations/PenalizationsSection";
 import {
   Loader2,
   AlertCircle,
@@ -54,6 +55,19 @@ interface ScheduledDay {
   day: string;
 }
 
+interface PenalizationInfo {
+  penalizationCount: number;
+  totalPenalizations: number;
+  monetaryPenalizations: {
+    count: number;
+    totalAmount: number;
+  };
+  admonitionPenalizations: {
+    count: number;
+  };
+  totalPenalizationMoney: number;
+}
+
 interface EnrollmentDetail {
   _id: string;
   planId: PlanDetail;
@@ -77,19 +91,10 @@ interface EnrollmentDetail {
   } | null;
   cancellationPaymentsEnabled: boolean;
   status: number;
+  penalizationCount?: number;
+  penalizationInfo?: PenalizationInfo;
   createdAt: string;
   updatedAt: string;
-}
-
-interface EnrollmentDetailResponse {
-  message: string;
-  professor: {
-    id: string;
-    name: string;
-    email: string;
-  };
-  enrollments: EnrollmentDetail[];
-  total: number;
 }
 
 interface EnrollmentStatistics {
@@ -160,9 +165,14 @@ interface EnrollmentWithStatistics {
 export default function EnrollmentDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const enrollmentId = params.id as string;
   const isAdmin = user?.role?.toLowerCase() === "admin";
+  
+  // Check if we came from student view
+  const fromStudent = searchParams?.get('from') === 'student';
+  const studentId = searchParams?.get('studentId') || null;
 
   const [enrollment, setEnrollment] = useState<EnrollmentDetail | null>(null);
   const [statistics, setStatistics] = useState<EnrollmentStatistics | null>(
@@ -181,35 +191,37 @@ export default function EnrollmentDetailPage() {
       setIsLoading(true);
       setError(null);
 
-      // Primero obtener el enrollment básico para tener los studentIds
-      const response: EnrollmentDetailResponse = await apiClient(
-        `api/enrollments/${enrollmentId}/detail`
+      // Usar endpoint /:id para obtener penalizationInfo completo (disponible para todos los roles)
+      const enrollmentData: EnrollmentDetail = await apiClient(
+        `api/enrollments/${enrollmentId}`
       );
 
-      if (!response.enrollments || response.enrollments.length === 0) {
+      if (!enrollmentData || !enrollmentData._id) {
         setError("Enrollment not found");
         return;
       }
 
-      const enrollmentData = response.enrollments[0];
       setEnrollment(enrollmentData);
 
-      // Obtener estadísticas detalladas usando el nuevo endpoint
-      // Usamos el primer estudiante del enrollment
+      // Obtener estadísticas detalladas usando el endpoint de estudiante
+      // Si el enrollment tiene studentIds, usamos el primero para obtener estadísticas
       if (enrollmentData.studentIds && enrollmentData.studentIds.length > 0) {
-        const firstStudentId = enrollmentData.studentIds[0].studentId._id;
+        // La estructura de studentIds en EnrollmentDetail tiene studentId como objeto con _id
+        const firstStudentId = enrollmentData.studentIds[0]?.studentId?._id;
 
-        try {
-          const enrollmentWithStats: EnrollmentWithStatistics = await apiClient(
-            `api/students/${firstStudentId}/enrollment/${enrollmentId}`
-          );
-          console.log("enrollmentWithStats", enrollmentWithStats);
-          if (enrollmentWithStats.statistics) {
-            setStatistics(enrollmentWithStats.statistics);
+        if (firstStudentId) {
+          try {
+            const enrollmentWithStats: EnrollmentWithStatistics = await apiClient(
+              `api/students/${firstStudentId}/enrollment/${enrollmentId}`
+            );
+            console.log("enrollmentWithStats", enrollmentWithStats);
+            if (enrollmentWithStats.statistics) {
+              setStatistics(enrollmentWithStats.statistics);
+            }
+          } catch (statsErr) {
+            console.warn("Could not fetch enrollment statistics:", statsErr);
+            // Continuar sin estadísticas si falla
           }
-        } catch (statsErr) {
-          console.warn("Could not fetch enrollment statistics:", statsErr);
-          // Continuar sin estadísticas si falla
         }
       }
     } catch (err: unknown) {
@@ -238,7 +250,16 @@ export default function EnrollmentDetailPage() {
           <AlertCircle className="h-5 w-5 shrink-0" />
           <span>{error}</span>
         </div>
-        <Button onClick={() => router.push("/enrollments")} variant="outline">
+        <Button 
+          onClick={() => {
+            if (fromStudent && studentId) {
+              router.push(`/students/${studentId}`);
+            } else {
+              router.push("/enrollments");
+            }
+          }} 
+          variant="outline"
+        >
           <ArrowLeft className="h-4 w-4 mr-2" />
           Go Back
         </Button>
@@ -298,7 +319,13 @@ export default function EnrollmentDetailPage() {
       <div className="flex items-center">
         <Button
           className="mr-8"
-          onClick={() => router.push("/enrollments")}
+          onClick={() => {
+            if (fromStudent && studentId) {
+              router.push(`/students/${studentId}`);
+            } else {
+              router.push("/enrollments");
+            }
+          }}
           variant="outline"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -364,7 +391,60 @@ export default function EnrollmentDetailPage() {
                   </Label>
                   <p className="text-2xl font-bold">{stats.total}</p>
                 </div>
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground text-sm">
+                    Penalizations
+                  </Label>
+                  <p className="text-2xl font-bold text-accent-1">
+                    {enrollment.penalizationCount ?? 0}
+                  </p>
+                </div>
+                {statistics?.lostClasses && statistics.lostClasses.total > 0 && (
+                  <div className="space-y-2">
+                    <Label className="text-muted-foreground text-sm text-red-600">
+                      Lost Classes
+                    </Label>
+                    <p className="text-2xl font-bold text-red-600">
+                      {statistics.lostClasses.total}
+                    </p>
+                  </div>
+                )}
+                {enrollment.penalizationInfo && enrollment.penalizationInfo.totalPenalizationMoney > 0 && (
+                  <div className="space-y-2">
+                    <Label className="text-muted-foreground text-sm">
+                      Total Penalization Amount
+                    </Label>
+                    <p className="text-2xl font-bold text-red-600">
+                      ${enrollment.penalizationInfo.totalPenalizationMoney.toFixed(2)}
+                    </p>
+                  </div>
+                )}
               </div>
+              {enrollment.penalizationInfo && enrollment.penalizationInfo.totalPenalizations > 0 && (
+                <div className="mt-4 pt-4 border-t border-border">
+                  <h4 className="text-sm font-semibold mb-2">Penalization Details</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <Label className="text-muted-foreground">Total Active Penalizations</Label>
+                      <p className="font-medium">{enrollment.penalizationInfo.totalPenalizations}</p>
+                    </div>
+                    {enrollment.penalizationInfo.monetaryPenalizations.count > 0 && (
+                      <div>
+                        <Label className="text-muted-foreground">Monetary Penalizations</Label>
+                        <p className="font-medium">
+                          {enrollment.penalizationInfo.monetaryPenalizations.count} (${enrollment.penalizationInfo.monetaryPenalizations.totalAmount.toFixed(2)})
+                        </p>
+                      </div>
+                    )}
+                    {enrollment.penalizationInfo.admonitionPenalizations.count > 0 && (
+                      <div>
+                        <Label className="text-muted-foreground">Admonition Penalizations</Label>
+                        <p className="font-medium">{enrollment.penalizationInfo.admonitionPenalizations.count}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -536,15 +616,32 @@ export default function EnrollmentDetailPage() {
                 </Link>
               </Button>
               {isAdmin && (
-                <Button variant="outline" className="w-full" asChild>
-                  <Link href="/enrollments">
+                <Button 
+                  variant="outline" 
+                  className="w-full"
+                  onClick={() => {
+                    if (fromStudent && studentId) {
+                      router.push(`/students/${studentId}`);
+                    } else {
+                      router.push("/enrollments");
+                    }
+                  }}
+                >
                     <ArrowLeft className="h-4 w-4 mr-2" />
-                    Back to Enrollments
-                  </Link>
+                  {fromStudent ? "Back to Student" : "Back to Enrollments"}
                 </Button>
               )}
             </CardContent>
           </Card>
+
+          {/* Penalizations Section (Admin only) */}
+          {isAdmin && (
+            <PenalizationsSection
+              entityId={enrollmentId}
+              entityType="enrollment"
+              entityName={enrollment?.alias || `Enrollment ${enrollmentId.slice(-6)}`}
+            />
+          )}
         </div>
       </div>
     </div>

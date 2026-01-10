@@ -148,11 +148,11 @@ export default function TeachersPage() {
       // Solo mostrar error al usuario si no es un 404 (Not Found)
       // Los 404 pueden ocurrir durante navegación y no deberían mostrarse
       if (errorInfo.statusCode !== 404) {
-        const errorMessage = getFriendlyErrorMessage(
-          err,
-          "Failed to load teachers. Please try again."
-        );
-        setError(errorMessage);
+      const errorMessage = getFriendlyErrorMessage(
+        err,
+        "Failed to load teachers. Please try again."
+      );
+      setError(errorMessage);
       } else {
         // Si es 404, simplemente establecer array vacío sin mostrar error
         console.log("404 error on professors endpoint, setting empty array");
@@ -184,7 +184,7 @@ export default function TeachersPage() {
       const errorInfo = handleApiError(err);
       // Solo loguear errores que no sean 404 (Not Found), ya que este endpoint es opcional
       if (errorInfo.statusCode !== 404) {
-        console.error("Error fetching professor types:", err);
+      console.error("Error fetching professor types:", err);
       }
       // No mostramos error al usuario ya que este campo es opcional
       setProfessorTypes([]);
@@ -809,87 +809,6 @@ export default function TeachersPage() {
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-// --- COMPONENTE SEARCHABLE SELECT REUTILIZABLE ---
-function SearchableSelect({
-  items,
-  selectedId,
-  onSelectedChange,
-  placeholder,
-  required,
-}: {
-  items: { _id: string; name: string }[];
-  selectedId: string;
-  onSelectedChange: (id: string) => void;
-  placeholder: string;
-  required?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-
-  const selectedItem = items.find((item) => item._id === selectedId);
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          aria-required={required}
-          className="w-full justify-between h-auto min-h-10 hover:!bg-primary/30 dark:hover:!primary/30"
-        >
-          {selectedItem ? selectedItem.name : placeholder}
-          <div className="flex items-center gap-1">
-            {!required && selectedItem && (
-              <X
-                className="h-4 w-4 shrink-0 opacity-50 hover:opacity-100"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelectedChange("");
-                }}
-              />
-            )}
-            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-          </div>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-        <Command>
-          <CommandInput placeholder={placeholder} />
-          <CommandEmpty>No item found.</CommandEmpty>
-          <CommandGroup className="max-h-60 overflow-y-auto">
-            {!required && selectedItem && (
-              <CommandItem
-                value="__clear__"
-                onSelect={() => {
-                  onSelectedChange("");
-                  setOpen(false);
-                }}
-                className="hover:!bg-secondary/20 dark:hover:!secondary/30 text-muted-foreground"
-              >
-                <X className="h-4 w-4 mr-2" />
-                Clear selection
-              </CommandItem>
-            )}
-            {items.map((item) => (
-              <CommandItem
-                key={item._id}
-                value={item.name}
-                onSelect={() => {
-                  onSelectedChange(item._id);
-                  setOpen(false);
-                }}
-                className="hover:!bg-secondary/20 dark:hover:!secondary/30"
-              >
-                {item.name}
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        </Command>
-      </PopoverContent>
-    </Popover>
   );
 }
 
