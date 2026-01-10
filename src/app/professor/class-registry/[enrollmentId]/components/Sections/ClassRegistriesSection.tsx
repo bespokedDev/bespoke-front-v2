@@ -14,7 +14,7 @@ interface ClassRegistriesSectionProps {
   EvaluationsTable: React.ComponentType<{ evaluations: EvaluationWithClassDate[] }>;
   activeTab: string;
   onTabChange: (value: string) => void;
-  periodMode: "current" | "all";
+  periodMode: "current" | "all" | "objectives-history";
   registrySuccessMessage: string | null;
   registryErrorMessage: string | null;
   isLoadingEvaluations: boolean;

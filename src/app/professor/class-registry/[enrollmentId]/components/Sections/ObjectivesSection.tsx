@@ -28,6 +28,9 @@ export function ObjectivesSection({
   onDismissError,
   onAddObjective,
 }: ObjectivesSectionProps) {
+  // Filtrar objetivos que no están logrados (objectiveAchieved === false)
+  const unachievedObjectives = objectives.filter((obj) => !obj.objectiveAchieved);
+
   return (
     <Card>
       <CardHeader>
@@ -79,14 +82,18 @@ export function ObjectivesSection({
             </button>
           </div>
         )}
-        {objectives.length === 0 && contentClasses.length === 0 ? (
+        {unachievedObjectives.length === 0 && contentClasses.length === 0 ? (
           <p className="text-muted-foreground text-sm">
             Loading objectives...
+          </p>
+        ) : unachievedObjectives.length === 0 ? (
+          <p className="text-muted-foreground text-sm py-4">
+            No unachieved objectives found.
           </p>
         ) : (
           <ObjectivesTable
             columns={columns}
-            data={objectives}
+            data={unachievedObjectives}
           />
         )}
       </CardContent>

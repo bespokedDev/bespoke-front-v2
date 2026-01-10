@@ -70,6 +70,7 @@ import { NoteDialog } from "./components/Dialogs/NoteDialog";
 import { CreateEvaluationDialog } from "./components/Dialogs/CreateEvaluationDialog";
 import { EnrollmentInfoCard } from "./components/Sections/EnrollmentInfoCard";
 import { ObjectivesSection } from "./components/Sections/ObjectivesSection";
+import { ObjectivesHistorySection } from "./components/Sections/ObjectivesHistorySection";
 import { ClassRegistriesSection } from "./components/Sections/ClassRegistriesSection";
 import { ClassesHistorySection } from "./components/Sections/ClassesHistorySection";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -88,8 +89,8 @@ export default function ClassRegistryDetailPage() {
 
   // Estado local para el tab activo (necesario para useEvaluations)
   const [activeTab, setActiveTab] = useState("classes");
-  // Estado para el modo de período (current period o all history)
-  const [periodMode, setPeriodMode] = useState<"current" | "all">("current");
+  // Estado para el modo de período (current period, all history, o objectives history)
+  const [periodMode, setPeriodMode] = useState<"current" | "all" | "objectives-history">("current");
 
   // Custom hooks
   const {
@@ -121,8 +122,9 @@ export default function ClassRegistryDetailPage() {
   useEffect(() => {
     if (!isLoadingEnrollment && enrollment) {
       // Only fetch if we have dates for current period, or if mode is "all"
+      // Skip fetching if mode is "objectives-history" (only show objectives history)
       if (periodMode === "all" || (periodMode === "current" && startDate && endDate)) {
-      classRegistriesHook.fetchClassRegistries();
+        classRegistriesHook.fetchClassRegistries();
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1203,12 +1205,13 @@ export default function ClassRegistryDetailPage() {
       {/* Period Mode Tabs - Outside Card */}
       <Tabs
         value={periodMode}
-        onValueChange={(value) => setPeriodMode(value as "current" | "all")}
+        onValueChange={(value) => setPeriodMode(value as "current" | "all" | "objectives-history")}
         className="mb-6"
       >
         <TabsList>
           <TabsTrigger value="current">Current Period</TabsTrigger>
           <TabsTrigger value="all">Classes History</TabsTrigger>
+          <TabsTrigger value="objectives-history">Objectives History</TabsTrigger>
         </TabsList>
 
         <TabsContent value="current" className="space-y-4">
@@ -1236,6 +1239,16 @@ export default function ClassRegistryDetailPage() {
             registryErrorMessage={classRegistriesHook.registryErrorMessage}
             onDismissSuccess={() => classRegistriesHook.setRegistrySuccessMessage(null)}
             onDismissError={() => classRegistriesHook.setRegistryErrorMessage(null)}
+          />
+        </TabsContent>
+
+        <TabsContent value="objectives-history" className="space-y-4">
+          <ObjectivesHistorySection
+            objectives={objectivesHook.objectives}
+            objectiveSuccessMessage={objectivesHook.objectiveSuccessMessage}
+            objectiveErrorMessage={objectivesHook.objectiveErrorMessage}
+            onDismissSuccess={() => objectivesHook.setObjectiveSuccessMessage(null)}
+            onDismissError={() => objectivesHook.setObjectiveErrorMessage(null)}
           />
         </TabsContent>
       </Tabs>

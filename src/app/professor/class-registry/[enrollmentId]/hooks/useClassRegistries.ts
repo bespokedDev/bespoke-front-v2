@@ -120,7 +120,7 @@ interface UseClassRegistriesReturn {
 
 export function useClassRegistries(
   enrollmentId: string,
-  periodMode: "current" | "all" = "current",
+  periodMode: "current" | "all" | "objectives-history" = "current",
   startDate?: string,
   endDate?: string
 ): UseClassRegistriesReturn {
@@ -188,6 +188,11 @@ export function useClassRegistries(
 
   // Fetch class registries
   const fetchClassRegistries = useCallback(async () => {
+    // Skip fetching if mode is "objectives-history" (only show objectives history)
+    if (periodMode === "objectives-history") {
+      return;
+    }
+    
     try {
       let response;
       if (periodMode === "current" && startDate && endDate) {
@@ -197,12 +202,17 @@ export function useClassRegistries(
         response = await apiClient(
           `api/class-registry/range?enrollmentId=${enrollmentId}&from=${fromDate}&to=${toDate}`
         );
-      } else {
+      } else if (periodMode === "all") {
         // Use regular endpoint for all history
         response = await apiClient(
         `api/class-registry?enrollmentId=${enrollmentId}`
       );
       }
+      
+      if (!response) {
+        return;
+      }
+      
       console.log("response class registries", response);
       const registries = response.classes || [];
       setClassRegistries(registries);
