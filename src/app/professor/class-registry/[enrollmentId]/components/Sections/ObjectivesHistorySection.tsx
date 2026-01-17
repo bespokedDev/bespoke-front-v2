@@ -89,11 +89,11 @@ export function ObjectivesHistorySection({
       cell: ({ row }) => {
         const objective = row.original;
         return (
-          <div className="flex items-center justify-center">
+          <div className="flex items-center justify-left">
             {objective.objectiveAchieved ? (
-              <CheckCircle2 className="h-5 w-5 text-secondary" />
+              <CheckCircle2 className="h-5 w-5 text-secondary ml-4" />
             ) : (
-              <X className="h-5 w-5 text-muted-foreground" />
+              <X className="h-5 w-5 text-muted-foreground ml-4" />
             )}
           </div>
         );

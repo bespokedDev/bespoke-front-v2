@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Loader2, Save, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowLeft } from "lucide-react";
 
 interface ProfileFormData {
   name: string;
@@ -25,13 +25,6 @@ interface PasswordFormData {
   currentPassword: string;
   newPassword: string;
   confirmPassword: string;
-}
-
-interface ProfessorUpdatePayload {
-  name: string;
-  email: string;
-  phone?: string;
-  ciNumber?: string;
 }
 
 interface PasswordUpdatePayload {
@@ -48,14 +41,11 @@ interface PasswordValidation {
 }
 
 export default function ProfilePage() {
-  const { user, login } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [passwordSuccessMessage, setPasswordSuccessMessage] = useState<string | null>(null);
   const [passwordValidation, setPasswordValidation] = useState<PasswordValidation>({
     minLength: false,
@@ -94,6 +84,7 @@ export default function ProfilePage() {
         if (user.role?.toLowerCase() === "student") {
           try {
             const studentData = await apiClient(`api/students/${user.id}`);
+            console.log("studentData", studentData);
             if (studentData.avatar) {
               setUserAvatar(studentData.avatar);
             }
@@ -108,13 +99,6 @@ export default function ProfilePage() {
 
     loadUserData();
   }, [user]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    setError(null);
-    setSuccessMessage(null);
-  };
 
   const validatePassword = (password: string): PasswordValidation => {
     const specialChars = /[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/;
@@ -139,60 +123,6 @@ export default function ProfilePage() {
     });
     setPasswordError(null);
     setPasswordSuccessMessage(null);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-
-    setIsSubmitting(true);
-    setError(null);
-    setSuccessMessage(null);
-
-    try {
-      // Preparar payload según el rol del usuario
-      const payload: ProfessorUpdatePayload = {
-        name: formData.name,
-        email: formData.email,
-      };
-
-      // Agregar campos específicos según el rol
-      if (user.role?.toLowerCase() === "professor" && formData.ciNumber) {
-        payload.ciNumber = formData.ciNumber;
-      }
-      if (formData.phone) {
-        payload.phone = formData.phone;
-      }
-
-      // Solo profesores pueden actualizar su propia información
-      if (user.role?.toLowerCase() === "professor") {
-        const endpoint = `api/professors/${user.id}`;
-        
-        // Actualizar en el backend
-        const updatedData = await apiClient(endpoint, {
-          method: "PUT",
-          body: JSON.stringify(payload),
-        });
-
-        // Actualizar el contexto de autenticación con los nuevos datos
-        const updatedUser = {
-          ...user,
-          ...payload,
-          ...updatedData,
-        };
-        login(localStorage.getItem("authToken") || "", updatedUser);
-
-        setSuccessMessage("Profile updated successfully!");
-      }
-    } catch (err: unknown) {
-      const errorMessage = getFriendlyErrorMessage(
-        err,
-        "Failed to update profile. Please try again."
-      );
-      setError(errorMessage);
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
@@ -343,7 +273,7 @@ export default function ProfilePage() {
         {/* Información del perfil */}
         <Card>
           <CardHeader>
-            <CardTitle>Profile Information</CardTitle>
+            <CardTitle>Personal Information</CardTitle>
             <CardDescription>Your personal account details</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -357,142 +287,46 @@ export default function ProfilePage() {
                   {getUserInitials(user.name)}
                 </AvatarFallback>
               </Avatar>
-              <div>
-                <p className="font-semibold text-lg">{user.name}</p>
-                <p className="text-sm text-muted-foreground">{user.email}</p>
-                <p className="text-xs text-muted-foreground capitalize">{user.role}</p>
-              </div>
             </div>
 
-            {/* Solo profesores pueden editar */}
-            {isProfessor ? (
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Name *</Label>
-                  <Input
-                    id="name"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleChange}
-                    required
-                    disabled={isSubmitting}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email *</Label>
-                  <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    required
-                    disabled={isSubmitting}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="ciNumber">CI Number</Label>
-                  <Input
-                    id="ciNumber"
-                    name="ciNumber"
-                    value={formData.ciNumber || ""}
-                    onChange={handleChange}
-                    disabled={isSubmitting}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    name="phone"
-                    type="tel"
-                    value={formData.phone || ""}
-                    onChange={handleChange}
-                    disabled={isSubmitting}
-                  />
-                </div>
-
-                {error && (
-                  <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
-                    {error}
-                  </div>
-                )}
-
-                {successMessage && (
-                  <div className="p-3 text-sm text-green-600 bg-green-50 dark:bg-green-900/20 rounded-md">
-                    {successMessage}
-                  </div>
-                )}
-
-                <Button type="submit" disabled={isSubmitting} className="w-full">
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4 mr-2" />
-                      Save Changes
-                    </>
-                  )}
-                </Button>
-              </form>
-            ) : (
-              // Admin y estudiantes solo ven información (sin formulario)
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">Name</Label>
-                  <p className="text-sm">{formData.name || "N/A"}</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">Email</Label>
-                  <p className="text-sm">{formData.email || "N/A"}</p>
-                </div>
-
-                {isStudent && formData.studentCode && (
-                  <div className="space-y-2">
-                    <Label className="text-muted-foreground">Student Code</Label>
-                    <p className="text-sm">{formData.studentCode}</p>
-                  </div>
-                )}
-
-                {formData.phone && (
-                  <div className="space-y-2">
-                    <Label className="text-muted-foreground">Phone</Label>
-                    <p className="text-sm">{formData.phone}</p>
-                  </div>
-                )}
+            {/* Información de solo lectura para todos los usuarios */}
+            <div className="space-y-3">
+              {/* Nombre más grande y centrado */}
+              <div>
+                <Label className="text-muted-foreground">Name</Label>
+                <p className="text-lg font-bold">{formData.name || "N/A"}</p>
               </div>
-            )}
+
+              {/* Rol */}
+              <div className="space-y-1">
+                <Label className="text-muted-foreground">Role</Label>
+                <p className="text-sm font-semibold capitalize">{user.role || "N/A"}</p>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-muted-foreground">Email</Label>
+                <p className="text-sm">{formData.email || "N/A"}</p>
+              </div>
+
+              {formData.ciNumber && (
+                <div className="space-y-1">
+                  <Label className="text-muted-foreground">CI Number</Label>
+                  <p className="text-sm">{formData.ciNumber}</p>
+                </div>
+              )}
+
+              {formData.phone && (
+                <div className="space-y-1">
+                  <Label className="text-muted-foreground">Phone</Label>
+                  <p className="text-sm">{formData.phone}</p>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
 
         {/* Información adicional y cambio de contraseña */}
         <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Account Details</CardTitle>
-              <CardDescription>Additional account information</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label className="text-muted-foreground">Role</Label>
-                <p className="text-sm capitalize">{user.role}</p>
-              </div>
-
-              {user.userType && (
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">User Type</Label>
-                  <p className="text-sm capitalize">{user.userType}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
 
           {/* Cambio de contraseña - Para todos los usuarios */}
           <Card>

@@ -21,6 +21,7 @@ import {
   User,
   Globe,
   Clock,
+  UserCheck,
 } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 import Link from "next/link";
@@ -31,6 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { formatDateForDisplay } from "@/lib/dateUtils";
 
 interface Enrollment {
@@ -53,9 +55,31 @@ interface Enrollment {
   startDate: string;
   endDate: string;
   status: number;
+  // Campos opcionales para enrollments sustitutos
+  substituteInfo?: {
+    assignedDate: string;
+    expiryDate: string;
+  };
+  professor?: {
+    _id: string;
+    name: string;
+    email: string;
+    phone?: string;
+  };
 }
 
 interface ProfessorEnrollmentsResponse {
+  message: string;
+  professor: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  enrollments: Enrollment[];
+  total: number;
+}
+
+interface SubstituteEnrollmentsResponse {
   message: string;
   professor: {
     id: string;
@@ -70,6 +94,7 @@ export default function ProfessorClassRegistryPage() {
   const { user, isLoading: isAuthLoading } = useAuth();
   const router = useRouter();
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [substituteEnrollments, setSubstituteEnrollments] = useState<Enrollment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedEnrollment, setSelectedEnrollment] = useState<Enrollment | null>(null);
@@ -95,11 +120,18 @@ export default function ProfessorClassRegistryPage() {
     try {
       setIsLoading(true);
       setError(null);
-      const response: ProfessorEnrollmentsResponse = await apiClient(
-        `api/professors/${user.id}/enrollments`
-      );
-      console.log("response: ", response);
-      setEnrollments(response.enrollments || []);
+      
+      // Fetch enrollments regulares y sustitutos en paralelo
+      const [regularResponse, substituteResponse] = await Promise.all([
+        apiClient(`api/professors/${user.id}/enrollments`).catch(() => ({ enrollments: [] })) as Promise<ProfessorEnrollmentsResponse>,
+        apiClient(`api/professors/${user.id}/substitute-enrollments`).catch(() => ({ enrollments: [] })) as Promise<SubstituteEnrollmentsResponse>,
+      ]);
+      
+      console.log("response: ", regularResponse);
+      console.log("substitute enrollments response: ", substituteResponse);
+      
+      setEnrollments(regularResponse.enrollments || []);
+      setSubstituteEnrollments(substituteResponse.enrollments || []);
     } catch (err: unknown) {
       const errorMessage = getFriendlyErrorMessage(
         err,
@@ -134,6 +166,9 @@ export default function ProfessorClassRegistryPage() {
       });
     };
 
+  // Combinar enrollments regulares y sustitutos para mostrar
+  const allEnrollments = [...enrollments, ...substituteEnrollments];
+
   const columns: ColumnDef<Enrollment>[] = [
     {
       id: "students",
@@ -156,16 +191,25 @@ export default function ProfessorClassRegistryPage() {
         const studentNames = row.original.studentIds.map(
           (s) => s.studentId.name
         );
+        const isSubstitute = !!row.original.substituteInfo;
         return (
-          <div className="flex flex-wrap items-center gap-1">
-            {studentNames.map((name, index) => (
-              <span key={index} className="text-sm font-semibold text-foreground">
-                {name}
-                {index < studentNames.length - 1 && (
-                  <span className="text-foreground">, </span>
-                )}
-              </span>
-            ))}
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-1">
+              {studentNames.map((name, index) => (
+                <span key={index} className="text-sm font-semibold text-foreground">
+                  {name}
+                  {index < studentNames.length - 1 && (
+                    <span className="text-foreground">, </span>
+                  )}
+                </span>
+              ))}
+            </div>
+            {isSubstitute && (
+              <Badge variant="outline" className="text-xs w-fit">
+                <UserCheck className="h-3 w-3 mr-1" />
+                Substitute
+              </Badge>
+            )}
           </div>
         );
       },
@@ -187,9 +231,29 @@ export default function ProfessorClassRegistryPage() {
         </Button>
       ),
       sortingFn: stringLocaleSort(),
-      cell: ({ row }) => (
-        <span className="text-sm text-muted-foreground">{row.original.planId.name}</span>
-      ),
+      cell: ({ row }) => {
+        const isSubstitute = !!row.original.substituteInfo;
+        return (
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">{row.original.planId.name}</span>
+            {isSubstitute && row.original.substituteInfo && (
+              <div className="text-xs text-muted-foreground">
+                {row.original.substituteInfo.assignedDate !== "sin fecha asignada" ? (
+                  <>
+                    Assigned: {formatDateForDisplay(row.original.substituteInfo.assignedDate)}
+                  </>
+                ) : null}
+                {row.original.substituteInfo.expiryDate !== "sin fecha asignada" && (
+                  <>
+                    {row.original.substituteInfo.assignedDate !== "sin fecha asignada" ? " • " : ""}
+                    Expires: {formatDateForDisplay(row.original.substituteInfo.expiryDate)}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     {
       id: "actions",
@@ -269,7 +333,7 @@ export default function ProfessorClassRegistryPage() {
           <CardContent>
             <DataTable
               columns={columns}
-              data={enrollments}
+              data={allEnrollments}
               searchKeys={["students", "plan"]}
               searchPlaceholder="Search by student name or plan..."
             />
@@ -277,7 +341,7 @@ export default function ProfessorClassRegistryPage() {
         </Card>
       )}
 
-      {!isLoading && !error && enrollments.length === 0 && (
+      {!isLoading && !error && allEnrollments.length === 0 && (
         <Card>
           <CardContent className="py-12 text-center">
             <BookOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
@@ -298,6 +362,16 @@ export default function ProfessorClassRegistryPage() {
           </DialogHeader>
           {selectedEnrollment && (
             <div className="space-y-6">
+              {/* Badge de sustituto si aplica */}
+              {selectedEnrollment.substituteInfo && (
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">
+                    <UserCheck className="h-3 w-3 mr-1" />
+                    Substitute Enrollment
+                  </Badge>
+                </div>
+              )}
+
               {/* Students */}
               <div>
                 <Label className="font-semibold text-base mb-2 block">
@@ -320,6 +394,56 @@ export default function ProfessorClassRegistryPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Información de suplencia si aplica */}
+              {selectedEnrollment.substituteInfo && (
+                <div>
+                  <Label className="font-semibold text-base mb-2 block">
+                    Substitute Information
+                  </Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {selectedEnrollment.professor && (
+                      <div>
+                        <Label className="text-sm text-muted-foreground font-semibold">
+                          Main Professor
+                        </Label>
+                        <p className="text-sm mt-1">{selectedEnrollment.professor.name}</p>
+                        {selectedEnrollment.professor.email && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {selectedEnrollment.professor.email}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {selectedEnrollment.substituteInfo.assignedDate !== "sin fecha asignada" && (
+                      <div>
+                        <Label className="text-sm text-muted-foreground font-semibold">
+                          Assigned Date
+                        </Label>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Clock className="h-4 w-4 text-muted-foreground" />
+                          <p className="text-sm">
+                            {formatDateForDisplay(selectedEnrollment.substituteInfo.assignedDate)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    {selectedEnrollment.substituteInfo.expiryDate !== "sin fecha asignada" && (
+                      <div>
+                        <Label className="text-sm text-muted-foreground font-semibold">
+                          Expiry Date
+                        </Label>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Clock className="h-4 w-4 text-muted-foreground" />
+                          <p className="text-sm">
+                            {formatDateForDisplay(selectedEnrollment.substituteInfo.expiryDate)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Enrollment Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

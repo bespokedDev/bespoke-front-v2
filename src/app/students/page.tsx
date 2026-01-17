@@ -896,9 +896,9 @@ export default function StudentsPage() {
                 </div>
               </fieldset>
               <fieldset className="border p-4 rounded-md">
-                <legend className="px-1 text-sm">CanvaDoc (Optional)</legend>
+                <legend className="px-1 text-sm">Student&apos;s Links (Optional)</legend>
                 <div className="space-y-2 mt-2">
-                  <Label>CanvaDoc Description</Label>
+                  <Label>Link Description</Label>
                   <Textarea
                     value={canvaDocDescription}
                     onChange={(e) => setCanvaDocDescription(e.target.value)}
@@ -906,7 +906,7 @@ export default function StudentsPage() {
                     rows={3}
                   />
                   <p className="text-xs text-muted-foreground">
-                    If provided, a CanvaDoc will be created for this student automatically.
+                    If provided, a Student&apos;s Link will be created for this student automatically.
                   </p>
                 </div>
               </fieldset>

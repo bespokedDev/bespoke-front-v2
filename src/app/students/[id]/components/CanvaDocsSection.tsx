@@ -68,6 +68,18 @@ export function CanvaDocsSection({ studentId }: CanvaDocsSectionProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
 
+  // Helper function to normalize URL (add protocol if missing)
+  const normalizeUrl = (url: string): string => {
+    if (!url) return url;
+    const trimmedUrl = url.trim();
+    // Check if URL already has a protocol
+    if (trimmedUrl.startsWith("http://") || trimmedUrl.startsWith("https://")) {
+      return trimmedUrl;
+    }
+    // Add https:// if no protocol is present
+    return `https://${trimmedUrl}`;
+  };
+
   // Fetch CanvaDocs for this student
   useEffect(() => {
     const fetchCanvaDocs = async () => {
@@ -247,7 +259,7 @@ export function CanvaDocsSection({ studentId }: CanvaDocsSectionProps) {
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5 text-primary" />
-              CanvaDocs
+              Student&apos;s Links
             </CardTitle>
             {canCreateEdit && (
               <Button
@@ -256,7 +268,7 @@ export function CanvaDocsSection({ studentId }: CanvaDocsSectionProps) {
                 className="bg-primary text-white hover:bg-primary/90"
               >
                 <Plus className="h-4 w-4 mr-2" />
-                Add CanvaDoc
+                Add Link
               </Button>
             )}
           </div>
@@ -265,7 +277,7 @@ export function CanvaDocsSection({ studentId }: CanvaDocsSectionProps) {
           {canvaDocs.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No CanvaDocs found for this student.</p>
+              <p>No Links found for this student.</p>
               {canCreateEdit && (
                 <Button
                   variant="outline"
@@ -273,7 +285,7 @@ export function CanvaDocsSection({ studentId }: CanvaDocsSectionProps) {
                   onClick={() => handleOpen("create")}
                 >
                   <Plus className="h-4 w-4 mr-2" />
-                  Create First CanvaDoc
+                  Create First Link
                 </Button>
               )}
             </div>
@@ -293,9 +305,15 @@ export function CanvaDocsSection({ studentId }: CanvaDocsSectionProps) {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <FileText className="h-4 w-4 text-muted-foreground" />
-                        <span className="max-w-[200px] truncate">
+                        <a
+                          href={normalizeUrl(canvaDoc.description)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="max-w-[200px] truncate text-primary hover:underline"
+                          title={canvaDoc.description}
+                        >
                           {canvaDoc.description}
-                        </span>
+                        </a>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -355,8 +373,8 @@ export function CanvaDocsSection({ studentId }: CanvaDocsSectionProps) {
           <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>
-                {openDialog === "create" && "Create CanvaDoc"}
-                {openDialog === "edit" && "Edit CanvaDoc"}
+                {openDialog === "create" && "Create Link"}
+                {openDialog === "edit" && "Edit Link"}
               </DialogTitle>
             </DialogHeader>
 
@@ -370,7 +388,7 @@ export function CanvaDocsSection({ studentId }: CanvaDocsSectionProps) {
                   onChange={(e) =>
                     setFormData((p) => ({ ...p, description: e.target.value }))
                   }
-                  placeholder="Enter document description..."
+                  placeholder="Enter Link description..."
                   rows={4}
                   required
                 />

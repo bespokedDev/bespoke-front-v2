@@ -125,6 +125,7 @@ function RichTextEditorComponent({
       className={cn(
         "border-input dark:bg-input/30 rounded-md border bg-transparent shadow-xs",
         "focus-within:border-ring focus-within:ring-ring/50 focus-within:ring-[3px]",
+        "w-full max-w-full box-border",
         className
       )}
       style={{ minHeight }}
@@ -180,8 +181,10 @@ function RichTextEditorComponent({
         </Button>
       </div>
       {/* Editor Content */}
-      <div className="px-3 py-2 overflow-x-auto">
-        <EditorContent editor={editor} />
+      <div className="px-3 py-2 overflow-x-hidden overflow-y-auto w-full max-w-full box-border">
+        <div className="w-full max-w-full">
+          <EditorContent editor={editor} />
+        </div>
       </div>
     </div>
   );

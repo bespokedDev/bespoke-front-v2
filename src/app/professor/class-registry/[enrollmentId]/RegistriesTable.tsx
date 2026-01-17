@@ -39,7 +39,10 @@ export function RegistriesTable<TData, TValue>({
   data,
   enablePagination = false,
 }: RegistriesTableProps<TData, TValue>) {
-  const [sorting, setSorting] = useState<SortingState>([]);
+  // Ordenar por defecto del más antiguo al más reciente (por classDate ascendente)
+  const [sorting, setSorting] = useState<SortingState>([
+    { id: "classDate", desc: false }, // false = ascendente (más antiguo primero)
+  ]);
 
   const table = useReactTable({
     data,
@@ -79,7 +82,7 @@ export function RegistriesTable<TData, TValue>({
           <TableBody>
             {table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => {
-                const registry = row.original as { originalClassId?: string | null };
+                const registry = row.original as { originalClassId?: { _id: string; enrollmentId: string; classDate: string } | null };
                 const isReschedule =
                   registry.originalClassId !== null &&
                   registry.originalClassId !== undefined;

@@ -451,6 +451,7 @@ export default function IncomesPage() {
           method: "POST",
           body: JSON.stringify(incomePayload),
         });
+        console.log("response de income", response);
         // Actualizar la lista con el nuevo ingreso
         setIncomes((prev) => [...prev, response.income]);
       } else if (openDialog === "edit" && selectedIncome) {

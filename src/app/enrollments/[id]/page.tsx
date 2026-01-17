@@ -526,12 +526,6 @@ export default function EnrollmentDetailPage() {
                   <p className="font-medium">{enrollment.planId.name}</p>
                 </div>
                 <div>
-                  <Label className="text-muted-foreground">Plan Type</Label>
-                  <p className="font-medium">
-                    {planTypeLabels[enrollment.planId.planType] || "N/A"}
-                  </p>
-                </div>
-                <div>
                   <Label className="text-muted-foreground">
                     Weekly Classes
                   </Label>
@@ -590,7 +584,7 @@ export default function EnrollmentDetailPage() {
                 </div>
                 <div>
                   <Label className="text-muted-foreground">
-                    Monthly Classes
+                    Total Classes
                   </Label>
                   <p className="font-medium flex items-center gap-2">
                     <Clock className="h-4 w-4" />

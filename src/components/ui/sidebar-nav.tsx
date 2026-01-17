@@ -1,7 +1,7 @@
 // En: components/ui/sidebar-nav.tsx
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
@@ -30,6 +30,7 @@ import {
   Bell, // Icono para Category Notifications
   User, // Icono para Profile
   ClipboardList, // Icono para Penalization Registry
+  X, // Icono para cerrar en móvil
 } from "lucide-react";
 
 // --- ESTRUCTURA COMPLETA DE NAVEGACIÓN ---
@@ -80,7 +81,12 @@ const allNavItems = [
   },
 ];
 
-export function SidebarNav() {
+interface SidebarNavProps {
+  isMobileOpen?: boolean;
+  onMobileClose?: () => void;
+}
+
+export function SidebarNav({ isMobileOpen = false, onMobileClose }: SidebarNavProps) {
   const pathname = usePathname();
   const { user } = useAuth();
   // Sidebar colapsado por defecto
@@ -90,6 +96,14 @@ export function SidebarNav() {
     Accounting: false,
     Settings: false, // Settings cerrado por defecto
   });
+
+  // Cerrar sidebar móvil cuando cambia la ruta
+  useEffect(() => {
+    if (isMobileOpen && onMobileClose) {
+      onMobileClose();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   // Filtrar items según el rol del usuario
   const navItems = useMemo(() => {
@@ -110,23 +124,106 @@ export function SidebarNav() {
     }));
   };
 
-  return (
-    <aside
-      className={cn(
-        "hidden md:block min-h-screen border-r border-light-border dark:border-dark-border bg-white dark:bg-white transition-all duration-300",
-        collapsed ? "w-16" : "w-64"
+  // Función helper para renderizar el contenido del nav
+  const renderNavContent = (isMobile = false) => (
+    <nav className="flex flex-col gap-1 p-2">
+      {navItems.map((item) =>
+        item.subItems ? (
+          // Renderiza un grupo de submenú
+          <div key={item.title}>
+            <button
+              onClick={() => {
+                if (isMobile || !collapsed) {
+                  toggleSubmenu(item.title);
+                }
+              }}
+              className={cn(
+                "flex items-center w-full gap-3 px-4 py-2 text-sm rounded-md transition-colors justify-start",
+                // Lógica para resaltar el padre si un hijo está activo
+                item.subItems.some((sub) => pathname === sub.href)
+                  ? "text-primary dark:text-white font-semibold"
+                  : "text-light-text hover:bg-primary/10 dark:text-dark-text dark:hover:bg-primary/20",
+                !isMobile && collapsed && "justify-center"
+              )}
+            >
+              <item.icon className="h-5 w-5 shrink-0" />
+              {(!collapsed || isMobile) && (
+                <span className="truncate flex-1 text-left">
+                  {item.title}
+                </span>
+              )}
+              {(!collapsed || isMobile) && (
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 transition-transform",
+                    openSubmenus[item.title] && "rotate-180"
+                  )}
+                />
+              )}
+            </button>
+            {/* Renderiza los sub-ítems si el submenú está abierto */}
+            {((!collapsed || isMobile) && openSubmenus[item.title]) && (
+              <div className="flex flex-col gap-1 pt-1 pl-6">
+                {item.subItems.map((subItem) => (
+                  <Link
+                    key={subItem.href}
+                    href={subItem.href}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-2 text-sm rounded-md transition-colors",
+                      pathname === subItem.href
+                        ? "bg-secondary text-white hover:bg-secondary/90"
+                        : "text-light-text hover:bg-primary hover:text-white dark:text-dark-text dark:hover:text-white"
+                    )}
+                  >
+                    <subItem.icon className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{subItem.title}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          // Renderiza un ítem de enlace normal
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              "flex items-center gap-3 px-4 py-2 text-sm rounded-md hover:bg-primary/10 transition-colors",
+              "justify-start",
+              // Verificar si la ruta coincide exactamente o si es una sub-ruta
+              pathname === item.href || pathname.startsWith(item.href + "/")
+                ? "bg-secondary text-white hover:bg-secondary/90"
+                : "text-light-text hover:bg-primary hover:text-white dark:text-dark-text dark:hover:text-white",
+              !isMobile && collapsed && "justify-center"
+            )}
+          >
+            <item.icon className="h-5 w-5 shrink-0" />
+            {(!collapsed || isMobile) && <span className="truncate">{item.title}</span>}
+          </Link>
+        )
       )}
-    >
+    </nav>
+  );
+
+  return (
+    <>
+      {/* Sidebar Desktop */}
+      <aside
+        className={cn(
+          "hidden md:block min-h-screen border-r border-border bg-card dark:bg-card transition-all duration-300",
+          collapsed ? "w-16" : "w-64"
+        )}
+      >
       <div className="flex items-center justify-between px-4 py-4">
         {!collapsed && (
           <div className="flex items-center gap-2">
             {/*<Image src="/logo.png" alt="Logo" width={32} height={32} />*/}
-            <span className="font-bold text-lg">Bespoke</span>
+            <span className="font-bold text-lg text-card-foreground">Bespoke</span>
           </div>
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="p-2 rounded-md hover:bg-light-border dark:hover:bg-dark-border"
+          className="p-2 rounded-md hover:bg-accent/10"
         >
           {collapsed ? (
             <Menu className="h-5 w-5" />
@@ -135,79 +232,39 @@ export function SidebarNav() {
           )}
         </button>
       </div>
-      <nav className="flex flex-col gap-1 p-2">
-        {navItems.map((item) =>
-          item.subItems ? (
-            // Renderiza un grupo de submenú
-            <div key={item.title}>
+        {renderNavContent(false)}
+      </aside>
+
+      {/* Sidebar Mobile - Overlay y Drawer */}
+      {isMobileOpen && (
+        <>
+          {/* Overlay */}
+          <div
+            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            onClick={onMobileClose}
+          />
+          {/* Drawer */}
+          <aside
+            className={cn(
+              "fixed left-0 top-0 h-full w-64 bg-card dark:bg-card border-r border-border z-50 md:hidden transition-transform duration-300",
+              isMobileOpen ? "translate-x-0" : "-translate-x-full"
+            )}
+          >
+            <div className="flex items-center justify-between px-4 py-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-lg text-card-foreground">Bespoke</span>
+              </div>
               <button
-                onClick={() => !collapsed && toggleSubmenu(item.title)}
-                className={cn(
-                  "flex items-center w-full gap-3 px-4 py-2 text-sm rounded-md transition-colors justify-start",
-                  // Lógica para resaltar el padre si un hijo está activo
-                  item.subItems.some((sub) => pathname === sub.href)
-                    ? "text-primary dark:text-white font-semibold"
-                    : "text-light-text hover:bg-primary/10 dark:text-dark-text dark:hover:bg-primary/20",
-                  collapsed && "justify-center"
-                )}
+                onClick={onMobileClose}
+                className="p-2 rounded-md hover:bg-accent/10"
               >
-                <item.icon className="h-5 w-5 shrink-0" />
-                {!collapsed && (
-                  <span className="truncate flex-1 text-left">
-                    {item.title}
-                  </span>
-                )}
-                {!collapsed && (
-                  <ChevronDown
-                    className={cn(
-                      "h-4 w-4 transition-transform",
-                      openSubmenus[item.title] && "rotate-180"
-                    )}
-                  />
-                )}
+                <X className="h-5 w-5" />
               </button>
-              {/* Renderiza los sub-ítems si el submenú está abierto y la barra no está colapsada */}
-              {!collapsed && openSubmenus[item.title] && (
-                <div className="flex flex-col gap-1 pt-1 pl-6">
-                  {item.subItems.map((subItem) => (
-                    <Link
-                      key={subItem.href}
-                      href={subItem.href}
-                      className={cn(
-                        "flex items-center gap-3 px-4 py-2 text-sm rounded-md transition-colors",
-                        pathname === subItem.href
-                          ? "bg-secondary text-white hover:bg-secondary/90"
-                          : "text-light-text hover:bg-primary hover:text-white dark:text-dark-text dark:hover:text-white"
-                      )}
-                    >
-                      <subItem.icon className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{subItem.title}</span>
-                    </Link>
-                  ))}
-                </div>
-              )}
             </div>
-          ) : (
-            // Renderiza un ítem de enlace normal
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 px-4 py-2 text-sm rounded-md hover:bg-primary/10 transition-colors",
-                "justify-start",
-                // Verificar si la ruta coincide exactamente o si es una sub-ruta
-                pathname === item.href || pathname.startsWith(item.href + "/")
-                  ? "bg-secondary text-white hover:bg-secondary/90"
-                  : "text-light-text hover:bg-primary hover:text-white dark:text-dark-text dark:hover:text-white",
-                collapsed && "justify-center"
-              )}
-            >
-              <item.icon className="h-5 w-5 shrink-0" />
-              {!collapsed && <span className="truncate">{item.title}</span>}
-            </Link>
-          )
-        )}
-      </nav>
-    </aside>
+            {renderNavContent(true)}
+          </aside>
+        </>
+      )}
+    </>
   );
 }

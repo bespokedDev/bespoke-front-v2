@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
@@ -17,7 +17,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Bell, Moon, Sun, Loader2 } from "lucide-react";
+import { Bell, Moon, Sun, Loader2, Menu } from "lucide-react";
 import { apiClient } from "@/lib/api";
 import { getFriendlyErrorMessage } from "@/lib/errorHandler";
 import { formatDateForDisplay } from "@/lib/dateUtils";
@@ -74,13 +74,40 @@ interface NotificationsResponse {
   notifications: Notification[];
 }
 
-export function Topbar() {
+interface TopbarProps {
+  onMenuClick?: () => void;
+}
+
+// Types for BroadcastChannel messages
+type BroadcastMessage =
+  | { type: "LEADER_ANNOUNCEMENT"; tabId: string; timestamp: number }
+  | { type: "LEADER_CHECK"; tabId: string; timestamp: number }
+  | { type: "NOTIFICATIONS_UPDATED"; notifications: Notification[]; count: number; timestamp: number }
+  | { type: "NOTIFICATIONS_MARKED_AS_VIEWED"; count: number; timestamp: number }
+  | { type: "HEARTBEAT"; tabId: string; timestamp: number };
+
+const CHANNEL_NAME = "notifications-polling";
+const POLLING_INTERVAL = 5 * 60 * 1000; // 5 minutos
+const HEARTBEAT_INTERVAL = 30 * 1000; // 30 segundos
+const LEADER_CHECK_TIMEOUT = 1000; // 1 segundo para detectar líder existente
+
+export function Topbar({ onMenuClick }: TopbarProps) {
   const router = useRouter();
   const [isDark, setIsDark] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+
+  // Refs para BroadcastChannel y polling
+  const channelRef = useRef<BroadcastChannel | null>(null);
+  const isLeaderRef = useRef<boolean>(false);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const leaderCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const tabIdRef = useRef<string>(`tab-${Date.now()}-${Math.random()}`);
+  const lastPollingTimeRef = useRef<number>(0);
+  const hasMarkedAsViewedRef = useRef<boolean>(false);
 
   useEffect(() => {
     const prefersDark = document.documentElement.classList.contains("dark");
@@ -98,13 +125,31 @@ export function Topbar() {
   const { user, logout } = useAuth();
 
   // Fetch notifications
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async (silent = false) => {
     try {
-      setIsLoadingNotifications(true);
+      if (!silent) {
+        setIsLoadingNotifications(true);
+      }
       setNotificationsError(null);
       // Use the endpoint for authenticated users to get their own notifications
       const response: NotificationsResponse = await apiClient("api/notifications/user/my-notifications");
-      setNotifications(response.notifications || []);
+      const fetchedNotifications = response.notifications || [];
+      setNotifications(fetchedNotifications);
+      lastPollingTimeRef.current = Date.now();
+
+      // Si somos líder, broadcast a otras pestañas
+      if (isLeaderRef.current && channelRef.current) {
+        const activeCount = fetchedNotifications.filter((n) => n.isActive).length;
+        const message: BroadcastMessage = {
+          type: "NOTIFICATIONS_UPDATED",
+          notifications: fetchedNotifications,
+          count: activeCount,
+          timestamp: Date.now(),
+        };
+        channelRef.current.postMessage(message);
+      }
+
+      return fetchedNotifications;
     } catch (err: unknown) {
       const errorMessage = getFriendlyErrorMessage(
         err,
@@ -112,18 +157,305 @@ export function Topbar() {
       );
       setNotificationsError(errorMessage);
       console.error("Error fetching notifications:", err);
+      return [];
     } finally {
-      setIsLoadingNotifications(false);
+      if (!silent) {
+        setIsLoadingNotifications(false);
+      }
     }
-  };
+  }, []);
 
-  // Fetch notifications when popover opens
+  // Marcar todas las notificaciones activas como vistas usando batch endpoint
+  const markAllNotificationsAsViewed = useCallback(async () => {
+    const activeNotifications = notifications.filter((n) => n.isActive);
+    if (activeNotifications.length === 0) {
+      return;
+    }
+
+    try {
+      // Obtener IDs de todas las notificaciones activas
+      const activeIds = activeNotifications.map((n) => n._id);
+
+      // Usar endpoint batch para anular todas las notificaciones activas en una sola llamada
+      const response: {
+        message: string;
+        totalRequested: number;
+        totalUpdated: number;
+        totalFound: number;
+        totalNotFound: number;
+        notFoundIds?: string[];
+        alreadyInactive: number;
+      } = await apiClient("api/notifications/batch/anular", {
+        method: "PATCH",
+        body: JSON.stringify({ ids: activeIds }),
+      });
+
+      // Log información útil en desarrollo
+      if (process.env.NODE_ENV === "development") {
+        console.log(
+          `Notificaciones anuladas: ${response.totalUpdated} de ${response.totalRequested} solicitadas`
+        );
+        if (response.notFoundIds && response.notFoundIds.length > 0) {
+          console.warn("IDs no encontrados:", response.notFoundIds);
+        }
+        if (response.alreadyInactive > 0) {
+          console.log(`${response.alreadyInactive} notificaciones ya estaban inactivas`);
+        }
+      }
+
+      // Actualizar estado local (optimistic update)
+      setNotifications((prev) =>
+        prev.map((n) => (n.isActive ? { ...n, isActive: false } : n))
+      );
+
+      hasMarkedAsViewedRef.current = true;
+
+      // Broadcast a otras pestañas
+      if (channelRef.current) {
+        const message: BroadcastMessage = {
+          type: "NOTIFICATIONS_MARKED_AS_VIEWED",
+          count: 0,
+          timestamp: Date.now(),
+        };
+        channelRef.current.postMessage(message);
+      }
+    } catch (err: unknown) {
+      console.error("Error marking notifications as viewed:", err);
+      // Recargar notificaciones para obtener estado real del servidor
+      await fetchNotifications(true);
+    }
+  }, [notifications, fetchNotifications]);
+
+  // Inicializar BroadcastChannel o fallback a localStorage
+  useEffect(() => {
+    // Verificar si BroadcastChannel está disponible
+    if (typeof BroadcastChannel !== "undefined") {
+      const channel = new BroadcastChannel(CHANNEL_NAME);
+      channelRef.current = channel;
+
+      // Manejar mensajes del canal
+      channel.onmessage = (event: MessageEvent<BroadcastMessage>) => {
+        const message = event.data;
+
+        switch (message.type) {
+          case "LEADER_ANNOUNCEMENT":
+          case "LEADER_CHECK":
+            // Si alguien más es líder, no seremos líder
+            if (message.tabId !== tabIdRef.current) {
+              isLeaderRef.current = false;
+              // Limpiar timeouts de verificación de líder
+              if (leaderCheckTimeoutRef.current) {
+                clearTimeout(leaderCheckTimeoutRef.current);
+                leaderCheckTimeoutRef.current = null;
+              }
+            }
+            break;
+
+          case "NOTIFICATIONS_UPDATED":
+            // Actualizar notificaciones sin hacer polling
+            setNotifications(message.notifications);
+            lastPollingTimeRef.current = message.timestamp;
+            break;
+
+          case "NOTIFICATIONS_MARKED_AS_VIEWED":
+            // Actualizar contador sin hacer polling
+            setNotifications((prev) =>
+              prev.map((n) => (n.isActive ? { ...n, isActive: false } : n))
+            );
+            break;
+
+          case "HEARTBEAT":
+            // El líder sigue vivo
+            if (message.tabId !== tabIdRef.current) {
+              isLeaderRef.current = false;
+            }
+            break;
+        }
+      };
+
+      // Manejar cierre del canal (otra pestaña se cerró)
+      channel.onmessageerror = () => {
+        console.warn("Error receiving message from BroadcastChannel");
+      };
+
+      // Verificar si ya hay un líder
+      channel.postMessage({
+        type: "LEADER_CHECK",
+        tabId: tabIdRef.current,
+        timestamp: Date.now(),
+      } as BroadcastMessage);
+
+      // Si no hay respuesta en LEADER_CHECK_TIMEOUT, ser líder
+      const leaderCheckTimeout = setTimeout(() => {
+        if (!isLeaderRef.current) {
+          // Nadie respondió, ser líder
+          isLeaderRef.current = true;
+          channel.postMessage({
+            type: "LEADER_ANNOUNCEMENT",
+            tabId: tabIdRef.current,
+            timestamp: Date.now(),
+          } as BroadcastMessage);
+        }
+        leaderCheckTimeoutRef.current = null;
+      }, LEADER_CHECK_TIMEOUT);
+
+      leaderCheckTimeoutRef.current = leaderCheckTimeout;
+
+      // Cleanup
+      return () => {
+        if (leaderCheckTimeout) {
+          clearTimeout(leaderCheckTimeout);
+        }
+        channel.close();
+        channelRef.current = null;
+      };
+    } else {
+      // Fallback a localStorage si BroadcastChannel no está disponible
+      console.warn("BroadcastChannel not available, using localStorage fallback");
+
+      const handleStorageChange = (e: StorageEvent) => {
+        if (e.key === "notifications-update" && e.newValue) {
+          try {
+            const data = JSON.parse(e.newValue);
+            if (data.notifications) {
+              setNotifications(data.notifications);
+              lastPollingTimeRef.current = data.timestamp || Date.now();
+            }
+          } catch (err) {
+            console.error("Error parsing storage event:", err);
+          }
+        }
+      };
+
+      window.addEventListener("storage", handleStorageChange);
+
+      // En fallback, todas las pestañas pueden hacer polling (no ideal pero funciona)
+      isLeaderRef.current = true;
+
+      return () => {
+        window.removeEventListener("storage", handleStorageChange);
+      };
+    }
+  }, []);
+
+  // Polling inteligente (solo líder, visible, popover cerrado)
+  useEffect(() => {
+    if (!isLeaderRef.current) {
+      return; // Solo el líder hace polling
+    }
+
+    // Función para verificar si debemos hacer polling
+    const shouldPoll = () => {
+      return (
+        document.visibilityState === "visible" &&
+        !isNotificationsOpen &&
+        Date.now() - lastPollingTimeRef.current >= POLLING_INTERVAL - 1000 // Margen de 1 segundo
+      );
+    };
+
+    // Polling periódico
+    const startPolling = () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+
+      pollingIntervalRef.current = setInterval(() => {
+        if (shouldPoll()) {
+          fetchNotifications(true); // Silent para no mostrar loader en polling automático
+        }
+      }, POLLING_INTERVAL);
+    };
+
+    // Heartbeat para que otras pestañas sepan que el líder sigue vivo
+    const startHeartbeat = () => {
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+      }
+
+      heartbeatIntervalRef.current = setInterval(() => {
+        if (channelRef.current && isLeaderRef.current) {
+          channelRef.current.postMessage({
+            type: "HEARTBEAT",
+            tabId: tabIdRef.current,
+            timestamp: Date.now(),
+          } as BroadcastMessage);
+        }
+      }, HEARTBEAT_INTERVAL);
+    };
+
+    // Manejar cambios de visibilidad
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && shouldPoll()) {
+        // Hacer polling inmediato si es necesario
+        if (Date.now() - lastPollingTimeRef.current >= POLLING_INTERVAL) {
+          fetchNotifications(true);
+        }
+        startPolling();
+        startHeartbeat();
+      } else {
+        // Pausar polling cuando la pestaña está en background
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+        if (heartbeatIntervalRef.current) {
+          clearInterval(heartbeatIntervalRef.current);
+          heartbeatIntervalRef.current = null;
+        }
+      }
+    };
+
+    // Iniciar si la pestaña está visible
+    if (document.visibilityState === "visible" && !isNotificationsOpen) {
+      // Polling inicial después de un delay (para evitar polling inmediato al montar)
+      const initialDelay = Math.max(0, POLLING_INTERVAL - (Date.now() - lastPollingTimeRef.current));
+      setTimeout(() => {
+        if (shouldPoll()) {
+          fetchNotifications(true);
+        }
+        startPolling();
+      }, initialDelay);
+      startHeartbeat();
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
+      }
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [isNotificationsOpen, fetchNotifications]);
+
+  // Pausar polling cuando el popover está abierto
+  useEffect(() => {
+    if (isNotificationsOpen && pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  }, [isNotificationsOpen]);
+
+  // Fetch notifications cuando se abre el popover y marcar como vistas
   useEffect(() => {
     if (isNotificationsOpen) {
-      fetchNotifications();
+      fetchNotifications(false).then((fetchedNotifications) => {
+        // Marcar todas las activas como vistas cuando se abre el popover
+        if (fetchedNotifications && fetchedNotifications.length > 0) {
+          const activeCount = fetchedNotifications.filter((n) => n.isActive).length;
+          if (activeCount > 0 && !hasMarkedAsViewedRef.current) {
+            markAllNotificationsAsViewed();
+          }
+        }
+      });
+      hasMarkedAsViewedRef.current = false; // Reset para la próxima vez
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNotificationsOpen]);
+  }, [isNotificationsOpen, fetchNotifications, markAllNotificationsAsViewed]);
 
   // Count active notifications
   const activeNotificationsCount = notifications.filter((n) => n.isActive).length;
@@ -151,21 +483,37 @@ export function Topbar() {
   const userInitials = getUserInitials(user?.name);
 
   return (
-    <header className="flex items-center justify-center relative px-4 sm:px-6 py-2 bg-white dark:bg-white">
-      {/* Logo centrado */}
-      <div className="flex items-center absolute left-1/2 transform -translate-x-1/2">
-        <Image
-          src="/logo-alt.png"
-          alt="Bespoke Logo"
-          width={160}
-          height={40}
-          className="h-10 w-auto object-contain"
-          priority
-        />
+    <header className="flex items-center relative px-2 sm:px-4 md:px-6 py-2 bg-card dark:bg-card border-b border-border">
+      {/* Sección izquierda: Botón de hamburguesa (móvil) o espaciador (desktop) */}
+      <div className="flex items-center flex-shrink-0 w-12 md:w-12">
+        <div className="md:hidden">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onMenuClick}
+            className="h-9 w-9"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Logo siempre centrado */}
+      <div className="flex items-center justify-center flex-1 absolute left-0 right-0 pointer-events-none">
+        <div className="pointer-events-auto">
+          <Image
+            src="/logo-alt.png"
+            alt="Bespoke Logo"
+            width={160}
+            height={40}
+            className="h-8 sm:h-10 w-auto object-contain max-w-[120px] sm:max-w-none"
+            priority
+          />
+        </div>
       </div>
       
       {/* Botones a la derecha */}
-      <div className="flex items-center gap-2 sm:gap-4 ml-auto">
+      <div className="flex items-center gap-1 sm:gap-2 md:gap-4 flex-shrink-0 ml-auto z-10">
         {/* Botón de Tema con tu lógica original */}
         <Button variant="ghost" size="icon" onClick={() => setIsDark(!isDark)}>
           {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
@@ -176,13 +524,13 @@ export function Topbar() {
             <Button variant="ghost" size="icon" className="relative">
               <Bell className="h-5 w-5" />
               {activeNotificationsCount > 0 && (
-                <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-secondary text-[10px] font-bold text-primary-foreground">
                   {activeNotificationsCount > 9 ? "9+" : activeNotificationsCount}
                 </span>
               )}
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-96 max-h-[600px] overflow-y-auto" align="end">
+          <PopoverContent className="w-[calc(100vw-2rem)] sm:w-96 max-h-[600px] overflow-y-auto" align="end">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-lg">Notifications</h3>

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -29,7 +28,7 @@ import {
   Check,
   ChevronsUpDown,
 } from "lucide-react";
-import type { ColumnDef } from "@tanstack/react-table";
+import type { ColumnDef, Row } from "@tanstack/react-table";
 import { apiClient } from "@/lib/api";
 import { handleApiError, getFriendlyErrorMessage } from "@/lib/errorHandler";
 import { formatDateForDisplay } from "@/lib/dateUtils";
@@ -41,6 +40,15 @@ import type {
   NotificationEnrollment,
   NotificationProfessor,
   NotificationStudent,
+  CategoryNotificationsResponse,
+  PenalizationApiResponse,
+  EnrollmentApiResponse,
+  ProfessorApiResponse,
+  StudentApiResponse,
+  CreateNotificationPayload,
+  UpdateNotificationPayload,
+  NotificationCreateResponse,
+  NotificationUpdateResponse,
 } from "./types";
 import {
   Popover,
@@ -170,24 +178,34 @@ export default function NotificationsPage() {
         apiClient("api/professors").catch(() => []),
         apiClient("api/students").catch(() => []),
       ]);
+      console.log("categoriesData", categoriesData);
 
       // Process categories
-      const categoriesList = Array.isArray(categoriesData) ? categoriesData : [];
-      if (categoriesList.length > 0 && (categoriesList[0] as any).categoryNotifications) {
-        setCategories((categoriesList[0] as any).categoryNotifications.filter((c: any) => c.isActive));
+      // La API devuelve { message: string, count: number, categoryNotifications: NotificationCategory[] }
+      const response = categoriesData as CategoryNotificationsResponse;
+      
+      if (response && response.categoryNotifications && Array.isArray(response.categoryNotifications)) {
+        setCategories(response.categoryNotifications.filter((c) => c.isActive));
       } else {
-        setCategories(categoriesList.filter((c: any) => c.isActive));
+        setCategories([]);
       }
 
       // Process penalizations
+      const penalizationsList = Array.isArray(penalizationsData) ? (penalizationsData as PenalizationApiResponse[]) : [];
       setPenalizations(
-        Array.isArray(penalizationsData) ? penalizationsData.filter((p: any) => p.status === 1) : []
+        penalizationsList
+          .filter((p) => p.status === 1)
+          .map((p) => ({
+            _id: p._id,
+            name: p.name,
+            description: p.description || null,
+          }))
       );
 
       // Process enrollments
-      const enrollmentsList = Array.isArray(enrollmentsData) ? enrollmentsData : [];
+      const enrollmentsList = Array.isArray(enrollmentsData) ? (enrollmentsData as EnrollmentApiResponse[]) : [];
       setEnrollments(
-        enrollmentsList.map((e: any) => ({
+        enrollmentsList.map((e) => ({
           _id: e._id,
           alias: e.alias || null,
           language: e.language,
@@ -196,9 +214,9 @@ export default function NotificationsPage() {
       );
 
       // Process professors
-      const professorsList = Array.isArray(professorsData) ? professorsData : [];
+      const professorsList = Array.isArray(professorsData) ? (professorsData as ProfessorApiResponse[]) : [];
       setProfessors(
-        professorsList.map((p: any) => ({
+        professorsList.map((p) => ({
           _id: p._id,
           name: p.name,
           email: p.email,
@@ -207,11 +225,11 @@ export default function NotificationsPage() {
       );
 
       // Process students
-      const studentsList = Array.isArray(studentsData) ? studentsData : [];
+      const studentsList = Array.isArray(studentsData) ? (studentsData as StudentApiResponse[]) : [];
       setStudents(
         studentsList
-          .filter((s: any) => s.status === 1)
-          .map((s: any) => ({
+          .filter((s) => s.status === 1)
+          .map((s) => ({
             _id: s._id,
             name: s.name,
             studentCode: s.studentCode,
@@ -323,7 +341,7 @@ export default function NotificationsPage() {
       setDialogError(null);
 
       // Build payload
-      const payload: any = {
+      const payload: CreateNotificationPayload = {
         idCategoryNotification: formData.idCategoryNotification,
         notification_description: formData.notification_description.trim(),
         isActive: formData.isActive !== undefined ? formData.isActive : true,
@@ -351,9 +369,9 @@ export default function NotificationsPage() {
       const response = await apiClient("api/notifications", {
         method: "POST",
         body: JSON.stringify(payload),
-      });
+      }) as NotificationCreateResponse;
 
-      if (!response || !(response as any).notification) {
+      if (!response || !response.notification) {
         throw new Error("Invalid response structure from server");
       }
 
@@ -390,45 +408,26 @@ export default function NotificationsPage() {
       setDialogError(null);
 
       // Build payload
-      const payload: any = {
+      const payload: UpdateNotificationPayload = {
         idCategoryNotification: formData.idCategoryNotification,
         notification_description: formData.notification_description.trim(),
         isActive: formData.isActive !== undefined ? formData.isActive : true,
+        idPenalization: formData.idPenalization || null,
+        idEnrollment: formData.idEnrollment || null,
+        idProfessor: formData.idProfessor || null,
+        idStudent: formData.idStudent
+          ? Array.isArray(formData.idStudent)
+            ? formData.idStudent
+            : [formData.idStudent]
+          : null,
       };
-
-      // Add optional entity references
-      if (formData.idPenalization) {
-        payload.idPenalization = formData.idPenalization;
-      } else {
-        payload.idPenalization = null;
-      }
-
-      if (formData.idEnrollment) {
-        payload.idEnrollment = formData.idEnrollment;
-      } else {
-        payload.idEnrollment = null;
-      }
-
-      if (formData.idProfessor) {
-        payload.idProfessor = formData.idProfessor;
-      } else {
-        payload.idProfessor = null;
-      }
-
-      if (formData.idStudent) {
-        payload.idStudent = Array.isArray(formData.idStudent)
-          ? formData.idStudent
-          : [formData.idStudent];
-      } else {
-        payload.idStudent = null;
-      }
 
       const response = await apiClient(`api/notifications/${selectedNotification._id}`, {
         method: "PUT",
         body: JSON.stringify(payload),
-      });
+      }) as NotificationUpdateResponse;
 
-      if (!response || !(response as any).notification) {
+      if (!response || !response.notification) {
         throw new Error("Invalid response structure from server");
       }
 
@@ -516,7 +515,7 @@ export default function NotificationsPage() {
   // String locale sort helper
   const stringLocaleSort =
     (locale = "es") =>
-    (rowA: any, rowB: any, columnId: string) => {
+    (rowA: Row<Notification>, rowB: Row<Notification>, columnId: string) => {
       const a = (rowA.getValue(columnId) ?? "").toString();
       const b = (rowB.getValue(columnId) ?? "").toString();
       return a.localeCompare(b, locale, {

@@ -57,6 +57,25 @@ interface ProfessorBonusDetail {
   createdAt: string;
 }
 
+interface ProfessorPenalizationDetail {
+  penalizationId: string;
+  penalizationMoney: number;
+  description: string | null;
+  endDate: string | null;
+  support_file: string | null;
+  createdAt: string;
+  penalizationType: {
+    id: string;
+    name: string | null;
+  } | null;
+  penalizationLevel: {
+    id: string;
+    tipo: string | null;
+    nivel: number | null;
+    description: string | null;
+  } | null;
+}
+
 interface ProfessorReport {
   professorId: string;
   professorName: string;
@@ -70,6 +89,7 @@ interface ProfessorReport {
   totalTeacher: number;
   totalBespoke: number;
   totalBalanceRemaining: number;
+  totalFinal?: number; // Total final que el profesor va a ganar (totalTeacher + bonos - penalizaciones)
   abonos?: {
     total: number;
     details: ProfessorBonusDetail[];
@@ -77,6 +97,7 @@ interface ProfessorReport {
   penalizations?: {
     count: number;
     totalMoney: number;
+    details: ProfessorPenalizationDetail[];
   };
 }
 
@@ -113,6 +134,7 @@ interface SpecialProfessorReport {
     total: number;
     balanceRemaining: number;
   };
+  totalFinal?: number; // Total final que el profesor va a ganar (total + bonos - penalizaciones)
   abonos?: {
     total: number;
     details: ProfessorBonusDetail[];
@@ -120,6 +142,7 @@ interface SpecialProfessorReport {
   penalizations?: {
     count: number;
     totalMoney: number;
+    details: ProfessorPenalizationDetail[];
   };
 }
 
@@ -162,18 +185,43 @@ interface BonusDetail {
   createdAt: string;
 }
 
+interface PenalizationDetail {
+  penalizationId: string;
+  professorId: string;
+  professorName: string;
+  professorCiNumber: string;
+  penalizationMoney: number;
+  description: string | null;
+  endDate: string | null;
+  support_file: string | null;
+  createdAt: string;
+  penalizationType: {
+    id: string;
+    name: string | null;
+  } | null;
+  penalizationLevel: {
+    id: string;
+    tipo: string | null;
+    nivel: number | null;
+    description: string | null;
+  } | null;
+}
+
 interface ExcedentReport {
   reportDateRange: string;
   totalExcedente: number;
   totalExcedenteIncomes: number;
   totalExcedenteClasses: number;
   totalBonuses: number;
+  totalExcedentePenalizations?: number;
   numberOfIncomes: number;
   numberOfClassesNotViewed: number;
   numberOfBonuses: number;
+  numberOfPenalizations?: number;
   incomeDetails: ExcedentDetail[];
   classNotViewedDetails: ClassNotViewedDetail[];
   bonusDetails: BonusDetail[];
+  penalizationDetails?: PenalizationDetail[];
 }
 
 interface ExcedentRow {
@@ -1073,7 +1121,7 @@ function NewReportComponent() {
     return <p className="text-center p-8">No report data to display.</p>;
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="space-y-6 p-4 md:p-2">
       <PageHeader
         title={`New Report: ${
           month ? format(new Date(month + "-02"), "MMMM yyyy") : ""
@@ -1083,8 +1131,9 @@ function NewReportComponent() {
         <Button
           variant="outline"
           onClick={() => router.push("/accounting/report")}
+          className="border-destructive hover:bg-destructive/10 hover:text-destructive"
         >
-          <ArrowLeft className="h-4 w-4 mr-2" />
+          <ArrowLeft className="h-4 w-4 text-destructive" />
           Cancel and Go Back
         </Button>
       </PageHeader>
@@ -1094,12 +1143,12 @@ function NewReportComponent() {
       >
         {calculatedData.generalReport.map((profReport) => (
           <Card key={profReport.professorId}>
-            <CardHeader>
+            <CardHeader className="mb-0">
               <CardTitle className="text-lg">
                 {profReport.professorName}
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-0">
               <div className="overflow-x-auto">
                 <Table className="min-w-max">
                   <TableHeader>
@@ -1138,12 +1187,38 @@ function NewReportComponent() {
                           <TableCell>
                               <span className="font-medium px-1">
                                     {detail.enrollmentId
-                                      ? formatEnrollmentName(
-                                          enrollments.find(
+                                      ? (() => {
+                                          const enrollment = enrollments.find(
                                             (e) => e._id === detail.enrollmentId
-                                          )!
-                                  ) || detail.studentName
-                                : detail.studentName}
+                                          );
+                                          if (enrollment) {
+                                            // Extraer el nombre del estudiante del enrollment o usar detail.studentName
+                                            const studentNameFromEnrollment = 
+                                              enrollment.studentIds?.[0]?.alias || 
+                                              enrollment.studentIds?.[0]?.name || 
+                                              "";
+                                            
+                                            // Si no hay nombre en el enrollment, usar detail.studentName directamente
+                                            if (!studentNameFromEnrollment) {
+                                              return detail.studentName;
+                                            }
+                                            
+                                            // Construir el formato con el nombre del estudiante
+                                            const planName = enrollment.planId?.name || "";
+                                            const typePrefix =
+                                              enrollment.enrollmentType === "single"
+                                                ? "S"
+                                                : enrollment.enrollmentType === "couple"
+                                                ? "C"
+                                                : "G";
+                                            
+                                            return planName 
+                                              ? `(${typePrefix} - ${planName}) ${studentNameFromEnrollment}`
+                                              : studentNameFromEnrollment;
+                                          }
+                                          return detail.studentName;
+                                        })()
+                                      : detail.studentName}
                             </span>
                           </TableCell>
                           <TableCell>
@@ -1231,12 +1306,9 @@ function NewReportComponent() {
 
               {/* Sección de Abonos */}
               {profReport.abonos && profReport.abonos.details.length > 0 && (
-                <div className="mt-6 pt-6 border-t">
-                  <div className="flex items-center justify-between mb-4">
+                <div className="mt-4 pt-2 border-t">
+                  <div>
                     <h3 className="text-lg font-semibold">Bonuses</h3>
-                    <div className="text-lg font-bold">
-                      Total: ${profReport.abonos.total.toFixed(2)}
-                    </div>
                   </div>
                   <Table>
                     <TableHeader>
@@ -1261,28 +1333,90 @@ function NewReportComponent() {
                         </TableRow>
                       ))}
                     </TableBody>
+                    <TableFooter>
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-right font-bold">
+                          Total:
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-base">
+                          ${profReport.abonos.total.toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    </TableFooter>
                   </Table>
                 </div>
               )}
 
               {/* Sección de Penalizaciones */}
               {profReport.penalizations && profReport.penalizations.count > 0 && (
-                <div className="mt-6 pt-6 border-t">
-                  <div className="flex items-center justify-between mb-4">
+                <div className="mt-4">
+                  <div>
                     <h3 className="text-lg font-semibold">Penalizations</h3>
-                    <div className="flex items-center gap-4">
-                      <div className="text-sm text-muted-foreground">
-                        Count: <span className="font-semibold">{profReport.penalizations.count}</span>
-                      </div>
-                      <div className="text-lg font-bold text-destructive">
-                        Total: ${profReport.penalizations.totalMoney.toFixed(2)}
-                      </div>
-                    </div>
                   </div>
-                  <div className="p-3 bg-destructive/10 rounded-md border border-destructive/20">
-                    <p className="text-sm text-muted-foreground">
-                      This professor has {profReport.penalizations.count} active monetary penalization{profReport.penalizations.count !== 1 ? 's' : ''} with a total amount of ${profReport.penalizations.totalMoney.toFixed(2)}.
-                    </p>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Level</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {profReport.penalizations.details?.map((penalization) => (
+                        <TableRow key={penalization.penalizationId}>
+                          <TableCell>
+                            {formatDateForDisplay(penalization.createdAt)}
+                          </TableCell>
+                          <TableCell>
+                            {penalization.description || "No description"}
+                          </TableCell>
+                          <TableCell>
+                            {penalization.penalizationType?.name || "—"}
+                          </TableCell>
+                          <TableCell>
+                            {penalization.penalizationLevel ? (
+                              <span>
+                                Level {penalization.penalizationLevel.nivel || "—"}
+                                {penalization.penalizationLevel.description && (
+                                  <span className="text-xs text-muted-foreground block">
+                                    {penalization.penalizationLevel.description}
+                                  </span>
+                                )}
+                              </span>
+                            ) : (
+                              "—"
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right font-medium text-destructive">
+                            ${penalization.penalizationMoney.toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                    <TableFooter>
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-right font-bold">
+                          Total:
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-base text-destructive">
+                          ${profReport.penalizations.totalMoney.toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    </TableFooter>
+                  </Table>
+                </div>
+              )}
+
+              {/* Total a Pagar - Solo si hay bonos o penalizaciones */}
+              {(profReport.abonos || profReport.penalizations) && profReport.totalFinal !== undefined && (
+                <div className="mt-4">
+                  <div className="flex justify-end items-right">
+                    <Label className="text-lg font-semibold mr-2">Total To Be Paid:</Label>
+                    <span className="text-xl font-bold text-primary">
+                      ${profReport.totalFinal.toFixed(2)}
+                    </span>
                   </div>
                 </div>
               )}
@@ -1299,7 +1433,7 @@ function NewReportComponent() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-6">
+              <div className="grid grid-cols-3 justify-items-center">
                 <div>
                   <Label className="text-sm text-muted-foreground">
                     Total Teacher
@@ -1502,21 +1636,77 @@ function NewReportComponent() {
               {/* Sección de Penalizaciones para Special Professor */}
               {calculatedData.specialReport.penalizations && calculatedData.specialReport.penalizations.count > 0 && (
                 <div className="mt-6 pt-6 border-t">
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="mb-4">
                     <h3 className="text-lg font-semibold">Penalizations</h3>
-                    <div className="flex items-center gap-4">
-                      <div className="text-sm text-muted-foreground">
-                        Count: <span className="font-semibold">{calculatedData.specialReport.penalizations.count}</span>
-                      </div>
-                      <div className="text-lg font-bold text-destructive">
-                        Total: ${calculatedData.specialReport.penalizations.totalMoney.toFixed(2)}
-                      </div>
-                    </div>
                   </div>
-                  <div className="p-3 bg-destructive/10 rounded-md border border-destructive/20">
-                    <p className="text-sm text-muted-foreground">
-                      This professor has {calculatedData.specialReport.penalizations.count} active monetary penalization{calculatedData.specialReport.penalizations.count !== 1 ? 's' : ''} with a total amount of ${calculatedData.specialReport.penalizations.totalMoney.toFixed(2)}.
-                    </p>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Level</TableHead>
+                        <TableHead>End Date</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {calculatedData.specialReport.penalizations.details?.map((penalization) => (
+                        <TableRow key={penalization.penalizationId}>
+                          <TableCell>
+                            {formatDateForDisplay(penalization.createdAt)}
+                          </TableCell>
+                          <TableCell>
+                            {penalization.description || "No description"}
+                          </TableCell>
+                          <TableCell>
+                            {penalization.penalizationType?.name || "—"}
+                          </TableCell>
+                          <TableCell>
+                            {penalization.penalizationLevel ? (
+                              <span>
+                                Level {penalization.penalizationLevel.nivel || "—"}
+                                {penalization.penalizationLevel.description && (
+                                  <span className="text-xs text-muted-foreground block">
+                                    {penalization.penalizationLevel.description}
+                                  </span>
+                                )}
+                              </span>
+                            ) : (
+                              "—"
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {penalization.endDate ? formatDateForDisplay(penalization.endDate) : "No end date"}
+                          </TableCell>
+                          <TableCell className="text-right font-medium text-destructive">
+                            ${penalization.penalizationMoney.toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                    <TableFooter>
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-right font-bold">
+                          Total:
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-base text-destructive">
+                          ${calculatedData.specialReport.penalizations.totalMoney.toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    </TableFooter>
+                  </Table>
+                </div>
+              )}
+
+              {/* Total a Pagar - Solo si hay bonos o penalizaciones */}
+              {(calculatedData.specialReport.abonos || calculatedData.specialReport.penalizations) && calculatedData.specialReport.totalFinal !== undefined && (
+                <div className="mt-4">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-lg font-semibold">Total To Be Paid:</Label>
+                    <span className="text-2xl font-bold text-primary">
+                      ${calculatedData.specialReport.totalFinal.toFixed(2)}
+                    </span>
                   </div>
                 </div>
               )}
@@ -1534,10 +1724,10 @@ function NewReportComponent() {
                   "No date range available"}
               </p>
             </CardHeader>
-            <CardContent className="space-y-8">
+            <CardContent className="space-y-4">
               {/* Sección 1: Excedent Incomes */}
               <div>
-                <h3 className="text-lg font-semibold mb-4">Excedent Incomes</h3>
+                <h3 className="text-lg font-semibold">Excedent Incomes</h3>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -1576,7 +1766,7 @@ function NewReportComponent() {
                   </TableBody>
                   <TableFooter>
                     <TableRow>
-                      <TableCell colSpan={2} className="text-right font-bold">
+                      <TableCell colSpan={3} className="text-right font-bold">
                         Total:
                       </TableCell>
                       <TableCell className="text-right font-bold">
@@ -1585,22 +1775,20 @@ function NewReportComponent() {
                           reportData.excedente.totalExcedenteIncomes || 0
                         ).toFixed(2)}
                       </TableCell>
-                      <TableCell></TableCell>
                     </TableRow>
                   </TableFooter>
                 </Table>
               </div>
 
               {/* Sección 2: Classes Not Viewed */}
-              <div className="border-t pt-6">
-                <h3 className="text-lg font-semibold mb-4">
+              <div className="border-t pt-2">
+                <h3 className="text-lg font-semibold">
                   Classes Not Viewed
                 </h3>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Enrollment</TableHead>
-                      <TableHead>Student Names</TableHead>
+                      <TableHead>Alias / Student Name</TableHead>
                       <TableHead>Plan</TableHead>
                       <TableHead className="text-right">Classes</TableHead>
                       <TableHead className="text-right">Price/Hour</TableHead>
@@ -1613,10 +1801,7 @@ function NewReportComponent() {
                       reportData.excedente.classNotViewedDetails.map(
                         (detail) => (
                           <TableRow key={detail.enrollmentId}>
-                            <TableCell>
-                              {detail.enrollmentAlias || detail.enrollmentId}
-                            </TableCell>
-                            <TableCell>{detail.studentNames}</TableCell>
+                            <TableCell>{detail.enrollmentAlias ||detail.studentNames}</TableCell>
                             <TableCell>{detail.plan}</TableCell>
                             <TableCell className="text-right">
                               {detail.numberOfClasses}
@@ -1633,7 +1818,7 @@ function NewReportComponent() {
                     ) : (
                       <TableRow>
                         <TableCell
-                          colSpan={6}
+                          colSpan={5}
                           className="text-center text-muted-foreground"
                         >
                           No classes not viewed found
@@ -1643,7 +1828,7 @@ function NewReportComponent() {
                   </TableBody>
                   <TableFooter>
                     <TableRow>
-                      <TableCell colSpan={5} className="text-right font-bold">
+                      <TableCell colSpan={4} className="text-right font-bold">
                         Total:
                       </TableCell>
                       <TableCell className="text-right font-bold">
@@ -1657,9 +1842,78 @@ function NewReportComponent() {
                 </Table>
               </div>
 
-              {/* Sección 3: Professor Bonuses */}
-              <div className="border-t pt-6">
-                <h3 className="text-lg font-semibold mb-4">
+              {/* Sección 3: Penalizaciones Monetarias */}
+              {reportData.excedente.penalizationDetails &&
+              reportData.excedente.penalizationDetails.length > 0 && (
+                <div className="border-t pt-2">
+                  <h3 className="text-lg font-semibold">Penalizations</h3>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Professor</TableHead>
+                        <TableHead>CI Number</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Level</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {reportData.excedente.penalizationDetails.map(
+                        (penalization) => (
+                          <TableRow key={penalization.penalizationId}>
+                            <TableCell>
+                              {formatDateForDisplay(penalization.createdAt)}
+                            </TableCell>
+                            <TableCell>{penalization.professorName}</TableCell>
+                            <TableCell>
+                              {penalization.professorCiNumber}
+                            </TableCell>
+                            <TableCell>
+                              {penalization.description || "No description"}
+                            </TableCell>
+                            <TableCell>
+                              {penalization.penalizationType?.name || "—"}
+                            </TableCell>
+                            <TableCell>
+                              {penalization.penalizationLevel ? (
+                                <span>
+                                  Level {penalization.penalizationLevel.nivel || "—"}
+                                  {penalization.penalizationLevel.description && (
+                                    <span className="text-xs text-muted-foreground block">
+                                      {penalization.penalizationLevel.description}
+                                    </span>
+                                  )}
+                                </span>
+                              ) : (
+                                "—"
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              ${penalization.penalizationMoney.toFixed(2)}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      )}
+                    </TableBody>
+                    <TableFooter>
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-right font-bold">
+                          Total:
+                        </TableCell>
+                        <TableCell className="text-right font-bold">
+                          ${(reportData.excedente.totalExcedentePenalizations || 0).toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    </TableFooter>
+                  </Table>
+                </div>
+              )}
+
+              {/* Sección 4: Professor Bonuses */}
+              <div className="border-t pt-2">
+                <h3 className="text-lg font-semibold">
                   Professor Bonuses
                 </h3>
                 <Table>
@@ -1712,11 +1966,13 @@ function NewReportComponent() {
                 </Table>
               </div>
 
+              
+
               {/* Total General de Excedentes */}
-              <div className="border-t pt-6">
+              <div>
                 <div className="flex justify-end">
                   <div className="text-right">
-                    <p className="text-sm text-muted-foreground mb-1">
+                    <p className="text-sm font-semibold text-muted-foreground mb-1">
                       Grand Total:
                     </p>
                     <p className="text-2xl font-bold">

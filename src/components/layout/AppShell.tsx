@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AuthGuard } from "@/components/auth/AuthGuard";
@@ -14,6 +14,7 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const isPublicRoute = pathname === "/login";
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
     document.title = "Academia Bespoke | Admin";
@@ -27,9 +28,12 @@ export function AppShell({ children }: AppShellProps) {
     <AuthProvider>
       <AuthGuard>
         <div className="flex min-h-screen">
-          <SidebarNav />
+          <SidebarNav
+            isMobileOpen={isMobileSidebarOpen}
+            onMobileClose={() => setIsMobileSidebarOpen(false)}
+          />
           <div className="flex flex-1 flex-col min-w-0 overflow-x-hidden">
-            <Topbar />
+            <Topbar onMenuClick={() => setIsMobileSidebarOpen(true)} />
             <main className="flex-1 space-y-6 p-4 sm:p-6">{children}</main>
           </div>
         </div>

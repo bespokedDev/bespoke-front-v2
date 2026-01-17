@@ -168,13 +168,40 @@
   .tiptap {
     word-wrap: break-word;
     overflow-wrap: break-word;
-    max-width: 100%;
+    word-break: break-all;
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box;
+    white-space: normal !important;
   }
   
   .tiptap * {
-    max-width: 100%;
+    max-width: 100% !important;
     word-wrap: break-word;
     overflow-wrap: break-word;
+    word-break: break-all;
+    box-sizing: border-box;
+    white-space: normal !important;
+  }
+  
+  /* Force TipTap editor container to respect width */
+  .ProseMirror {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-all;
+    white-space: normal !important;
+    overflow-x: hidden !important;
+  }
+  
+  .ProseMirror * {
+    max-width: 100% !important;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-all;
+    white-space: normal !important;
   }
   
   /* Rich Text Editor Toolbar Active State */

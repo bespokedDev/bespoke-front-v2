@@ -144,16 +144,15 @@ export const NoteDialog = ({
             Add or edit a note for this class registry entry. Select who can see this note.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4 w-full max-w-full overflow-x-hidden">
           <div className="space-y-2">
             <Label htmlFor="note-content">Note Content</Label>
-            <div className="max-w-full">
+            <div className="w-full overflow-hidden">
               <RichTextEditor
                 content={localContent}
                 onChange={handleContentChange}
                 placeholder="Enter note content..."
                 minHeight="120px"
-                className="w-full"
               />
             </div>
           </div>

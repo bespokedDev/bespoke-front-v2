@@ -43,6 +43,14 @@ interface EditableHomeworkFieldProps {
   disabled?: boolean;
 }
 
+interface EditableClassTimeFieldProps {
+  registryId: string;
+  initialValue: string;
+  onUpdate: (value: string) => void;
+  isReschedule?: boolean;
+  disabled?: boolean;
+}
+
 interface EditableClassViewedFieldProps {
   registryId: string;
   initialValue: number;
@@ -157,6 +165,29 @@ export const EditableHomeworkField = ({ registryId, initialValue, onUpdate, isRe
       }}
       disabled={disabled}
       className={`min-h-[60px] w-full min-w-[150px] md:min-w-[200px] ${isReschedule ? "bg-white" : ""}`}
+    />
+  );
+};
+
+export const EditableClassTimeField = ({ registryId, initialValue, onUpdate, isReschedule = false, disabled = false }: EditableClassTimeFieldProps) => {
+  const [value, setValue] = useState(initialValue);
+
+  useEffect(() => {
+    setValue(initialValue);
+  }, [initialValue]);
+
+  return (
+    <Input
+      key={`classTime-input-${registryId}`}
+      type="time"
+      value={value || ""}
+      onChange={(e) => {
+        const newValue = e.target.value;
+        setValue(newValue);
+        onUpdate(newValue || "");
+      }}
+      disabled={disabled}
+      className={`w-full max-w-32 ${isReschedule ? "bg-white" : ""}`}
     />
   );
 };

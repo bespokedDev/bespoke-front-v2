@@ -99,15 +99,29 @@ interface EnrollmentInfo {
 interface BonusInfo {
   id: string;
   amount: number;
-  reason?: string;
-  createdAt?: string;
+  bonusDate: string;
+  createdAt: string;
+  description: string;
+  month: string;
+  userId: string;
+  userName: string;
+  reason?: string; // Mantener para compatibilidad
 }
 
 interface PenalizationInfo {
   id: string;
   penalizationMoney: number;
   penalization_description?: string;
-  createdAt?: string;
+  createdAt: string;
+  penalizationType?: {
+    id: string;
+    name: string | null;
+  } | null;
+  penalizationLevel?: {
+    tipo: string | null;
+    nivel: number | null;
+    description: string | null;
+  } | null;
 }
 
 interface PayoutPreview {
@@ -434,16 +448,24 @@ const generatePayoutPDF = async (payout: Payout) => {
   // Tabla Bonos
   if (payout.bonusInfo && payout.bonusInfo.length > 0) {
     const bonusRows = payout.bonusInfo.map((bonus) => [
-      bonus.reason || "Bonus",
+      bonus.bonusDate ? formatDateForDisplay(bonus.bonusDate) : bonus.createdAt ? formatDateForDisplay(bonus.createdAt) : "—",
+      bonus.description || bonus.reason || "No description",
+      bonus.userName || "—",
       `$${bonus.amount.toFixed(2)}`,
     ]);
     
     autoTable(doc, {
       startY: currentY,
-      head: [["Description", "Amount"]],
+      head: [["Date", "Description", "Created By", "Amount"]],
       body: bonusRows,
       headStyles: { fillColor: primaryColor, textColor: 255, halign: "center" },
-      styles: { fontSize: 9 },
+      styles: { fontSize: 8 },
+      columnStyles: {
+        0: { cellWidth: 35 },
+        1: { cellWidth: 70 },
+        2: { cellWidth: 40 },
+        3: { cellWidth: 30, halign: "right" },
+      },
     });
     currentY = (doc as any).lastAutoTable.finalY + 10;
   }
@@ -451,17 +473,29 @@ const generatePayoutPDF = async (payout: Payout) => {
   // Tabla Penalizaciones
   if (payout.penalizationInfo && payout.penalizationInfo.length > 0) {
     const penalizationRows = payout.penalizationInfo.map((penalization) => [
-      penalization.penalization_description || "Penalization",
+      penalization.createdAt ? formatDateForDisplay(penalization.createdAt) : "—",
+      penalization.penalization_description || "No description",
+      penalization.penalizationType?.name || "—",
+      penalization.penalizationLevel
+        ? `Level ${penalization.penalizationLevel.nivel || "—"}${penalization.penalizationLevel.description ? ` (${penalization.penalizationLevel.description})` : ""}`
+        : "—",
       `-$${penalization.penalizationMoney.toFixed(2)}`,
-      ]);
+    ]);
     
-  autoTable(doc, {
+    autoTable(doc, {
       startY: currentY,
-      head: [["Description", "Amount"]],
+      head: [["Date", "Description", "Type", "Level", "Amount"]],
       body: penalizationRows,
       headStyles: { fillColor: primaryColor, textColor: 255, halign: "center" },
-      styles: { fontSize: 9 },
-  });
+      styles: { fontSize: 8 },
+      columnStyles: {
+        0: { cellWidth: 35 },
+        1: { cellWidth: 70 },
+        2: { cellWidth: 40 },
+        3: { cellWidth: 50 },
+        4: { cellWidth: 30, halign: "right" },
+      },
+    });
     currentY = (doc as any).lastAutoTable.finalY + 15;
   }
   
@@ -643,6 +677,7 @@ export default function PayoutsPage() {
       const preview = await apiClient(
         `api/payouts/preview/${formData.professorId}?month=${formData.month}`
         );
+        console.log("Preview:", preview);
       setFormData((prev) => ({ ...prev, preview }));
       } catch (err: unknown) {
         const errorMessage = getFriendlyErrorMessage(
@@ -1175,29 +1210,38 @@ export default function PayoutsPage() {
                     )}
                     {/* Bonuses */}
                     {formData.preview.bonusInfo.length > 0 && (
-                    <div>
-                      <h4 className="text-sm font-medium mb-2">
+                      <div>
+                        <h4 className="text-sm font-medium mb-2">
                           Bonuses ({formData.preview.bonusInfo.length})
-                      </h4>
-                      <div className="space-y-2">
-                          {formData.preview.bonusInfo.map((bonus) => (
-                            <div
-                              key={bonus.id}
-                              className="flex justify-between items-center p-2 bg-muted/50 rounded-md"
-                            >
-                              <div>
-                                <p className="text-sm font-medium">
+                        </h4>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Date</TableHead>
+                              <TableHead>Description</TableHead>
+                              <TableHead>Created By</TableHead>
+                              <TableHead className="text-right">Amount</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {formData.preview.bonusInfo.map((bonus) => (
+                              <TableRow key={bonus.id}>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  {bonus.bonusDate ? formatDateForDisplay(bonus.bonusDate) : bonus.createdAt ? formatDateForDisplay(bonus.createdAt) : "—"}
+                                </TableCell>
+                                <TableCell>
+                                  {bonus.description || bonus.reason || "No description"}
+                                </TableCell>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  {bonus.userName || "—"}
+                                </TableCell>
+                                <TableCell className="text-right font-medium">
                                   ${bonus.amount.toFixed(2)}
-                                </p>
-                                {bonus.reason && (
-                                  <p className="text-xs text-muted-foreground">
-                                    {bonus.reason}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                      </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
                       </div>
                     )}
                     {/* Penalizations */}
@@ -1206,25 +1250,49 @@ export default function PayoutsPage() {
                         <h4 className="text-sm font-medium mb-2">
                           Penalizations ({formData.preview.penalizationInfo.length})
                         </h4>
-                        <div className="space-y-2">
-                          {formData.preview.penalizationInfo.map((penalization) => (
-                            <div
-                              key={penalization.id}
-                              className="flex justify-between items-center p-2 bg-destructive/10 rounded-md"
-                            >
-                              <div>
-                                <p className="text-sm font-medium text-destructive">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Date</TableHead>
+                              <TableHead>Description</TableHead>
+                              <TableHead>Type</TableHead>
+                              <TableHead>Level</TableHead>
+                              <TableHead className="text-right">Amount</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {formData.preview.penalizationInfo.map((penalization) => (
+                              <TableRow key={penalization.id}>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  {penalization.createdAt ? formatDateForDisplay(penalization.createdAt) : "—"}
+                                </TableCell>
+                                <TableCell>
+                                  {penalization.penalization_description || "No description"}
+                                </TableCell>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  {penalization.penalizationType?.name || "—"}
+                                </TableCell>
+                                <TableCell>
+                                  {penalization.penalizationLevel ? (
+                                    <span>
+                                      Level {penalization.penalizationLevel.nivel || "—"}
+                                      {penalization.penalizationLevel.description && (
+                                        <span className="text-xs text-muted-foreground block">
+                                          {penalization.penalizationLevel.description}
+                                        </span>
+                                      )}
+                                    </span>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right font-medium text-destructive">
                                   -${penalization.penalizationMoney.toFixed(2)}
-                                </p>
-                                {penalization.penalization_description && (
-                                  <p className="text-xs text-muted-foreground">
-                                    {penalization.penalization_description}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                    </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
                       </div>
                     )}
                   </div>

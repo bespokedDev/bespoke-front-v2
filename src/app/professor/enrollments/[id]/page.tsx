@@ -532,7 +532,7 @@ export default function EnrollmentDetailPage() {
                 </div>
                 <div>
                   <Label className="text-muted-foreground">
-                    Monthly Classes
+                    Total Classes
                   </Label>
                   <p className="font-medium flex items-center gap-2">
                     <Clock className="h-4 w-4" />

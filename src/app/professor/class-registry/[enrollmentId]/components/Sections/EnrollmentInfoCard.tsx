@@ -227,84 +227,84 @@ export function EnrollmentInfoCard({ enrollment }: EnrollmentInfoCardProps) {
             <h3 className="text-sm font-semibold text-foreground mb-3">
               Student Information
             </h3>
-            <Collapsible
-              open={openSections[firstStudent._id] || false}
-              onOpenChange={() => toggleSection(firstStudent._id)}
-            >
-              <CollapsibleTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className="w-full justify-between p-2 h-auto font-medium text-sm hover:bg-secondary/10 bg-secondary/5 rounded-md"
-                >
-                  <span className="text-sm font-medium">
-                    {firstStudent.studentId.name}
-                  </span>
-                  {openSections[firstStudent._id] ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="space-y-3 pt-3 pl-2">
-                <div>
-                  <Label className="text-xs font-semibold text-muted-foreground">
-                    Language Level
-                  </Label>
-                  <p className="text-sm">{firstStudent.languageLevel || "N/A"}</p>
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold text-muted-foreground">
-                    Student Since
-                  </Label>
-                  <p className="text-sm">
-                    {(firstStudent.studentId.enrollmentDate || firstStudent.studentId.createdAt)
-                      ? formatDateForDisplay(
-                          firstStudent.studentId.enrollmentDate || firstStudent.studentId.createdAt || ""
-                        )
-                      : "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold text-muted-foreground">
-                    Image to Social Media Authorization
-                  </Label>
-                  <p className="text-sm">
-                    {firstStudent.studentId.avatarPermission === true
-                      ? "Yes"
-                      : firstStudent.studentId.avatarPermission === false
-                      ? "No"
-                      : "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold text-muted-foreground">
-                    Learning Style
-                  </Label>
-                  <p className="text-sm">{firstStudent.learningType || "N/A"}</p>
-                </div>
-                <div>
-                  <Label className="text-xs font-semibold text-muted-foreground">
-                    Wants Homework
-                  </Label>
-                  <p className="text-sm">
-                    {firstStudent.willingHomework === 1
-                      ? "Yes"
-                      : firstStudent.willingHomework === 0
-                      ? "No"
-                      : "N/A"}
-                  </p>
-                </div>
-                
-                {/* CanvaDocs Section */}
-                <div className="mt-4 pt-3 border-t">
-                  <StudentCanvaDocs
-                    studentId={firstStudent.studentId._id}
-                    studentName={firstStudent.studentId.name}
-                  />
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
+            <div className="space-y-3">
+              <Collapsible
+                open={openSections[firstStudent._id] || false}
+                onOpenChange={() => toggleSection(firstStudent._id)}
+              >
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-between p-2 h-auto font-medium text-sm hover:bg-secondary/10 bg-secondary/5 rounded-md"
+                  >
+                    <span className="text-sm font-medium">
+                      {firstStudent.studentId.name}
+                    </span>
+                    {openSections[firstStudent._id] ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-3 pt-3 pl-2">
+                  <div>
+                    <Label className="text-xs font-semibold text-muted-foreground">
+                      Language Level
+                    </Label>
+                    <p className="text-sm">{firstStudent.languageLevel || "N/A"}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold text-muted-foreground">
+                      Student Since
+                    </Label>
+                    <p className="text-sm">
+                      {(firstStudent.studentId.enrollmentDate || firstStudent.studentId.createdAt)
+                        ? formatDateForDisplay(
+                            firstStudent.studentId.enrollmentDate || firstStudent.studentId.createdAt || ""
+                          )
+                        : "N/A"}
+                    </p>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold text-muted-foreground">
+                      Image to Social Media Authorization
+                    </Label>
+                    <p className="text-sm">
+                      {firstStudent.studentId.avatarPermission === true
+                        ? "Yes"
+                        : firstStudent.studentId.avatarPermission === false
+                        ? "No"
+                        : "N/A"}
+                    </p>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold text-muted-foreground">
+                      Learning Style
+                    </Label>
+                    <p className="text-sm">{firstStudent.learningType || "N/A"}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold text-muted-foreground">
+                      Wants Homework
+                    </Label>
+                    <p className="text-sm">
+                      {firstStudent.willingHomework === 1
+                        ? "Yes"
+                        : firstStudent.willingHomework === 0
+                        ? "No"
+                        : "N/A"}
+                    </p>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+              
+              {/* CanvaDocs Section - Fuera del Collapsible */}
+              <StudentCanvaDocs
+                studentId={firstStudent.studentId._id}
+                studentName={firstStudent.studentId.name}
+              />
+            </div>
           </div>
         )}
 
@@ -318,84 +318,84 @@ export function EnrollmentInfoCard({ enrollment }: EnrollmentInfoCardProps) {
               {enrollment.studentIds.map((studentInfo, index) => (
                 <div key={studentInfo._id}>
                   {index > 0 && <div className="border-t my-3" />}
-                  <Collapsible
-                    open={openSections[studentInfo._id] || false}
-                    onOpenChange={() => toggleSection(studentInfo._id)}
-                  >
-                    <CollapsibleTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        className="w-full justify-between p-2 h-auto font-medium text-sm hover:bg-secondary/10 bg-secondary/5 rounded-md"
-                      >
-                        <span className="text-sm font-medium">
-                          {studentInfo.studentId.name}
-                        </span>
-                        {openSections[studentInfo._id] ? (
-                          <ChevronUp className="h-4 w-4" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="space-y-3 pt-3 pl-2">
-                      <div>
-                        <Label className="text-xs font-semibold text-muted-foreground">
-                          Language Level
-                        </Label>
-                        <p className="text-sm">{studentInfo.languageLevel || "N/A"}</p>
-                      </div>
-                      <div>
-                        <Label className="text-xs font-semibold text-muted-foreground">
-                          Student Since
-                        </Label>
-                        <p className="text-sm">
-                          {(studentInfo.studentId.enrollmentDate || studentInfo.studentId.createdAt)
-                            ? formatDateForDisplay(
-                                studentInfo.studentId.enrollmentDate || studentInfo.studentId.createdAt || ""
-                              )
-                            : "N/A"}
-                        </p>
-                      </div>
-                      <div>
-                        <Label className="text-xs font-semibold text-muted-foreground">
-                          Image to Social Media Authorization
-                        </Label>
-                        <p className="text-sm">
-                          {studentInfo.studentId.avatarPermission === true
-                            ? "Yes"
-                            : studentInfo.studentId.avatarPermission === false
-                            ? "No"
-                            : "N/A"}
-                        </p>
-                      </div>
-                      <div>
-                        <Label className="text-xs font-semibold text-muted-foreground">
-                          Learning Style
-                        </Label>
-                        <p className="text-sm">{studentInfo.learningType || "N/A"}</p>
-                      </div>
-                      <div>
-                        <Label className="text-xs font-semibold text-muted-foreground">
-                          Wants Homework
-                        </Label>
-                        <p className="text-sm">
-                          {studentInfo.willingHomework === 1
-                            ? "Yes"
-                            : studentInfo.willingHomework === 0
-                            ? "No"
-                            : "N/A"}
-                        </p>
-                      </div>
-                      
-                      {/* CanvaDocs Section */}
-                      <div className="mt-4 pt-3 border-t">
-                        <StudentCanvaDocs
-                          studentId={studentInfo.studentId._id}
-                          studentName={studentInfo.studentId.name}
-                        />
-                      </div>
-                    </CollapsibleContent>
-                  </Collapsible>
+                  <div className="space-y-3">
+                    <Collapsible
+                      open={openSections[studentInfo._id] || false}
+                      onOpenChange={() => toggleSection(studentInfo._id)}
+                    >
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          className="w-full justify-between p-2 h-auto font-medium text-sm hover:bg-secondary/10 bg-secondary/5 rounded-md"
+                        >
+                          <span className="text-sm font-medium">
+                            {studentInfo.studentId.name}
+                          </span>
+                          {openSections[studentInfo._id] ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="space-y-3 pt-3 pl-2">
+                        <div>
+                          <Label className="text-xs font-semibold text-muted-foreground">
+                            Language Level
+                          </Label>
+                          <p className="text-sm">{studentInfo.languageLevel || "N/A"}</p>
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold text-muted-foreground">
+                            Student Since
+                          </Label>
+                          <p className="text-sm">
+                            {(studentInfo.studentId.enrollmentDate || studentInfo.studentId.createdAt)
+                              ? formatDateForDisplay(
+                                  studentInfo.studentId.enrollmentDate || studentInfo.studentId.createdAt || ""
+                                )
+                              : "N/A"}
+                          </p>
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold text-muted-foreground">
+                            Image to Social Media Authorization
+                          </Label>
+                          <p className="text-sm">
+                            {studentInfo.studentId.avatarPermission === true
+                              ? "Yes"
+                              : studentInfo.studentId.avatarPermission === false
+                              ? "No"
+                              : "N/A"}
+                          </p>
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold text-muted-foreground">
+                            Learning Style
+                          </Label>
+                          <p className="text-sm">{studentInfo.learningType || "N/A"}</p>
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold text-muted-foreground">
+                            Wants Homework
+                          </Label>
+                          <p className="text-sm">
+                            {studentInfo.willingHomework === 1
+                              ? "Yes"
+                              : studentInfo.willingHomework === 0
+                              ? "No"
+                              : "N/A"}
+                          </p>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                    
+                    {/* CanvaDocs Section - Fuera del Collapsible */}
+                    <StudentCanvaDocs
+                      studentId={studentInfo.studentId._id}
+                      studentName={studentInfo.studentId.name}
+                    />
+                  </div>
                 </div>
               ))}
             </div>

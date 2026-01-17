@@ -127,16 +127,58 @@ export default function PenalizationRegistryPage() {
         apiClient("api/professors").catch(() => []), // Fetch professors
         apiClient("api/students").catch(() => []), // Fetch students
       ]);
+      
 
       setPenalizationTypes(Array.isArray(penalizationTypesData) ? penalizationTypesData.filter((p: any) => p.status === 1) : []);
       
       const enrollmentsList = Array.isArray(enrollmentsData) ? enrollmentsData : [];
-      setEnrollments(enrollmentsList.map((e: any) => ({
-        _id: e._id,
-        alias: e.alias,
-        language: e.language,
-        enrollmentType: e.enrollmentType,
-      })));
+      setEnrollments(enrollmentsList.map((e: any) => {
+        // Helper para extraer los nombres de los estudiantes desde studentIds
+        const getStudentNamesFromEnrollment = (enrollment: any): string[] => {
+          if (!enrollment.studentIds || !Array.isArray(enrollment.studentIds) || enrollment.studentIds.length === 0) {
+            return [];
+          }
+          
+          return enrollment.studentIds
+            .map((studentItem: any) => {
+              // Si studentId es un objeto con name
+              if (studentItem?.studentId && typeof studentItem.studentId === "object" && studentItem.studentId !== null && "name" in studentItem.studentId) {
+                return studentItem.studentId.name;
+              }
+              return null;
+            })
+            .filter((name: string | null): name is string => name !== null);
+        };
+
+        // Obtener plan e idioma (siempre se mostrarán)
+        const planName = e.planId?.name || "N/A";
+        const language = e.language || "N/A";
+        const planAndLanguage = `${planName} - ${language}`;
+
+        // Construir display name: si hay alias, usarlo; si no, usar nombres de estudiantes
+        let displayName: string;
+        if (e.alias) {
+          // Con alias: "Alias - Plan - Idioma"
+          displayName = `${e.alias} - ${planAndLanguage}`;
+        } else {
+          // Sin alias: usar nombres de estudiantes
+          const studentNames = getStudentNamesFromEnrollment(e);
+          if (studentNames.length > 0) {
+            const studentsPart = studentNames.join(", ");
+            displayName = `${studentsPart} - ${planAndLanguage}`;
+          } else {
+            // Fallback si no podemos obtener los nombres de los estudiantes
+            displayName = planAndLanguage;
+          }
+        }
+
+        return {
+          _id: e._id,
+          alias: displayName,
+          language: e.language,
+          enrollmentType: e.enrollmentType,
+        };
+      }));
 
       const professorsList = Array.isArray(professorsData) ? professorsData : [];
       setProfessors(professorsList.map((p: any) => ({
@@ -157,6 +199,7 @@ export default function PenalizationRegistryPage() {
       // GET /api/penalization-registry - List all registries or filter by professorId/enrollmentId
       try {
         const registriesResponse = await apiClient("api/penalization-registry");
+        console.log("registriesResponse", registriesResponse);
         // Response structure: { message, count, filters, penalizations: [...] }
         if (registriesResponse && typeof registriesResponse === "object" && "penalizations" in registriesResponse) {
           const penalizationsArray = Array.isArray(registriesResponse.penalizations) 
@@ -530,24 +573,90 @@ export default function PenalizationRegistryPage() {
       header: "Entity",
       cell: ({ row }) => {
         const registry = row.original;
+        
+        // Helper para extraer nombres de estudiantes desde studentIds
+        const getStudentNames = (studentIds?: Array<{ studentId?: { name: string } | string }>): string[] => {
+          if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
+            return [];
+          }
+          
+          return studentIds
+            .map((item) => {
+              if (item?.studentId && typeof item.studentId === "object" && item.studentId !== null && "name" in item.studentId) {
+                return item.studentId.name;
+              }
+              return null;
+            })
+            .filter((name): name is string => name !== null);
+        };
+
         if (registry.enrollmentId) {
           const enrollment = typeof registry.enrollmentId === "object" && registry.enrollmentId !== null
             ? registry.enrollmentId
             : null;
-          return enrollment?.alias || "Enrollment";
+          
+          if (enrollment) {
+            // Construir display text para enrollment
+            const planName = enrollment.planId?.name || "N/A";
+            const language = enrollment.language || "N/A";
+            let enrollmentDisplay: string;
+            
+            if (enrollment.alias) {
+              // Si hay alias, usarlo
+              enrollmentDisplay = enrollment.alias;
+            } else {
+              // Si no hay alias, usar nombres de estudiantes
+              const studentNames = getStudentNames(enrollment.studentIds);
+              if (studentNames.length > 0) {
+                enrollmentDisplay = studentNames.join(", ");
+              } else {
+                enrollmentDisplay = "Enrollment";
+              }
+            }
+            
+            return (
+              <div className="flex flex-col gap-1">
+                <div className="font-medium">
+                  <span className="text-xs text-muted-foreground mr-1">[Enrollment]</span>
+                  {enrollmentDisplay}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {planName} - {language}
+                </div>
+              </div>
+            );
+          }
+          return "Enrollment";
         }
+        
         if (registry.professorId) {
           const professor = typeof registry.professorId === "object" && registry.professorId !== null
             ? registry.professorId
             : null;
-          return professor?.name || "Professor";
+          return (
+            <div className="flex flex-col gap-1">
+              <div className="font-medium">
+                <span className="text-xs text-muted-foreground mr-1">[Professor]</span>
+                {professor?.name || "Professor"}
+              </div>
+            </div>
+          );
         }
+        
         if (registry.studentId) {
           const student = typeof registry.studentId === "object" && registry.studentId !== null
             ? registry.studentId
             : null;
-          return student?.name || "Student";
+          return (
+            <div className="flex flex-col gap-1">
+              <div className="font-medium">
+                <span className="text-xs text-muted-foreground mr-1">[Student]</span>
+                {student?.name || "Student"}
+              </div>
+            </div>
+          );
         }
+        
         return "N/A";
       },
     },
@@ -686,7 +795,7 @@ export default function PenalizationRegistryPage() {
         <Card>
           <CardContent>
             {/* Filters Section */}
-            <div className="mb-6 space-y-4">
+            <div className="mb-1 space-y-4">
               <div className="flex items-center gap-2">
                 <Filter className="h-5 w-5 text-muted-foreground" />
                 <h3 className="text-lg font-semibold">Filters</h3>
@@ -1070,38 +1179,6 @@ export default function PenalizationRegistryPage() {
                 </div>
               </div>
 
-              {/* Date Range Filters */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="startDate" className="text-sm font-medium">
-                    Start Date
-                  </Label>
-                  <Input
-                    id="startDate"
-                    type="date"
-                    value={filters.startDate}
-                    onChange={(e) =>
-                      setFilters((prev) => ({ ...prev, startDate: e.target.value }))
-                    }
-                    max="9999-12-31"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="endDate" className="text-sm font-medium">
-                    End Date
-                  </Label>
-                  <Input
-                    id="endDate"
-                    type="date"
-                    value={filters.endDate}
-                    onChange={(e) =>
-                      setFilters((prev) => ({ ...prev, endDate: e.target.value }))
-                    }
-                    max="9999-12-31"
-                  />
-                </div>
-              </div>
-
               {/* Clear Filters Button */}
               {(filters.penalizationType ||
                 filters.entityType ||
@@ -1400,28 +1477,31 @@ export default function PenalizationRegistryPage() {
                             />
                             None
                           </CommandItem>
-                          {enrollments.map((enrollment) => (
-                            <CommandItem
-                              key={enrollment._id}
-                              value={enrollment._id}
-                              onSelect={() => {
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  enrollmentId: enrollment._id,
-                                }));
-                                setOpenPopovers((prev) => ({ ...prev, enrollment: false }));
-                              }}
-                            >
-                              <CheckCircle2
-                                className={`mr-2 h-4 w-4 ${
-                                  formData.enrollmentId === enrollment._id
-                                    ? "opacity-100"
-                                    : "opacity-0"
-                                }`}
-                              />
-                              {enrollment.alias || `${enrollment.language} (${enrollment.enrollmentType})`}
-                            </CommandItem>
-                          ))}
+                          {enrollments.map((enrollment) => {
+                            const displayText = enrollment.alias || `${enrollment.language} (${enrollment.enrollmentType})`;
+                            return (
+                              <CommandItem
+                                key={enrollment._id}
+                                value={displayText}
+                                onSelect={() => {
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    enrollmentId: enrollment._id,
+                                  }));
+                                  setOpenPopovers((prev) => ({ ...prev, enrollment: false }));
+                                }}
+                              >
+                                <CheckCircle2
+                                  className={`mr-2 h-4 w-4 ${
+                                    formData.enrollmentId === enrollment._id
+                                      ? "opacity-100"
+                                      : "opacity-0"
+                                  }`}
+                                />
+                                {displayText}
+                              </CommandItem>
+                            );
+                          })}
                         </CommandGroup>
                       </Command>
                     </PopoverContent>
@@ -1474,28 +1554,31 @@ export default function PenalizationRegistryPage() {
                             />
                             None
                           </CommandItem>
-                          {professors.map((professor) => (
-                            <CommandItem
-                              key={professor._id}
-                              value={professor._id}
-                              onSelect={() => {
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  professorId: professor._id,
-                                }));
-                                setOpenPopovers((prev) => ({ ...prev, professor: false }));
-                              }}
-                            >
-                              <CheckCircle2
-                                className={`mr-2 h-4 w-4 ${
-                                  formData.professorId === professor._id
-                                    ? "opacity-100"
-                                    : "opacity-0"
-                                }`}
-                              />
-                              {professor.name} ({professor.email})
-                            </CommandItem>
-                          ))}
+                          {professors.map((professor) => {
+                            const displayText = `${professor.name} (${professor.email})`;
+                            return (
+                              <CommandItem
+                                key={professor._id}
+                                value={displayText}
+                                onSelect={() => {
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    professorId: professor._id,
+                                  }));
+                                  setOpenPopovers((prev) => ({ ...prev, professor: false }));
+                                }}
+                              >
+                                <CheckCircle2
+                                  className={`mr-2 h-4 w-4 ${
+                                    formData.professorId === professor._id
+                                      ? "opacity-100"
+                                      : "opacity-0"
+                                  }`}
+                                />
+                                {displayText}
+                              </CommandItem>
+                            );
+                          })}
                         </CommandGroup>
                       </Command>
                     </PopoverContent>
@@ -1520,7 +1603,12 @@ export default function PenalizationRegistryPage() {
                       >
                         <span className="text-left flex-1">
                           {formData.studentId
-                            ? students.find((s) => s._id === formData.studentId)?.name || "Select..."
+                            ? (() => {
+                                const selectedStudent = students.find((s) => s._id === formData.studentId);
+                                return selectedStudent
+                                  ? `${selectedStudent.name} (${selectedStudent.studentCode})`
+                                  : "Select...";
+                              })()
                             : "Select student..."}
                         </span>
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -1549,30 +1637,33 @@ export default function PenalizationRegistryPage() {
                             />
                             None
                           </CommandItem>
-                          {students.map((student) => (
-                            <CommandItem
-                              key={student._id}
-                              value={student._id}
-                              onSelect={() => {
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  studentId: student._id,
-                                  // Clear penalizationMoney when student is selected
-                                  penalizationMoney: null,
-                                }));
-                                setOpenPopovers((prev) => ({ ...prev, student: false }));
-                              }}
-                            >
-                              <CheckCircle2
-                                className={`mr-2 h-4 w-4 ${
-                                  formData.studentId === student._id
-                                    ? "opacity-100"
-                                    : "opacity-0"
-                                }`}
-                              />
-                              {student.name} ({student.studentCode})
-                            </CommandItem>
-                          ))}
+                          {students.map((student) => {
+                            const displayText = `${student.name} (${student.studentCode})`;
+                            return (
+                              <CommandItem
+                                key={student._id}
+                                value={displayText}
+                                onSelect={() => {
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    studentId: student._id,
+                                    // Clear penalizationMoney when student is selected
+                                    penalizationMoney: null,
+                                  }));
+                                  setOpenPopovers((prev) => ({ ...prev, student: false }));
+                                }}
+                              >
+                                <CheckCircle2
+                                  className={`mr-2 h-4 w-4 ${
+                                    formData.studentId === student._id
+                                      ? "opacity-100"
+                                      : "opacity-0"
+                                  }`}
+                                />
+                                {displayText}
+                              </CommandItem>
+                            );
+                          })}
                         </CommandGroup>
                       </Command>
                     </PopoverContent>
@@ -1772,15 +1863,69 @@ export default function PenalizationRegistryPage() {
 
                 <div>
                   <Label className="text-sm font-semibold">Entity</Label>
-                  <p className="text-sm">
-                    {selectedRegistry.enrollmentId
-                      ? `Enrollment: ${typeof selectedRegistry.enrollmentId === "object" && selectedRegistry.enrollmentId !== null ? selectedRegistry.enrollmentId.alias : "N/A"}`
-                      : selectedRegistry.professorId
-                      ? `Professor: ${typeof selectedRegistry.professorId === "object" && selectedRegistry.professorId !== null ? selectedRegistry.professorId.name : "N/A"}`
-                      : selectedRegistry.studentId
-                      ? `Student: ${typeof selectedRegistry.studentId === "object" && selectedRegistry.studentId !== null ? selectedRegistry.studentId.name : "N/A"}`
-                      : "N/A"}
-                  </p>
+                  {selectedRegistry.enrollmentId ? (
+                    (() => {
+                      const enrollment = typeof selectedRegistry.enrollmentId === "object" && selectedRegistry.enrollmentId !== null
+                        ? selectedRegistry.enrollmentId
+                        : null;
+                      
+                      if (!enrollment) {
+                        return <p className="text-sm">Enrollment: N/A</p>;
+                      }
+                      
+                      // Helper para extraer nombres de estudiantes
+                      const getStudentNames = (studentIds?: Array<{ studentId?: { name: string } | string }>): string[] => {
+                        if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
+                          return [];
+                        }
+                        
+                        return studentIds
+                          .map((item) => {
+                            if (item?.studentId && typeof item.studentId === "object" && item.studentId !== null && "name" in item.studentId) {
+                              return item.studentId.name;
+                            }
+                            return null;
+                          })
+                          .filter((name): name is string => name !== null);
+                      };
+                      
+                      const planName = enrollment.planId?.name || "N/A";
+                      const language = enrollment.language || "N/A";
+                      let enrollmentDisplay: string;
+                      
+                      if (enrollment.alias) {
+                        enrollmentDisplay = enrollment.alias;
+                      } else {
+                        const studentNames = getStudentNames(enrollment.studentIds);
+                        if (studentNames.length > 0) {
+                          enrollmentDisplay = studentNames.join(", ");
+                        } else {
+                          enrollmentDisplay = "Enrollment";
+                        }
+                      }
+                      
+                      return (
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">
+                            Enrollment: {enrollmentDisplay}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {planName} - {language}
+                          </p>
+                        </div>
+                      );
+                    })()
+                  ) : selectedRegistry.professorId ? (
+                    <p className="text-sm">
+                      Professor: {typeof selectedRegistry.professorId === "object" && selectedRegistry.professorId !== null ? selectedRegistry.professorId.name : "N/A"}
+                    </p>
+                  ) : selectedRegistry.studentId ? (
+                    <p className="text-sm">
+                      Student: {typeof selectedRegistry.studentId === "object" && selectedRegistry.studentId !== null ? selectedRegistry.studentId.name : "N/A"}
+                    </p>
+                  ) : (
+                    <p className="text-sm">N/A</p>
+                  )}
                 </div>
 
                 <div>

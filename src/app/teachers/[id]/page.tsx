@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "@/contexts/AuthContext";
 import { apiClient } from "@/lib/api";
 import { handleApiError, getFriendlyErrorMessage } from "@/lib/errorHandler";
 import {
@@ -40,10 +41,8 @@ import {
   Loader2,
   AlertCircle,
   Plus,
-  Trash2,
   BookOpen,
   User,
-  Eye,
   Ban,
   CheckCircle2,
   X,
@@ -56,42 +55,29 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { GeneralInformationSection } from "./components/GeneralInformationSection";
+import { ContactInformationSection } from "./components/ContactInformationSection";
+import { PaymentInformationSection } from "./components/PaymentInformationSection";
 
 // --- DEFINICIONES DE TIPOS ---
-interface PaymentData {
-  _id?: string;
-  bankName: string;
-  accountType?: string | null;
-  accountNumber?: string | null;
-  holderName?: string | null;
-  holderCI?: string | null;
-  holderEmail?: string | null;
-  holderAddress?: string | null;
-  routingNumber?: string | null;
-}
+import type {
+  PaymentData,
+  EmergencyContact,
+  Professor,
+  ProfessorFormData,
+  ProfessorType as ProfessorTypeInterface,
+} from "./types";
 
-interface EmergencyContact {
-  name?: string | null;
-  phone?: string | null;
-}
-
-interface Professor {
-  _id: string;
-  name: string;
-  ciNumber: string;
-  dob: string;
-  address: string;
-  email: string;
-  phone: string;
-  occupation: string;
-  startDate?: string;
-  typeId?: string | { _id: string; name: string; rates?: { single: number; couple: number; group: number } };
-  emergencyContact: EmergencyContact;
-  paymentData: PaymentData[];
-  isActive: boolean;
-}
-
-type ProfessorFormData = Omit<Professor, "_id" | "isActive">;
+// Re-exportar para compatibilidad con el código existente
+type ProfessorType = ProfessorTypeInterface;
 
 interface Enrollment {
   _id: string;
@@ -171,24 +157,16 @@ interface UpdateBonusData {
   status?: number;
 }
 
-interface ProfessorType {
-  _id: string;
-  name: string;
-  rates: {
-    single: number;
-    couple: number;
-    group: number;
-  };
-  status: number;
-  statusText?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
 
 export default function TeacherDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
   const teacherId = params.id as string;
+  
+  // Verificar si el usuario es admin
+  const userRole = user?.role?.toLowerCase();
+  const isAdmin = userRole === "admin";
 
   const [teacher, setTeacher] = useState<Professor | null>(null);
   const [professorTypes, setProfessorTypes] = useState<ProfessorType[]>([]);
@@ -629,183 +607,20 @@ export default function TeacherDetailPage() {
         <TabsContent value="information">
       {!isEditing ? (
         <div className="space-y-6">
-          {/* Información General */}
-          <Card>
-            <CardHeader>
-              <CardTitle>General Information</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                <div>
-                  <Label className="font-semibold">Full Name</Label>
-                  <p className="text-sm font-semibold">{teacher.name}</p>
-                </div>
-                <div>
-                  <Label className="font-semibold">CI Number</Label>
-                  <p className="text-sm font-semibold">{teacher.ciNumber}</p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Date of Birth</Label>
-                  <p className="text-sm">
-                    {teacher.dob ? formatDateForDisplay(teacher.dob) : "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Start Date</Label>
-                  <p className="text-sm">
-                    {teacher.startDate
-                      ? formatDateForDisplay(teacher.startDate)
-                      : "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Occupation</Label>
-                  <p className="text-sm">{teacher.occupation || "N/A"}</p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Professor Type</Label>
-                  <p className="text-sm">
-                    {typeof teacher.typeId === 'object' && teacher.typeId?.name
-                      ? teacher.typeId.name
-                      : teacher.typeId && typeof teacher.typeId === 'string'
-                      ? professorTypes.find((t: ProfessorType) => t._id === teacher.typeId)?.name || "N/A"
-                      : "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Status</Label>
-                  <span
-                    className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                      teacher.isActive
-                        ? "bg-secondary/20 text-secondary"
-                        : "bg-accent-1/20 text-accent-1"
-                    }`}
-                  >
-                    {teacher.isActive ? "Active" : "Inactive"}
-                  </span>
-                </div>
-                <div className="md:col-span-2">
-                  <Label className="font-semibold">Address</Label>
-                  <p className="text-sm">{teacher.address || "N/A"}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Información de Contacto */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Contact Information</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                <div>
-                  <Label className="font-semibold">Email</Label>
-                  <p className="text-sm">{teacher.email}</p>
-                </div>
-                <div>
-                  <Label className="font-semibold">Phone</Label>
-                  <p className="text-sm">{teacher.phone}</p>
-                </div>
-                {teacher.emergencyContact &&
-                  (teacher.emergencyContact.name ||
-                    teacher.emergencyContact.phone) && (
-                    <>
-                      <div className="md:col-span-2">
-                        <Label className="font-semibold text-muted-foreground">
-                          Emergency Contact
-                        </Label>
-                      </div>
-                      <div>
-                        <Label className="text-sm text-muted-foreground font-semibold">
-                          Name
-                        </Label>
-                        <p className="text-sm">
-                          {teacher.emergencyContact.name || "N/A"}
-                        </p>
-                      </div>
-                      <div>
-                        <Label className="text-sm text-muted-foreground font-semibold">
-                          Phone
-                        </Label>
-                        <p className="text-sm">
-                          {teacher.emergencyContact.phone || "N/A"}
-                        </p>
-                      </div>
-                    </>
-                  )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Información de Pagos */}
-          {teacher.paymentData && teacher.paymentData.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Payment Information</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  {teacher.paymentData.map((payment, index) => (
-                    <div key={payment._id || index}>
-                      <h4 className="font-semibold mb-4">
-                        Method {index + 1}
-                      </h4>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <Label className="text-sm text-muted-foreground">
-                            Bank Name
-                          </Label>
-                          <p className="text-sm">{payment.bankName || "N/A"}</p>
-                        </div>
-                        <div>
-                          <Label className="text-sm text-muted-foreground">
-                            Account Type
-                          </Label>
-                          <p className="text-sm">
-                            {payment.accountType || "N/A"}
-                          </p>
-                        </div>
-                        <div>
-                          <Label className="text-sm text-muted-foreground">
-                            Account Number
-                          </Label>
-                          <p className="text-sm">
-                            {payment.accountNumber || "N/A"}
-                          </p>
-                        </div>
-                        <div>
-                          <Label className="text-sm text-muted-foreground">
-                            Holder&apos;s Name
-                          </Label>
-                          <p className="text-sm">
-                            {payment.holderName || "N/A"}
-                          </p>
-                        </div>
-                        <div>
-                          <Label className="text-sm text-muted-foreground">
-                            Holder&apos;s CI
-                          </Label>
-                          <p className="text-sm">{payment.holderCI || "N/A"}</p>
-                        </div>
-                        <div>
-                          <Label className="text-sm text-muted-foreground">
-                            Holder&apos;s Email
-                          </Label>
-                          <p className="text-sm">
-                            {payment.holderEmail || "N/A"}
-                          </p>
-                        </div>
-                      </div>
-                      {index < teacher.paymentData.length - 1 && (
-                        <div className="border-t my-6" />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          <GeneralInformationSection
+            data={teacher}
+            isEditing={false}
+            professorTypes={professorTypes}
+            isAdmin={isAdmin}
+          />
+          <ContactInformationSection
+            data={teacher}
+            isEditing={false}
+          />
+          <PaymentInformationSection
+            data={teacher}
+            isEditing={false}
+          />
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -837,248 +652,37 @@ export default function TeacherDetailPage() {
             </div>
           )}
 
-          {/* Información General */}
-          <Card>
-            <CardHeader>
-              <CardTitle>General Information</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Full Name</Label>
-                  <Input
-                    id="name"
-                    name="name"
-                    value={formData.name || ""}
-                    onChange={handleFormChange}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ciNumber">CI Number</Label>
-                  <Input
-                    id="ciNumber"
-                    name="ciNumber"
-                    value={formData.ciNumber || ""}
-                    onChange={handleFormChange}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="dob">Date of Birth</Label>
-                  <Input
-                    id="dob"
-                    name="dob"
-                    type="date"
-                    max="9999-12-31"
-                    value={formData.dob || ""}
-                    onChange={handleFormChange}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="startDate">Start Date</Label>
-                  <Input
-                    id="startDate"
-                    name="startDate"
-                    type="date"
-                    max="9999-12-31"
-                    value={formData.startDate || ""}
-                    onChange={handleFormChange}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="occupation">Occupation</Label>
-                  <Input
-                    id="occupation"
-                    name="occupation"
-                    value={formData.occupation || ""}
-                    onChange={handleFormChange}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="typeId">
-                    Professor Type <span className="text-red-500">*</span>
-                  </Label>
-                  <ProfessorTypeSelect
-                    items={professorTypes}
-                    selectedId={typeof formData.typeId === 'string' ? formData.typeId : (typeof formData.typeId === 'object' && formData.typeId?._id ? formData.typeId._id : "") || ""}
-                    onSelectedChange={(id: string) =>
-                      setFormData((prev) => ({ ...prev, typeId: id }))
-                    }
-                    placeholder="Select professor type..."
-                    required
-                  />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="address">Address</Label>
-                  <Input
-                    id="address"
-                    name="address"
-                    value={formData.address || ""}
-                    onChange={handleFormChange}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Información de Contacto */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Contact Information</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    value={formData.email || ""}
-                    onChange={handleFormChange}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    name="phone"
-                    type="tel"
-                    value={formData.phone || ""}
-                    onChange={handleFormChange}
-                    required
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <Label className="font-semibold text-muted-foreground">
-                    Emergency Contact
-                  </Label>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="emergencyName">Name</Label>
-                  <Input
-                    id="emergencyName"
-                    value={formData.emergencyContact?.name || ""}
-                    onChange={(e) =>
-                      handleNestedChange(e, "emergencyContact", "name")
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="emergencyPhone">Phone</Label>
-                  <Input
-                    id="emergencyPhone"
-                    type="tel"
-                    value={formData.emergencyContact?.phone || ""}
-                    onChange={(e) =>
-                      handleNestedChange(e, "emergencyContact", "phone")
-                    }
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Información de Pagos */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Payment Information</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                {(formData.paymentData || []).map((payment, index) => (
-                  <div key={index} className="relative">
-                    <div className="flex items-center justify-between mb-4">
-                      <h4 className="font-semibold">Method {index + 1}</h4>
-                      {formData.paymentData &&
-                        formData.paymentData.length > 1 && (
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            className="text-accent-1"
-                            onClick={() => removePaymentMethod(index)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <Label>Bank Name</Label>
-                        <Input
-                          value={payment.bankName}
-                          onChange={(e) =>
-                            handlePaymentDataChange(e, index, "bankName")
-                          }
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Account Type</Label>
-                        <Input
-                          value={payment.accountType || ""}
-                          onChange={(e) =>
-                            handlePaymentDataChange(e, index, "accountType")
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Account Number</Label>
-                        <Input
-                          value={payment.accountNumber || ""}
-                          onChange={(e) =>
-                            handlePaymentDataChange(e, index, "accountNumber")
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Holder&apos;s Name</Label>
-                        <Input
-                          value={payment.holderName || ""}
-                          onChange={(e) =>
-                            handlePaymentDataChange(e, index, "holderName")
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Holder&apos;s CI</Label>
-                        <Input
-                          value={payment.holderCI || ""}
-                          onChange={(e) =>
-                            handlePaymentDataChange(e, index, "holderCI")
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Holder&apos;s Email</Label>
-                        <Input
-                          value={payment.holderEmail || ""}
-                          onChange={(e) =>
-                            handlePaymentDataChange(e, index, "holderEmail")
-                          }
-                        />
-                      </div>
-                    </div>
-                    {index < (formData.paymentData?.length || 1) - 1 && (
-                      <div className="border-t my-6" />
-                    )}
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={addPaymentMethod}
-                  className="mt-4"
-                >
-                  <Plus className="h-4 w-4 mr-2" /> Add Payment Method
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <GeneralInformationSection
+            data={formData}
+            isEditing={true}
+            professorTypes={professorTypes}
+            isAdmin={isAdmin}
+            onFormChange={handleFormChange}
+            typeSelectComponent={
+              <ProfessorTypeSelect
+                items={professorTypes}
+                selectedId={typeof formData.typeId === 'string' ? formData.typeId : (typeof formData.typeId === 'object' && formData.typeId?._id ? formData.typeId._id : "") || ""}
+                onSelectedChange={(id: string) =>
+                  setFormData((prev) => ({ ...prev, typeId: id }))
+                }
+                placeholder="Select professor type..."
+                required
+              />
+            }
+          />
+          <ContactInformationSection
+            data={formData}
+            isEditing={true}
+            onFormChange={handleFormChange}
+            onNestedChange={handleNestedChange}
+          />
+          <PaymentInformationSection
+            data={formData}
+            isEditing={true}
+            onPaymentDataChange={handlePaymentDataChange}
+            onAddPaymentMethod={addPaymentMethod}
+            onRemovePaymentMethod={removePaymentMethod}
+          />
         </form>
       )}
         </TabsContent>
@@ -1249,116 +853,78 @@ export default function TeacherDetailPage() {
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
               ) : bonuses.length > 0 ? (
-                <div className="space-y-6">
-                  {bonuses.map((bonus, index) => (
-                    <div key={bonus._id}>
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 space-y-4">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                              <Label className="text-sm text-muted-foreground font-semibold">
-                                Amount
-                              </Label>
-                              <p className="text-base font-bold">
-                                ${bonus.amount.toFixed(2)}
-                              </p>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                      <TableHead>Bonus Date</TableHead>
+                      <TableHead>Month To Be Paid In</TableHead>
+                      <TableHead>Description</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Created By</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {bonuses.map((bonus) => (
+                        <TableRow key={bonus._id}>
+                          <TableCell>
+                            {formatDateForDisplay(bonus.bonusDate)}
+                          </TableCell>
+                          <TableCell>{bonus.month}</TableCell>
+                          <TableCell className="max-w-[200px] truncate" title={bonus.description}>
+                            {bonus.description || "-"}
+                          </TableCell>
+                          <TableCell className="font-bold">
+                            ${bonus.amount.toFixed(2)}
+                          </TableCell>
+                          <TableCell>
+                            {bonus.userId?.name || "-"}
+                          </TableCell>
+                          <TableCell>
+                            <span
+                              className={`inline-block px-2 py-1 rounded-full text-xs font-semibold ${
+                                bonus.status === 1
+                                  ? "bg-secondary/20 text-secondary"
+                                  : "bg-accent-1/20 text-accent-1"
+                              }`}
+                            >
+                              {bonus.status === 1 ? "Active" : "Deactivated"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              {bonus.status === 1 && (
+                                <>
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-8 w-8 text-primary border-primary/50 hover:bg-primary/10"
+                                    onClick={() =>
+                                      handleOpenBonusDialog("edit", bonus)
+                                    }
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-8 w-8 text-accent-1 border-accent-1/50 hover:bg-accent-1/10"
+                                    onClick={() =>
+                                      handleOpenBonusDialog("delete", bonus)
+                                    }
+                                  >
+                                    <Ban className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              )}
                             </div>
-                            <div>
-                              <Label className="text-sm text-muted-foreground font-semibold">
-                                Status
-                              </Label>
-                              <span
-                                className={`inline-block px-2 py-1 rounded-full text-xs font-semibold mt-1 ${
-                                  bonus.status === 1
-                                    ? "bg-secondary/20 text-secondary"
-                                    : "bg-accent-1/20 text-accent-1"
-                                }`}
-                              >
-                                {bonus.status === 1 ? "Active" : "Deactivated"}
-                              </span>
-                            </div>
-                            <div>
-                              <Label className="text-sm text-muted-foreground font-semibold">
-                                Bonus Date
-                              </Label>
-                              <p className="text-sm mt-1">
-                                {formatDateForDisplay(bonus.bonusDate)}
-                              </p>
-                            </div>
-                            <div>
-                              <Label className="text-sm text-muted-foreground font-semibold">
-                                Month
-                              </Label>
-                              <p className="text-sm mt-1">{bonus.month}</p>
-                            </div>
-                            {bonus.description && (
-                              <div className="md:col-span-2">
-                                <Label className="text-sm text-muted-foreground font-semibold">
-                                  Description
-                                </Label>
-                                <p className="text-sm mt-1">{bonus.description}</p>
-                              </div>
-                            )}
-                            {bonus.userId && (
-                              <div>
-                                <Label className="text-sm text-muted-foreground font-semibold">
-                                  Created By
-                                </Label>
-                                <p className="text-sm mt-1">
-                                  {bonus.userId.name}
-                                </p>
-                              </div>
-                            )}
-                            <div>
-                              <Label className="text-sm text-muted-foreground font-semibold">
-                                Created At
-                              </Label>
-                              <p className="text-sm mt-1">
-                                {formatDateForDisplay(bonus.createdAt)}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex gap-2 ml-4">
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            className="text-secondary border-secondary/50 hover:bg-secondary/10"
-                            onClick={() => handleOpenBonusDialog("view", bonus)}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          {bonus.status === 1 && (
-                            <>
-                              <Button
-                                size="icon"
-                                variant="outline"
-                                className="text-primary border-primary/50 hover:bg-primary/10"
-                                onClick={() =>
-                                  handleOpenBonusDialog("edit", bonus)
-                                }
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="outline"
-                                className="text-accent-1 border-accent-1/50 hover:bg-accent-1/10"
-                                onClick={() =>
-                                  handleOpenBonusDialog("delete", bonus)
-                                }
-                              >
-                                <Ban className="h-4 w-4" />
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      {index < bonuses.length - 1 && (
-                        <div className="border-t my-6" />
-                      )}
-                    </div>
-                  ))}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">

@@ -8,12 +8,7 @@ import { getFriendlyErrorMessage } from "@/lib/errorHandler";
 import { formatDateForDisplay } from "@/lib/dateUtils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Loader2,
   AlertCircle,
@@ -25,6 +20,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
+import type { StudentInfo } from "@/app/students/[id]/types";
 
 interface Note {
   _id?: string;
@@ -51,26 +47,6 @@ interface Student {
   createdAt: string;
   updatedAt?: string;
   disenrollmentReason?: string | null;
-}
-
-interface StudentInfo {
-  student: {
-    id: string;
-    name: string;
-    email: string;
-    studentCode: string;
-  };
-  totalAvailableBalance: number;
-  enrollmentDetails: Array<{
-    enrollmentId: string;
-    planName: string;
-    amount: number;
-    rescheduleHours: number;
-    enrollmentType: string;
-    startDate: string;
-    endDate: string;
-    status: number;
-  }>;
 }
 
 export default function StudentProfilePage() {
@@ -104,16 +80,26 @@ export default function StudentProfilePage() {
       // Fetch student data from /api/students/:id
       const studentData = await apiClient(`api/students/${user.id}`);
       setStudent(studentData);
-      
+
       // Also fetch student info for balance and enrollments
       try {
         const infoResponse = await apiClient(`api/students/info/${user.id}`);
         const data: StudentInfo = {
           student: infoResponse.student,
           totalAvailableBalance: infoResponse.totalAvailableBalance,
+          totalBalancePerClass: infoResponse.totalBalancePerClass,
           enrollmentDetails: infoResponse.enrollmentDetails || [],
+          rescheduleTime: infoResponse.rescheduleTime,
+          rescheduleClasses: infoResponse.rescheduleClasses,
+          viewedClasses: infoResponse.viewedClasses,
+          pendingClasses: infoResponse.pendingClasses,
+          lostClasses: infoResponse.lostClasses,
+          noShowClasses: infoResponse.noShowClasses,
+          classLostClasses: infoResponse.classLostClasses,
+          enrollmentStatistics: infoResponse.enrollmentStatistics,
+          incomeHistory: infoResponse.incomeHistory,
         };
-        console.log("data", data);
+        console.log("studentInfoData", data);
         setStudentInfo(data);
       } catch (infoErr) {
         // If info endpoint fails, we can still show student profile
@@ -122,12 +108,10 @@ export default function StudentProfilePage() {
     } catch (err: unknown) {
       console.error("Error fetching student:", err);
       const error = err as Error & { statusCode?: number; apiMessage?: string };
-      
+
       // Si es un 404, el endpoint o el ID no existe
       if (error.statusCode === 404) {
-        setError(
-          "Student information not found. Please contact support."
-        );
+        setError("Student information not found. Please contact support.");
       } else {
         const errorMessage = getFriendlyErrorMessage(
           err,
@@ -143,8 +127,11 @@ export default function StudentProfilePage() {
   useEffect(() => {
     // Solo hacer fetch si el usuario está autenticado y es estudiante
     if (!isAuthLoading && user?.id && user?.role?.toLowerCase() === "student") {
-    fetchStudent();
-    } else if (!isAuthLoading && (!user || user?.role?.toLowerCase() !== "student")) {
+      fetchStudent();
+    } else if (
+      !isAuthLoading &&
+      (!user || user?.role?.toLowerCase() !== "student")
+    ) {
       setError("You must be logged in as a student to view your profile.");
       setIsLoading(false);
     }
@@ -180,9 +167,13 @@ export default function StudentProfilePage() {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="space-y-4"
+      >
         <TabsList>
-        <TabsTrigger value="profile" className="flex items-center gap-2">
+          <TabsTrigger value="profile" className="flex items-center gap-2">
             <User className="h-4 w-4" />
             Profile
           </TabsTrigger>
@@ -226,10 +217,10 @@ export default function StudentProfilePage() {
                         No active enrollments found.
                       </p>
                     ) : (
-                      <div className="grid gap-4">
+                      <div className="grid gap-2">
                         {studentInfo.enrollmentDetails.map((enrollment) => (
                           <Card key={enrollment.enrollmentId}>
-                            <CardContent className="pt-6">
+                            <CardContent>
                               <div className="flex items-start justify-between">
                                 <div className="space-y-2">
                                   <div className="flex items-center gap-2">
@@ -246,7 +237,9 @@ export default function StudentProfilePage() {
                                           enrollment.startDate
                                         )}{" "}
                                         -{" "}
-                                        {formatDateForDisplay(enrollment.endDate)}
+                                        {formatDateForDisplay(
+                                          enrollment.endDate
+                                        )}
                                       </span>
                                     </div>
                                     <span className="capitalize">
@@ -300,52 +293,58 @@ export default function StudentProfilePage() {
                   {studentInfo.enrollmentDetails.map((enrollment) => (
                     <Card key={enrollment.enrollmentId}>
                       <CardContent className="pt-2">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label className="font-semibold">Plan</Label>
-                            <p className="text-sm">{enrollment.planName}</p>
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label className="font-semibold">Plan</Label>
+                              <p className="text-sm">{enrollment.planName}</p>
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="font-semibold">Type</Label>
+                              <p className="text-sm capitalize">
+                                {enrollment.enrollmentType}
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="font-semibold">Start Date</Label>
+                              <p className="text-sm flex items-center gap-1">
+                                <Calendar className="h-4 w-4" />
+                                {formatDateForDisplay(enrollment.startDate)}
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="font-semibold">End Date</Label>
+                              <p className="text-sm flex items-center gap-1">
+                                <Calendar className="h-4 w-4" />
+                                {formatDateForDisplay(enrollment.endDate)}
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="font-semibold">
+                                Available Balance
+                              </Label>
+                              <p className="text-sm font-semibold text-secondary">
+                                ${enrollment.amount.toFixed(2)}
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="font-semibold">
+                                Reschedule Hours Available
+                              </Label>
+                              <p className="text-sm">
+                                {enrollment.rescheduleHours} hours
+                              </p>
+                            </div>
                           </div>
-                          <div className="space-y-2">
-                            <Label className="font-semibold">Type</Label>
-                            <p className="text-sm capitalize">
-                              {enrollment.enrollmentType}
-                            </p>
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="font-semibold">Start Date</Label>
-                            <p className="text-sm flex items-center gap-1">
-                              <Calendar className="h-4 w-4" />
-                              {formatDateForDisplay(enrollment.startDate)}
-                            </p>
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="font-semibold">End Date</Label>
-                            <p className="text-sm flex items-center gap-1">
-                              <Calendar className="h-4 w-4" />
-                              {formatDateForDisplay(enrollment.endDate)}
-                            </p>
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="font-semibold">
-                              Available Balance
-                            </Label>
-                            <p className="text-sm font-semibold text-secondary">
-                              ${enrollment.amount.toFixed(2)}
-                            </p>
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="font-semibold">
-                              Reschedule Hours
-                            </Label>
-                            <p className="text-sm">
-                              {enrollment.rescheduleHours} hours
-                            </p>
-                          </div>
-                          <div className="md:col-span-2 flex justify-end pt-2">
+                          <div className="flex justify-end md:justify-start md:items-start pt-2 md:pt-0">
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => router.push(`/student/class-registry/${enrollment.enrollmentId}`)}
+                              onClick={() =>
+                                router.push(
+                                  `/student/class-registry/${enrollment.enrollmentId}`
+                                )
+                              }
                               className="flex items-center gap-2"
                             >
                               <Eye className="h-4 w-4" />
@@ -359,7 +358,7 @@ export default function StudentProfilePage() {
                 </div>
               ) : (
                 <p className="text-muted-foreground text-center py-8">
-                  {studentInfo 
+                  {studentInfo
                     ? "No active enrollments found."
                     : "Enrollment information not available."}
                 </p>
@@ -450,4 +449,3 @@ export default function StudentProfilePage() {
     </div>
   );
 }
-

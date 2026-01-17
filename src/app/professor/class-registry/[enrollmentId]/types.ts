@@ -74,6 +74,7 @@ export interface ClassRegistry {
     enrollmentType: string;
   };
   classDate: string;
+  classTime?: string | null;
   hoursViewed?: number | null;
   minutesViewed?: number | null;
   classType: Array<{
@@ -99,7 +100,11 @@ export interface ClassRegistry {
   reschedule: number;
   classViewed: number;
   minutesClassDefault: number;
-  originalClassId?: string | null;
+  originalClassId?: {
+    _id: string;
+    enrollmentId: string;
+    classDate: string;
+  } | null;
   evaluations?: Evaluation[];
 }
 

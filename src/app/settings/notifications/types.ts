@@ -3,6 +3,15 @@
 export interface NotificationCategory {
   _id: string;
   category_notification_description: string;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CategoryNotificationsResponse {
+  message: string;
+  count: number;
+  categoryNotifications: NotificationCategory[];
 }
 
 export interface NotificationPenalization {
@@ -60,5 +69,68 @@ export interface NotificationsResponse {
   message?: string;
   count?: number;
   notifications: Notification[];
+}
+
+// API Response types for related entities
+export interface PenalizationApiResponse {
+  _id: string;
+  name: string;
+  description?: string | null;
+  status: number; // 1 = activo
+}
+
+export interface EnrollmentApiResponse {
+  _id: string;
+  alias?: string | null;
+  language: string;
+  enrollmentType: string;
+}
+
+export interface ProfessorApiResponse {
+  _id: string;
+  name: string;
+  email: string;
+  phone?: string;
+}
+
+export interface StudentApiResponse {
+  _id: string;
+  name: string;
+  studentCode: string;
+  email: string;
+  phone?: string;
+  status: number; // 1 = activo
+}
+
+// Payload types for create/update
+export interface CreateNotificationPayload {
+  idCategoryNotification: string;
+  notification_description: string;
+  isActive: boolean;
+  idPenalization?: string | null;
+  idEnrollment?: string | null;
+  idProfessor?: string | null;
+  idStudent?: string | string[] | null;
+}
+
+export interface UpdateNotificationPayload {
+  idCategoryNotification: string;
+  notification_description: string;
+  isActive: boolean;
+  idPenalization: string | null;
+  idEnrollment: string | null;
+  idProfessor: string | null;
+  idStudent: string | string[] | null;
+}
+
+// Response types for create/update
+export interface NotificationCreateResponse {
+  message?: string;
+  notification: Notification;
+}
+
+export interface NotificationUpdateResponse {
+  message?: string;
+  notification: Notification;
 }
 

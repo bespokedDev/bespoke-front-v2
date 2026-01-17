@@ -16,9 +16,19 @@ export interface PenalizationType {
 
 export interface EnrollmentBrief {
   _id: string;
-  alias?: string;
+  alias?: string | null;
   language: string;
   enrollmentType: string;
+  planId?: {
+    _id: string;
+    name: string;
+  };
+  studentIds?: Array<{
+    studentId?: {
+      _id: string;
+      name: string;
+    } | string;
+  }>;
 }
 
 export interface ProfessorBrief {

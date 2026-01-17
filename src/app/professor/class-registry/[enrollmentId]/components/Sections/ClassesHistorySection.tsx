@@ -32,7 +32,7 @@ export function ClassesHistorySection({
     const reschedules: ClassRegistry[] = [];
 
     classRegistries.forEach((registry) => {
-      if (registry.originalClassId) {
+      if (registry.originalClassId !== null && registry.originalClassId !== undefined) {
         // Es un reschedule
         reschedules.push(registry);
       } else {
@@ -51,11 +51,13 @@ export function ClassesHistorySection({
     // Crear un mapa para acceso rápido a reschedules por clase original
     const reschedulesByOriginal = new Map<string, ClassRegistry[]>();
     reschedules.forEach((reschedule) => {
-      const originalId = reschedule.originalClassId || "";
-      if (!reschedulesByOriginal.has(originalId)) {
+      const originalId = reschedule.originalClassId?._id || "";
+      if (originalId && !reschedulesByOriginal.has(originalId)) {
         reschedulesByOriginal.set(originalId, []);
       }
-      reschedulesByOriginal.get(originalId)!.push(reschedule);
+      if (originalId) {
+        reschedulesByOriginal.get(originalId)!.push(reschedule);
+      }
     });
 
     // Ordenar reschedules dentro de cada grupo del más nuevo al más viejo
@@ -77,7 +79,7 @@ export function ClassesHistorySection({
 
     // Agregar reschedules huérfanos (si los hay) al final
     const orphanReschedules = reschedules.filter(
-      (r) => !originalClasses.some((oc) => oc._id === r.originalClassId)
+      (r) => r.originalClassId && !originalClasses.some((oc) => oc._id === r.originalClassId?._id)
     );
     orphanReschedules.sort((a, b) => {
       const dateA = new Date(a.classDate).getTime();
@@ -98,6 +100,10 @@ export function ClassesHistorySection({
         ("accessorKey" in column && column.accessorKey === "classDate") ||
         ("id" in column && column.id === "classDate");
       
+      // Verificar si es la columna de fecha original
+      const isOriginalDateColumn = 
+        ("id" in column && column.id === "originalDate");
+      
       return {
         ...column,
         cell: (context) => {
@@ -108,11 +114,19 @@ export function ClassesHistorySection({
           if (isClassDateColumn) {
             return (
               <div className={`flex items-center ${isReschedule ? "pl-8" : ""}`}>
-                {isReschedule && (
-                  <span className="text-muted-foreground mr-2">↳</span>
-                )}
                 <span className="text-sm font-medium">
                   {formatDateForDisplay(registry.classDate)}
+                </span>
+              </div>
+            );
+          }
+          
+          // Para la columna de fecha original, usar directamente originalClassId.classDate
+          if (isOriginalDateColumn && isReschedule && registry.originalClassId) {
+            return (
+              <div className="pl-8">
+                <span className="text-sm text-muted-foreground">
+                  {formatDateForDisplay(registry.originalClassId.classDate)}
                 </span>
               </div>
             );

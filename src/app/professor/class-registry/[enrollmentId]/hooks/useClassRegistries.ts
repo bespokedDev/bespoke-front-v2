@@ -25,6 +25,7 @@ interface UseClassRegistriesReturn {
     homework: string;
     reschedule: number;
     classViewed: number;
+    classTime: string;
     classDate?: string;
   }>;
   registrySuccessMessage: string | null;
@@ -60,6 +61,7 @@ interface UseClassRegistriesReturn {
     homework: string;
     reschedule: number;
     classViewed: number;
+    classTime: string;
     classDate?: string;
   }>>;
   setEditingRegistryData: React.Dispatch<React.SetStateAction<Record<string, {
@@ -79,6 +81,7 @@ interface UseClassRegistriesReturn {
     homework: string;
     reschedule: number;
     classViewed: number;
+    classTime: string;
     classDate?: string;
   }>>>;
   setRegistrySuccessMessage: React.Dispatch<React.SetStateAction<string | null>>;
@@ -111,6 +114,7 @@ interface UseClassRegistriesReturn {
       };
     } | null;
     homework: string | null;
+    classTime: string | null;
     classViewed?: number;
   }) => Promise<void>;
   handleSaveAllRegistries: () => Promise<void>;
@@ -142,11 +146,12 @@ export function useClassRegistries(
     homework: string;
     reschedule: number;
     classViewed: number;
+    classTime: string;
   }>>({});
   const [registrySuccessMessage, setRegistrySuccessMessage] = useState<string | null>(null);
   const [registryErrorMessage, setRegistryErrorMessage] = useState<string | null>(null);
   const [savingAllRegistries, setSavingAllRegistries] = useState(false);
-  const [rescheduleRegistryId, setRescheduleRegistryId] = useState<string | null>(null);
+  const [rescheduleRegistryId, setRescheduleRegistryIdState] = useState<string | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState<string>("");
   const [isCreatingReschedule, setIsCreatingReschedule] = useState(false);
   const [openPopovers, setOpenPopovers] = useState<Record<string, { classType: boolean; contentType: boolean }>>({});
@@ -184,7 +189,59 @@ export function useClassRegistries(
     homework: string;
     reschedule: number;
     classViewed: number;
+    classTime: string;
+    classDate?: string;
   }>>({});
+
+  // Ref para rastrear estados que deben preservarse después de crear reschedule
+  const preservedStatesRef = useRef<Record<string, {
+    minutesViewed: string;
+    classType: string[];
+    contentType: string[];
+    vocabularyContent: string;
+    studentMood: string;
+    note: {
+      content: string | null;
+      visible: {
+        admin: number;
+        student: number;
+        professor: number;
+      };
+    } | null;
+    homework: string;
+    reschedule: number;
+    classViewed: number;
+    classTime: string;
+    classDate?: string;
+  }>>({});
+
+  // Wrapper para setRescheduleRegistryId que guarda el estado cuando se abre el diálogo
+  const setRescheduleRegistryId = useCallback((registryId: string | null | ((prev: string | null) => string | null)) => {
+    if (typeof registryId === "function") {
+      // Si es una función, obtener el valor actual primero
+      setRescheduleRegistryIdState((prev) => {
+        const newValue = registryId(prev);
+        // Si se está abriendo el diálogo (newValue no es null y prev era null), guardar el estado
+        if (newValue !== null && prev === null) {
+          const currentState = editingRegistryDataRef.current[newValue] || editingRegistryData[newValue];
+          if (currentState) {
+            preservedStatesRef.current[newValue] = currentState;
+          }
+        }
+        return newValue;
+      });
+    } else {
+      // Si es un valor directo
+      if (registryId !== null) {
+        // Se está abriendo el diálogo, guardar el estado actual del registro
+        const currentState = editingRegistryDataRef.current[registryId] || editingRegistryData[registryId];
+        if (currentState) {
+          preservedStatesRef.current[registryId] = currentState;
+        }
+      }
+      setRescheduleRegistryIdState(registryId);
+    }
+  }, [editingRegistryData, editingRegistryDataRef]);
 
   // Fetch class registries
   const fetchClassRegistries = useCallback(async () => {
@@ -249,49 +306,64 @@ export function useClassRegistries(
       homework: string;
       reschedule: number;
       classViewed: number;
+      classTime: string;
       classDate?: string;
     }> = {};
     
     classRegistries.forEach((registry) => {
-      const isReschedule = registry.originalClassId !== null && registry.originalClassId !== undefined;
-      const registryData: {
-        minutesViewed: string;
-        classType: string[];
-        contentType: string[];
-        vocabularyContent: string;
-        studentMood: string;
-        note: {
-          content: string | null;
-          visible: {
-            admin: number;
-            student: number;
-            professor: number;
-          };
-        } | null;
-        homework: string;
-        reschedule: number;
-        classViewed: number;
-        classDate?: string;
-      } = {
-        minutesViewed: registry.minutesViewed?.toString() || "",
-        classType: registry.classType.map((t) => t._id),
-        contentType: registry.contentType.map((t) => t._id),
-        vocabularyContent: registry.vocabularyContent || "",
-        studentMood: registry.studentMood || "",
-        note: registry.note || null,
-        homework: registry.homework || "",
-        reschedule: registry.reschedule,
-        classViewed: registry.classViewed,
-      };
+      // Si hay un estado preservado para este registro, usarlo en lugar del valor por defecto
+      const preservedState = preservedStatesRef.current[registry._id];
       
-      // Solo agregar classDate para reschedules
-      if (isReschedule) {
-        registryData.classDate = extractDatePart(registry.classDate);
+      if (preservedState) {
+        // Usar el estado preservado
+        initialData[registry._id] = preservedState;
+        editingRegistryDataRef.current[registry._id] = preservedState;
+        // Limpiar el estado preservado después de usarlo
+        delete preservedStatesRef.current[registry._id];
+      } else {
+        // Inicializar con valores por defecto del registro
+        const isReschedule = registry.originalClassId !== null && registry.originalClassId !== undefined;
+        const registryData: {
+          minutesViewed: string;
+          classType: string[];
+          contentType: string[];
+          vocabularyContent: string;
+          studentMood: string;
+          note: {
+            content: string | null;
+            visible: {
+              admin: number;
+              student: number;
+              professor: number;
+            };
+          } | null;
+          homework: string;
+          reschedule: number;
+          classViewed: number;
+          classTime: string;
+          classDate?: string;
+        } = {
+          minutesViewed: registry.minutesViewed?.toString() || "",
+          classType: registry.classType.map((t) => t._id),
+          contentType: registry.contentType.map((t) => t._id),
+          vocabularyContent: registry.vocabularyContent || "",
+          studentMood: registry.studentMood || "",
+          note: registry.note || null,
+          homework: registry.homework || "",
+          reschedule: registry.reschedule,
+          classViewed: registry.classViewed,
+          classTime: registry.classTime || "",
+        };
+        
+        // Solo agregar classDate para reschedules
+        if (isReschedule) {
+          registryData.classDate = extractDatePart(registry.classDate);
+        }
+        
+        initialData[registry._id] = registryData;
+        // También inicializar el ref
+        editingRegistryDataRef.current[registry._id] = registryData;
       }
-      
-      initialData[registry._id] = registryData;
-      // También inicializar el ref
-      editingRegistryDataRef.current[registry._id] = registryData;
     });
     
     setEditingRegistryData(initialData);
@@ -348,6 +420,7 @@ export function useClassRegistries(
       };
     } | null;
     homework: string | null;
+    classTime: string | null;
     classViewed?: number;
     classDate?: string;
   }) => {
@@ -536,6 +609,11 @@ export function useClassRegistries(
   // Create reschedule
   const handleCreateReschedule = useCallback(async (registryId: string, classDate: string) => {
     setIsCreatingReschedule(true);
+    
+    // El estado ya debería estar guardado cuando se abrió el diálogo (en setRescheduleRegistryId)
+    // Si no está guardado, intentar obtenerlo ahora como fallback
+    const savedState = preservedStatesRef.current[registryId] || editingRegistryDataRef.current[registryId] || editingRegistryData[registryId];
+    
     try {
       await apiClient(`api/class-registry/${registryId}/reschedule`, {
         method: "POST",
@@ -546,8 +624,37 @@ export function useClassRegistries(
         skipAutoRedirect: true,
       });
       
-      await fetchClassRegistries();
-      setRescheduleRegistryId(null);
+      // Obtener los registros actualizados después de crear el reschedule
+      let response;
+      if (periodMode === "current" && startDate && endDate) {
+        const fromDate = extractDatePart(startDate);
+        const toDate = extractDatePart(endDate);
+        response = await apiClient(
+          `api/class-registry/range?enrollmentId=${enrollmentId}&from=${fromDate}&to=${toDate}`
+        );
+      } else if (periodMode === "all") {
+        response = await apiClient(
+          `api/class-registry?enrollmentId=${enrollmentId}`
+        );
+      }
+      
+      if (response) {
+        const updatedRegistries = response.classes || [];
+        
+        // Si hay un estado guardado para la clase original, preservarlo
+        if (savedState) {
+          // Guardar el estado en el ref de preservación para que el useEffect lo restaure en la clase original
+          preservedStatesRef.current[registryId] = savedState;
+        }
+        
+        // Actualizar los registros (esto disparará el useEffect que restaurará el estado en la clase original)
+        setClassRegistries(updatedRegistries);
+      } else {
+        // Si no hay respuesta, usar fetchClassRegistries como fallback
+        await fetchClassRegistries();
+      }
+      
+      setRescheduleRegistryIdState(null);
       setRescheduleDate("");
       setRegistrySuccessMessage("Reschedule created successfully");
     } catch (err: unknown) {
@@ -573,7 +680,7 @@ export function useClassRegistries(
     } finally {
       setIsCreatingReschedule(false);
     }
-  }, [fetchClassRegistries]);
+  }, [fetchClassRegistries, editingRegistryData, editingRegistryDataRef, enrollmentId, periodMode, startDate, endDate]);
 
   const updateEvaluationCache = useCallback(() => {
     // This function is kept for API compatibility but is no longer needed
