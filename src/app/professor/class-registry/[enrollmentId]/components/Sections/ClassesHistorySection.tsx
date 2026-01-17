@@ -104,6 +104,10 @@ export function ClassesHistorySection({
       const isOriginalDateColumn = 
         ("id" in column && column.id === "originalDate");
       
+      // Verificar si es la columna de tiempo de clase
+      const isClassTimeColumn = 
+        ("id" in column && column.id === "classTime");
+      
       return {
         ...column,
         cell: (context) => {
@@ -113,7 +117,7 @@ export function ClassesHistorySection({
           // Para la columna de fecha, mostrar con tabulación especial
           if (isClassDateColumn) {
             return (
-              <div className={`flex items-center ${isReschedule ? "pl-8" : ""}`}>
+              <div className={`flex items-center`}>
                 <span className="text-sm font-medium">
                   {formatDateForDisplay(registry.classDate)}
                 </span>
@@ -132,18 +136,29 @@ export function ClassesHistorySection({
             );
           }
           
+          // Para la columna de tiempo de clase, mostrar como texto (no editable en historial)
+          if (isClassTimeColumn) {
+            return (
+              <div className={`flex items-center`}>
+                <span className="text-sm font-medium">
+                  {registry.classTime || "—"}
+                </span>
+              </div>
+            );
+          }
+          
           // Para otras columnas, aplicar tabulación pero mantener la lógica original
           if (originalCell && typeof originalCell === "function") {
             const cellContent = originalCell(context);
             return (
-              <div className={isReschedule ? "pl-8" : ""}>
+              <div >
                 {cellContent}
               </div>
             );
           }
           
           // Fallback si no hay cell definido
-          return <div className={isReschedule ? "pl-8" : ""}></div>;
+          return <div ></div>;
         },
       };
     });

@@ -389,16 +389,6 @@ export default function ClassRegistryDetailPage() {
           updatePayload
         );
 
-        // Si es un reschedule, mostrar alerta recordando guardar la clase original
-        if (isReschedule && registry.originalClassId) {
-          const originalDate = formatDateForDisplay(
-            registry.originalClassId.classDate
-          );
-          window.alert(
-            `Reschedule saved successfully. Remember to save the information for the original class dated ${originalDate}.`
-          );
-        }
-
         // Después de guardar exitosamente, los datos ya se refrescaron desde el servidor
         // El useEffect en useClassRegistries reinicializará editingRegistryData con los valores actualizados
         // incluyendo el nuevo classViewed, lo que hará que los campos dejen de ser editables
@@ -1489,14 +1479,11 @@ export default function ClassRegistryDetailPage() {
           );
         },
       },
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     ],
     [
       syncRefToState,
-      classRegistriesHook.editingRegistryData,
-      classRegistriesHook.openPopovers,
-      evaluationsHook.evaluationCache,
-      evaluationsHook.openMenuRegistryId,
+      classRegistriesHook,
+      evaluationsHook,
       classTypes,
       contentClasses,
       isProfessor,
@@ -1704,6 +1691,7 @@ export default function ClassRegistryDetailPage() {
                 homework: registry.homework || "",
                 reschedule: registry.reschedule,
                 classViewed: registry.classViewed,
+                classTime: registry.classTime || "",
               }),
               note: noteObject,
             },

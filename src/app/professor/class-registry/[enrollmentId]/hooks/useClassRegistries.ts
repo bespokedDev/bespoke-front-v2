@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { apiClient } from "@/lib/api";
 import { getFriendlyErrorMessage } from "@/lib/errorHandler";
-import { extractDatePart } from "@/lib/dateUtils";
+import { extractDatePart, formatDateForDisplay } from "@/lib/dateUtils";
 import type { ClassRegistry } from "../types";
 
 interface UseClassRegistriesReturn {
@@ -30,7 +30,6 @@ interface UseClassRegistriesReturn {
   }>;
   registrySuccessMessage: string | null;
   registryErrorMessage: string | null;
-  savingAllRegistries: boolean;
   rescheduleRegistryId: string | null;
   rescheduleDate: string;
   isCreatingReschedule: boolean;
@@ -117,7 +116,6 @@ interface UseClassRegistriesReturn {
     classTime: string | null;
     classViewed?: number;
   }) => Promise<void>;
-  handleSaveAllRegistries: () => Promise<void>;
   handleCreateReschedule: (registryId: string, classDate: string) => Promise<void>;
   updateEvaluationCache: () => void;
 }
@@ -150,7 +148,6 @@ export function useClassRegistries(
   }>>({});
   const [registrySuccessMessage, setRegistrySuccessMessage] = useState<string | null>(null);
   const [registryErrorMessage, setRegistryErrorMessage] = useState<string | null>(null);
-  const [savingAllRegistries, setSavingAllRegistries] = useState(false);
   const [rescheduleRegistryId, setRescheduleRegistryIdState] = useState<string | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState<string>("");
   const [isCreatingReschedule, setIsCreatingReschedule] = useState(false);
@@ -379,31 +376,6 @@ export function useClassRegistries(
     }
   }, [registrySuccessMessage]);
 
-  // Update class registry (versión interna sin fetch automático)
-  const updateRegistryInternal = async (registryId: string, data: {
-    minutesViewed: number | null;
-    classType: string[];
-    contentType: string[];
-    vocabularyContent: string | null;
-    studentMood: string | null;
-    note: {
-      content: string | null;
-      visible: {
-        admin: number;
-        student: number;
-        professor: number;
-      };
-    } | null;
-    homework: string | null;
-    classViewed?: number;
-  }) => {
-    await apiClient(`api/class-registry/${registryId}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-      skipAutoRedirect: true,
-    });
-  };
-
   // Update class registry (para uso individual como en el modal de notas)
   const handleUpdateRegistry = useCallback(async (registryId: string, data: {
     minutesViewed: number | null;
@@ -441,6 +413,7 @@ export function useClassRegistries(
           };
         } | null;
         homework: string | null;
+        classTime: string | null;
         classViewed?: number;
         classDate?: string;
       } = {
@@ -451,6 +424,7 @@ export function useClassRegistries(
         studentMood: data.studentMood,
         note: data.note,
         homework: data.homework,
+        classTime: data.classTime,
       };
       
       if (data.classViewed !== undefined) {
@@ -501,111 +475,6 @@ export function useClassRegistries(
     }
   }, [fetchClassRegistries]);
 
-  // Guardar todos los registros modificados
-  const handleSaveAllRegistries = useCallback(async () => {
-    if (classRegistries.length === 0) return;
-    
-    setSavingAllRegistries(true);
-    setRegistryErrorMessage(null);
-    setRegistrySuccessMessage(null);
-    
-    try {
-      const promises: Promise<void>[] = [];
-      const errors: Array<{ registryId: string; error: string }> = [];
-      
-      // Guardar todos los registros que están en editingRegistryDataRef
-      for (const registryId of Object.keys(editingRegistryDataRef.current)) {
-        const editData = editingRegistryDataRef.current[registryId];
-        const registry = classRegistries.find(r => r._id === registryId);
-        
-        if (!registry || !editData) continue;
-        
-        promises.push(
-          updateRegistryInternal(registryId, {
-            minutesViewed: editData.minutesViewed === "" ? null : Number(editData.minutesViewed),
-            classType: editData.classType,
-            contentType: editData.contentType,
-            vocabularyContent: editData.vocabularyContent || null,
-            studentMood: editData.studentMood || null,
-            note: editData.note,
-            homework: editData.homework || null,
-            classViewed: editData.classViewed,
-          }).catch((err: unknown) => {
-            const errorObj = err as Error & { statusCode?: number; apiMessage?: string };
-            const errorMessageText = errorObj.message || errorObj.apiMessage || "";
-            errors.push({
-              registryId,
-              error: errorMessageText || "Error desconocido",
-            });
-          })
-        );
-      }
-      
-      await Promise.all(promises);
-      
-      // Si hay errores, mostrar el mensaje de error
-      if (errors.length > 0) {
-        const firstError = errors[0].error;
-        let errorMessage: string;
-        
-        // Intentar extraer el mensaje de error
-        if (typeof firstError === "string") {
-          if (firstError.includes("Unauthorized") || firstError.includes("Forbidden")) {
-            errorMessage = "No tienes permisos para actualizar los registros de clase. Por favor, contacta a un administrador.";
-          } else {
-            errorMessage = errors.length === 1
-              ? `Error al guardar el registro: ${firstError}`
-              : `Error al guardar ${errors.length} registros. Por favor, intenta nuevamente.`;
-          }
-        } else {
-          const errorObj = firstError as Error & { statusCode?: number; apiMessage?: string };
-          const errorMessageText = errorObj.message || errorObj.apiMessage || "";
-          
-          if (
-            errorObj.statusCode === 403 || 
-            errorObj.statusCode === 401 || 
-            errorMessageText.includes("Unauthorized") ||
-            errorMessageText.includes("Forbidden")
-          ) {
-            errorMessage = "No tienes permisos para actualizar los registros de clase. Por favor, contacta a un administrador.";
-          } else {
-            errorMessage = errors.length === 1
-              ? `Error al guardar el registro: ${errorMessageText}`
-              : `Error al guardar ${errors.length} registros. Por favor, intenta nuevamente.`;
-          }
-        }
-        
-        setRegistryErrorMessage(errorMessage);
-      } else {
-        // Recargar los datos después de guardar exitosamente
-        await fetchClassRegistries();
-        setRegistrySuccessMessage("Registros de clase guardados exitosamente");
-      }
-    } catch (err: unknown) {
-      const errorObj = err as Error & { statusCode?: number; apiMessage?: string };
-      const errorMessageText = errorObj.message || errorObj.apiMessage || "";
-      
-      let errorMessage: string;
-      if (
-        errorObj.statusCode === 403 || 
-        errorObj.statusCode === 401 || 
-        errorMessageText.includes("Unauthorized") ||
-        errorMessageText.includes("Forbidden")
-      ) {
-        errorMessage = "No tienes permisos para actualizar los registros de clase. Por favor, contacta a un administrador.";
-      } else {
-        errorMessage = getFriendlyErrorMessage(
-          err,
-          "Error al guardar los registros de clase. Por favor, intenta nuevamente."
-        );
-      }
-      
-      setRegistryErrorMessage(errorMessage);
-    } finally {
-      setSavingAllRegistries(false);
-    }
-  }, [classRegistries, fetchClassRegistries]);
-
   // Create reschedule
   const handleCreateReschedule = useCallback(async (registryId: string, classDate: string) => {
     setIsCreatingReschedule(true);
@@ -613,6 +482,10 @@ export function useClassRegistries(
     // El estado ya debería estar guardado cuando se abrió el diálogo (en setRescheduleRegistryId)
     // Si no está guardado, intentar obtenerlo ahora como fallback
     const savedState = preservedStatesRef.current[registryId] || editingRegistryDataRef.current[registryId] || editingRegistryData[registryId];
+    
+    // Obtener la información de la clase original para mostrar el mensaje
+    const originalRegistry = classRegistries.find(r => r._id === registryId);
+    const originalDate = originalRegistry?.classDate;
     
     try {
       await apiClient(`api/class-registry/${registryId}/reschedule`, {
@@ -657,6 +530,13 @@ export function useClassRegistries(
       setRescheduleRegistryIdState(null);
       setRescheduleDate("");
       setRegistrySuccessMessage("Reschedule created successfully");
+      
+      // Mostrar alerta recordando guardar la clase original
+      if (originalDate) {
+        window.alert(
+          `Reschedule created successfully. Remember to save the information for the original class dated ${formatDateForDisplay(originalDate)}.`
+        );
+      }
     } catch (err: unknown) {
       const errorObj = err as Error & { statusCode?: number; apiMessage?: string };
       const errorMessageText = errorObj.message || errorObj.apiMessage || "";
@@ -680,7 +560,7 @@ export function useClassRegistries(
     } finally {
       setIsCreatingReschedule(false);
     }
-  }, [fetchClassRegistries, editingRegistryData, editingRegistryDataRef, enrollmentId, periodMode, startDate, endDate]);
+  }, [fetchClassRegistries, editingRegistryData, editingRegistryDataRef, enrollmentId, periodMode, startDate, endDate, classRegistries]);
 
   const updateEvaluationCache = useCallback(() => {
     // This function is kept for API compatibility but is no longer needed
@@ -692,7 +572,6 @@ export function useClassRegistries(
     editingRegistryData,
     registrySuccessMessage,
     registryErrorMessage,
-    savingAllRegistries,
     rescheduleRegistryId,
     rescheduleDate,
     isCreatingReschedule,
@@ -710,7 +589,6 @@ export function useClassRegistries(
     setNoteModalData,
     fetchClassRegistries,
     handleUpdateRegistry,
-    handleSaveAllRegistries,
     handleCreateReschedule,
     updateEvaluationCache,
   };
