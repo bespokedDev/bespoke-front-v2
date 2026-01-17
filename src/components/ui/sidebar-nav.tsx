@@ -36,11 +36,11 @@ import {
 // --- ESTRUCTURA COMPLETA DE NAVEGACIÓN ---
 const allNavItems = [
   // Admin items
-  { title: "Dashboard", href: "/", icon: LayoutDashboard, roles: ["admin"] },
-  { title: "Teachers", href: "/teachers", icon: UserCircle, roles: ["admin"] },
-  { title: "Students", href: "/students", icon: Users, roles: ["admin"] },
-  { title: "Enrollments", href: "/enrollments", icon: FileBadge, roles: ["admin"] },
-  { title: "Penalization Registry", href: "/penalization-registry", icon: ClipboardList, roles: ["admin"] },
+  { title: "Dashboard", href: "/", icon: LayoutDashboard, roles: ["admin", "admin-jr"] },
+  { title: "Teachers", href: "/teachers", icon: UserCircle, roles: ["admin", "admin-jr"] },
+  { title: "Students", href: "/students", icon: Users, roles: ["admin", "admin-jr"] },
+  { title: "Enrollments", href: "/enrollments", icon: FileBadge, roles: ["admin", "admin-jr"] },
+  { title: "Penalization Registry", href: "/penalization-registry", icon: ClipboardList, roles: ["admin", "admin-jr"] },
   // Professor items
   { title: "Dashboard", href: "/professor/dashboard", icon: LayoutDashboard, roles: ["professor"] },
   { title: "Enrollments", href: "/professor/class-registry", icon: FileBadge, roles: ["professor"] },
@@ -64,7 +64,7 @@ const allNavItems = [
   {
     title: "Settings",
     icon: Settings,
-    roles: ["admin"],
+    roles: ["admin", "admin-jr"],
     subItems: [
       { title: "Plans", href: "/settings/plans", icon: BookOpen },
       { title: "Payment Methods", href: "/settings/payment-methods", icon: CreditCard },
