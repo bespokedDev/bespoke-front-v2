@@ -83,7 +83,6 @@ type BroadcastMessage =
   | { type: "LEADER_ANNOUNCEMENT"; tabId: string; timestamp: number }
   | { type: "LEADER_CHECK"; tabId: string; timestamp: number }
   | { type: "NOTIFICATIONS_UPDATED"; notifications: Notification[]; count: number; timestamp: number }
-  | { type: "NOTIFICATIONS_MARKED_AS_VIEWED"; count: number; timestamp: number }
   | { type: "HEARTBEAT"; tabId: string; timestamp: number };
 
 const CHANNEL_NAME = "notifications-polling";
@@ -107,7 +106,6 @@ export function Topbar({ onMenuClick }: TopbarProps) {
   const leaderCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const tabIdRef = useRef<string>(`tab-${Date.now()}-${Math.random()}`);
   const lastPollingTimeRef = useRef<number>(0);
-  const hasMarkedAsViewedRef = useRef<boolean>(false);
 
   useEffect(() => {
     const prefersDark = document.documentElement.classList.contains("dark");
@@ -165,67 +163,6 @@ export function Topbar({ onMenuClick }: TopbarProps) {
     }
   }, []);
 
-  // Marcar todas las notificaciones activas como vistas usando batch endpoint
-  const markAllNotificationsAsViewed = useCallback(async () => {
-    const activeNotifications = notifications.filter((n) => n.isActive);
-    if (activeNotifications.length === 0) {
-      return;
-    }
-
-    try {
-      // Obtener IDs de todas las notificaciones activas
-      const activeIds = activeNotifications.map((n) => n._id);
-
-      // Usar endpoint batch para anular todas las notificaciones activas en una sola llamada
-      const response: {
-        message: string;
-        totalRequested: number;
-        totalUpdated: number;
-        totalFound: number;
-        totalNotFound: number;
-        notFoundIds?: string[];
-        alreadyInactive: number;
-      } = await apiClient("api/notifications/batch/anular", {
-        method: "PATCH",
-        body: JSON.stringify({ ids: activeIds }),
-      });
-
-      // Log información útil en desarrollo
-      if (process.env.NODE_ENV === "development") {
-        console.log(
-          `Notificaciones anuladas: ${response.totalUpdated} de ${response.totalRequested} solicitadas`
-        );
-        if (response.notFoundIds && response.notFoundIds.length > 0) {
-          console.warn("IDs no encontrados:", response.notFoundIds);
-        }
-        if (response.alreadyInactive > 0) {
-          console.log(`${response.alreadyInactive} notificaciones ya estaban inactivas`);
-        }
-      }
-
-      // Actualizar estado local (optimistic update)
-      setNotifications((prev) =>
-        prev.map((n) => (n.isActive ? { ...n, isActive: false } : n))
-      );
-
-      hasMarkedAsViewedRef.current = true;
-
-      // Broadcast a otras pestañas
-      if (channelRef.current) {
-        const message: BroadcastMessage = {
-          type: "NOTIFICATIONS_MARKED_AS_VIEWED",
-          count: 0,
-          timestamp: Date.now(),
-        };
-        channelRef.current.postMessage(message);
-      }
-    } catch (err: unknown) {
-      console.error("Error marking notifications as viewed:", err);
-      // Recargar notificaciones para obtener estado real del servidor
-      await fetchNotifications(true);
-    }
-  }, [notifications, fetchNotifications]);
-
   // Inicializar BroadcastChannel o fallback a localStorage
   useEffect(() => {
     // Verificar si BroadcastChannel está disponible
@@ -255,13 +192,6 @@ export function Topbar({ onMenuClick }: TopbarProps) {
             // Actualizar notificaciones sin hacer polling
             setNotifications(message.notifications);
             lastPollingTimeRef.current = message.timestamp;
-            break;
-
-          case "NOTIFICATIONS_MARKED_AS_VIEWED":
-            // Actualizar contador sin hacer polling
-            setNotifications((prev) =>
-              prev.map((n) => (n.isActive ? { ...n, isActive: false } : n))
-            );
             break;
 
           case "HEARTBEAT":
@@ -441,21 +371,12 @@ export function Topbar({ onMenuClick }: TopbarProps) {
     }
   }, [isNotificationsOpen]);
 
-  // Fetch notifications cuando se abre el popover y marcar como vistas
+  // Fetch notifications cuando se abre el popover
   useEffect(() => {
     if (isNotificationsOpen) {
-      fetchNotifications(false).then((fetchedNotifications) => {
-        // Marcar todas las activas como vistas cuando se abre el popover
-        if (fetchedNotifications && fetchedNotifications.length > 0) {
-          const activeCount = fetchedNotifications.filter((n) => n.isActive).length;
-          if (activeCount > 0 && !hasMarkedAsViewedRef.current) {
-            markAllNotificationsAsViewed();
-          }
-        }
-      });
-      hasMarkedAsViewedRef.current = false; // Reset para la próxima vez
+      fetchNotifications(false);
     }
-  }, [isNotificationsOpen, fetchNotifications, markAllNotificationsAsViewed]);
+  }, [isNotificationsOpen, fetchNotifications]);
 
   // Count active notifications
   const activeNotificationsCount = notifications.filter((n) => n.isActive).length;
