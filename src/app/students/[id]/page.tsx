@@ -103,6 +103,7 @@ export default function StudentDetailPage() {
         student: infoResponse.student,
         totalAvailableBalance: infoResponse.totalAvailableBalance,
         totalBalancePerClass: infoResponse.totalBalancePerClass,
+        totalAmount: infoResponse.totalAmount,
         enrollmentDetails: infoResponse.enrollmentDetails || [],
         rescheduleTime: infoResponse.rescheduleTime,
         rescheduleClasses: infoResponse.rescheduleClasses,
@@ -1267,7 +1268,7 @@ export default function StudentDetailPage() {
           {/* Tab: Enrollments */}
           <TabsContent value="enrollments">
             <EnrollmentsBalanceCard
-              totalBalance={studentInfo?.totalAvailableBalance ?? 0}
+              totalBalance={(studentInfo?.totalAvailableBalance ?? 0) - (studentInfo?.totalAmount ?? 0)}
               enrollments={studentInfo?.enrollmentDetails ?? []}
               onViewEnrollment={handleViewEnrollment}
               isLoading={!studentInfo}
@@ -1381,6 +1382,14 @@ export default function StudentDetailPage() {
                 entityId={studentId}
                 entityType="student"
                 entityName={student?.name}
+                enrollmentIds={studentInfo?.enrollmentDetails?.map((e) => e.enrollmentId) || []}
+                enrollmentDetails={studentInfo?.enrollmentDetails?.map((e) => ({
+                  _id: e.enrollmentId,
+                  alias: null, // enrollmentDetails no tiene alias, solo planName
+                  planId: {
+                    name: e.planName
+                  },
+                })) || []}
               />
             </TabsContent>
           )}

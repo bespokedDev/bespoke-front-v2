@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { apiClient } from "@/lib/api";
 import { getFriendlyErrorMessage } from "@/lib/errorHandler";
 import { extractDatePart, formatDateForDisplay } from "@/lib/dateUtils";
+import { useAuth } from "@/contexts/AuthContext";
 import type { ClassRegistry } from "../types";
 
 interface UseClassRegistriesReturn {
@@ -126,6 +127,7 @@ export function useClassRegistries(
   startDate?: string,
   endDate?: string
 ): UseClassRegistriesReturn {
+  const { user } = useAuth();
   const [classRegistries, setClassRegistries] = useState<ClassRegistry[]>([]);
   const [editingRegistryData, setEditingRegistryData] = useState<Record<string, {
     minutesViewed: string;
@@ -397,7 +399,17 @@ export function useClassRegistries(
     classDate?: string;
   }) => {
     try {
-      // Preparar el payload, incluyendo classDate si está presente
+      // Obtener professorId o userId según el rol del usuario
+      const userRole = user?.role?.toLowerCase();
+      const professorId = userRole === "professor" ? user?.id : undefined;
+      const userId = userRole === "admin" ? user?.id : undefined;
+
+      // Validar que al menos uno de los campos esté presente
+      if (!professorId && !userId) {
+        throw new Error("No se puede guardar el registro de clase: se requiere un profesor o un administrador.");
+      }
+
+      // Preparar el payload
       const payload: {
         minutesViewed: number | null;
         classType: string[];
@@ -416,6 +428,8 @@ export function useClassRegistries(
         classTime: string | null;
         classViewed?: number;
         classDate?: string;
+        professorId?: string;
+        userId?: string;
       } = {
         minutesViewed: data.minutesViewed,
         classType: data.classType,
@@ -431,9 +445,18 @@ export function useClassRegistries(
         payload.classViewed = data.classViewed;
       }
       
-      // Si hay classDate, convertirla a formato YYYY/MM/DD para el backend
+      // Si hay classDate, asegurar formato YYYY-MM-DD para el backend
       if (data.classDate) {
-        payload.classDate = data.classDate.replace(/-/g, "/");
+        // Asegurar que esté en formato YYYY-MM-DD (convertir de YYYY/MM/DD si es necesario)
+        payload.classDate = data.classDate.replace(/\//g, "-");
+      }
+
+      // Agregar professorId o userId según corresponda
+      if (professorId) {
+        payload.professorId = professorId;
+      }
+      if (userId) {
+        payload.userId = userId;
       }
       
       await apiClient(`api/class-registry/${registryId}`, {
@@ -445,9 +468,9 @@ export function useClassRegistries(
       // Refrescar los datos desde el servidor primero
       await fetchClassRegistries();
       
-      // Limpiar mensajes de error previos y mostrar mensaje de éxito
+      // Limpiar mensajes de error previos y mostrar mensaje de éxito con alert
       setRegistryErrorMessage(null);
-      setRegistrySuccessMessage("Class registry saved successfully");
+      window.alert("Class registry saved successfully");
       
       // El useEffect (líneas 208-274) reinicializará editingRegistryData con los valores actualizados del servidor
       // incluyendo el nuevo classViewed, lo que hará que los campos dejen de ser editables
@@ -473,27 +496,85 @@ export function useClassRegistries(
       alert(errorMessage);
       throw err;
     }
-  }, [fetchClassRegistries]);
+  }, [fetchClassRegistries, user]);
 
   // Create reschedule
   const handleCreateReschedule = useCallback(async (registryId: string, classDate: string) => {
     setIsCreatingReschedule(true);
     
+    // Validar que la fecha no sea anterior a la fecha actual
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Resetear horas para comparar solo fechas
+    const selectedDate = new Date(classDate);
+    selectedDate.setHours(0, 0, 0, 0);
+    
+    if (selectedDate < today) {
+      setIsCreatingReschedule(false);
+      window.alert(
+        "The reschedule date cannot be before today's date. Please select today's date or a future date."
+      );
+      return;
+    }
+
+    // Obtener la información de la clase original para validaciones
+    const originalRegistry = classRegistries.find(r => r._id === registryId);
+    
+    // Validar si la clase tiene más de 50 minutos y está guardada
+    if (originalRegistry) {
+      const minutesViewed = originalRegistry.minutesViewed ?? 0;
+      const isSaved = originalRegistry.classViewed !== 0 && 
+                     originalRegistry.classViewed !== null && 
+                     originalRegistry.classViewed !== undefined;
+      
+      if (minutesViewed > 50 && isSaved) {
+        setIsCreatingReschedule(false);
+        window.alert(
+          "You cannot create a reschedule for a class that has more than 50 minutes and is already saved."
+        );
+        return;
+      }
+    }
+
+    // Obtener professorId o userId según el rol del usuario
+    const userRole = user?.role?.toLowerCase();
+    const professorId = userRole === "professor" ? user?.id : undefined;
+    const userId = userRole === "admin" ? user?.id : undefined;
+
+    // Validar que al menos uno de los campos esté presente
+    if (!professorId && !userId) {
+      setIsCreatingReschedule(false);
+      window.alert("No se puede crear el reschedule: se requiere un profesor o un administrador.");
+      return;
+    }
+    
     // El estado ya debería estar guardado cuando se abrió el diálogo (en setRescheduleRegistryId)
     // Si no está guardado, intentar obtenerlo ahora como fallback
     const savedState = preservedStatesRef.current[registryId] || editingRegistryDataRef.current[registryId] || editingRegistryData[registryId];
     
-    // Obtener la información de la clase original para mostrar el mensaje
-    const originalRegistry = classRegistries.find(r => r._id === registryId);
+    // Obtener la fecha original para el mensaje
     const originalDate = originalRegistry?.classDate;
     
     try {
+      // Preparar el payload del reschedule
+      const reschedulePayload: {
+        classDate: string;
+        professorId?: string;
+        userId?: string;
+      } = {
+        classDate,
+      };
+
+      // Agregar professorId o userId según corresponda
+      if (professorId) {
+        reschedulePayload.professorId = professorId;
+      }
+      if (userId) {
+        reschedulePayload.userId = userId;
+      }
+
       await apiClient(`api/class-registry/${registryId}/reschedule`, {
         method: "POST",
-        body: JSON.stringify({
-          // El backend espera formato YYYY-MM-DD (ej: 2024-01-22)
-          classDate,
-        }),
+        body: JSON.stringify(reschedulePayload),
         skipAutoRedirect: true,
       });
       
@@ -529,13 +610,14 @@ export function useClassRegistries(
       
       setRescheduleRegistryIdState(null);
       setRescheduleDate("");
-      setRegistrySuccessMessage("Reschedule created successfully");
       
-      // Mostrar alerta recordando guardar la clase original
+      // Mostrar alerta de éxito y recordando guardar la clase original
       if (originalDate) {
         window.alert(
           `Reschedule created successfully. Remember to save the information for the original class dated ${formatDateForDisplay(originalDate)}.`
         );
+      } else {
+        window.alert("Reschedule created successfully");
       }
     } catch (err: unknown) {
       const errorObj = err as Error & { statusCode?: number; apiMessage?: string };
@@ -560,7 +642,7 @@ export function useClassRegistries(
     } finally {
       setIsCreatingReschedule(false);
     }
-  }, [fetchClassRegistries, editingRegistryData, editingRegistryDataRef, enrollmentId, periodMode, startDate, endDate, classRegistries]);
+  }, [fetchClassRegistries, editingRegistryData, editingRegistryDataRef, enrollmentId, periodMode, startDate, endDate, classRegistries, user?.id, user?.role]);
 
   const updateEvaluationCache = useCallback(() => {
     // This function is kept for API compatibility but is no longer needed

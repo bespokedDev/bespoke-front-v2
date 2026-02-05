@@ -23,6 +23,7 @@ export interface EnrollmentBrief {
     _id: string;
     name: string;
   };
+  professorId?: ProfessorBrief | null;
   studentIds?: Array<{
     studentId?: {
       _id: string;

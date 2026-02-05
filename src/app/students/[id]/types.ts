@@ -55,6 +55,7 @@ export interface StudentInfo {
   };
   totalAvailableBalance: number;
   totalBalancePerClass: number;
+  totalAmount: number;
   enrollmentDetails: Array<{
     enrollmentId: string;
     planName: string;

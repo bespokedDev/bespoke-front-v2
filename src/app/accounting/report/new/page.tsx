@@ -187,10 +187,16 @@ interface BonusDetail {
 
 interface PenalizationDetail {
   penalizationId: string;
-  professorId: string;
-  professorName: string;
-  professorCiNumber: string;
+  studentId?: string | null;
+  studentName?: string;
+  studentCode?: string | null;
+  professorId?: string;
+  professorName?: string;
+  professorCiNumber?: string;
   penalizationMoney: number;
+  totalIncomesAmount?: number;
+  excedenteAmount?: number;
+  isFullyPaid?: boolean;
   description: string | null;
   endDate: string | null;
   support_file: string | null;
@@ -205,6 +211,37 @@ interface PenalizationDetail {
     nivel: number | null;
     description: string | null;
   } | null;
+  linkedIncomes?: Array<{
+    incomeId: string;
+    amount: number;
+    income_date: string;
+    divisa: string;
+    paymentMethod: string;
+  }>;
+}
+
+interface PrepaidEnrollmentDetail {
+  enrollmentId: string;
+  enrollmentAlias: string | null;
+  studentNames: string;
+  professorName: string;
+  plan: string;
+  startDate: string;
+  endDate: string;
+  balance: number;
+  incomes: ExcedentDetail[];
+}
+
+interface PausedEnrollmentDetail {
+  enrollmentId: string;
+  enrollmentAlias: string | null;
+  studentNames: string;
+  professorName: string;
+  plan: string;
+  status: number;
+  pauseDate: string | null;
+  availableBalance: number;
+  excedente: number;
 }
 
 interface ExcedentReport {
@@ -212,14 +249,19 @@ interface ExcedentReport {
   totalExcedente: number;
   totalExcedenteIncomes: number;
   totalExcedenteClasses: number;
+  totalPrepaidEnrollments?: number;
+  totalPausedEnrollments?: number;
   totalBonuses: number;
   totalExcedentePenalizations?: number;
   numberOfIncomes: number;
   numberOfClassesNotViewed: number;
   numberOfBonuses: number;
+  numberOfPausedEnrollments?: number;
   numberOfPenalizations?: number;
   incomeDetails: ExcedentDetail[];
   classNotViewedDetails: ClassNotViewedDetail[];
+  prepaidEnrollmentsDetails?: PrepaidEnrollmentDetail[];
+  pausedEnrollmentsDetails?: PausedEnrollmentDetail[];
   bonusDetails: BonusDetail[];
   penalizationDetails?: PenalizationDetail[];
 }
@@ -259,6 +301,7 @@ interface Totals {
     normalProfessors: {
       totalTeacher: number;
       totalBespoke: number;
+      totalFinal: number;
       balanceRemaining: number;
     };
     specialProfessor: {
@@ -356,30 +399,45 @@ function NewReportComponent() {
           }
         : null;
 
-      // Asegurar que excedents tenga la estructura correcta con campos opcionales
-      const excedenteData = response.excedents
+      // Asegurar que excedente tenga la estructura correcta con campos opcionales
+      // Nota: El campo puede venir como "excedente" (singular) o "excedents" (plural) según la versión de la API
+      const excedenteResponse = response.excedente || response.excedents;
+      const excedenteData = excedenteResponse
         ? {
-            ...response.excedents,
+            ...excedenteResponse,
             totalExcedenteIncomes:
-              response.excedents.totalExcedenteIncomes ?? 0,
+              excedenteResponse.totalExcedenteIncomes ?? 0,
             totalExcedenteClasses:
-              response.excedents.totalExcedenteClasses ?? 0,
-            totalBonuses: response.excedents.totalBonuses ?? 0,
+              excedenteResponse.totalExcedenteClasses ?? 0,
+            totalPrepaidEnrollments:
+              excedenteResponse.totalPrepaidEnrollments ?? 0,
+            totalPausedEnrollments:
+              excedenteResponse.totalPausedEnrollments ?? 0,
+            totalBonuses: excedenteResponse.totalBonuses ?? 0,
+            totalExcedentePenalizations:
+              excedenteResponse.totalExcedentePenalizations ?? 0,
             numberOfClassesNotViewed:
-              response.excedents.numberOfClassesNotViewed ?? 0,
-            numberOfBonuses: response.excedents.numberOfBonuses ?? 0,
-            incomeDetails: response.excedents.incomeDetails ?? [],
+              excedenteResponse.numberOfClassesNotViewed ?? 0,
+            numberOfBonuses: excedenteResponse.numberOfBonuses ?? 0,
+            numberOfPausedEnrollments:
+              excedenteResponse.numberOfPausedEnrollments ?? 0,
+            incomeDetails: excedenteResponse.incomeDetails ?? [],
             classNotViewedDetails:
-              response.excedents.classNotViewedDetails ?? [],
-            bonusDetails: response.excedents.bonusDetails ?? [],
+              excedenteResponse.classNotViewedDetails ?? [],
+            prepaidEnrollmentsDetails:
+              excedenteResponse.prepaidEnrollmentsDetails ?? [],
+            pausedEnrollmentsDetails:
+              excedenteResponse.pausedEnrollmentsDetails ?? [],
+            bonusDetails: excedenteResponse.bonusDetails ?? [],
+            penalizationDetails: excedenteResponse.penalizationDetails ?? [],
             // Mantener compatibilidad con estructura antigua
             details:
-              response.excedents.incomeDetails ??
-              response.excedents.details ??
+              excedenteResponse.incomeDetails ??
+              excedenteResponse.details ??
               [],
             numberOfIncomes:
-              response.excedents.numberOfIncomes ??
-              response.excedents.incomeDetails?.length ??
+              excedenteResponse.numberOfIncomes ??
+              excedenteResponse.incomeDetails?.length ??
               0,
           }
         : null;
@@ -918,7 +976,180 @@ function NewReportComponent() {
           finalY = (doc as any).lastAutoTable.finalY + 10;
         }
 
-        // Sección 3: Bonos de Profesores
+        // Sección 3: Prepaid Enrollments
+        if (
+          excedente.prepaidEnrollmentsDetails &&
+          excedente.prepaidEnrollmentsDetails.length > 0
+        ) {
+          hasExcedents = true;
+          finalY += 5;
+          doc.setFontSize(14);
+          doc.text("Prepaid Enrollments", 14, finalY);
+          finalY += 8;
+
+          autoTable(doc, {
+            startY: finalY,
+            head: [
+              [
+                "Alias / Student",
+                "Professor",
+                "Plan",
+                "Start Date",
+                "End Date",
+                "Balance",
+              ],
+            ],
+            body: excedente.prepaidEnrollmentsDetails.map((detail) => [
+              detail.enrollmentAlias || detail.studentNames,
+              detail.professorName,
+              detail.plan,
+              formatDateForDisplay(detail.startDate),
+              formatDateForDisplay(detail.endDate),
+              `$${detail.balance.toFixed(2)}`,
+            ]),
+            foot: [
+              [
+                {
+                  content: "Total:",
+                  colSpan: 5,
+                  styles: { halign: "right", fontStyle: "bold" },
+                },
+                `$${(excedente.totalPrepaidEnrollments || 0).toFixed(2)}`,
+              ],
+            ],
+            footStyles: {
+              fontStyle: "bold",
+              fillColor: [240, 240, 240],
+              textColor: [0, 0, 0],
+            },
+            theme: "grid",
+            styles: { fontSize: 8 },
+            didDrawPage: (data) => {
+              finalY = data.cursor?.y || 0;
+            },
+          });
+          finalY = (doc as any).lastAutoTable.finalY + 10;
+        }
+
+        // Sección 4: Paused Enrollments
+        if (
+          excedente.pausedEnrollmentsDetails &&
+          excedente.pausedEnrollmentsDetails.length > 0
+        ) {
+          hasExcedents = true;
+          finalY += 5;
+          doc.setFontSize(14);
+          doc.text("Paused Enrollments", 14, finalY);
+          finalY += 8;
+
+          autoTable(doc, {
+            startY: finalY,
+            head: [
+              [
+                "Alias / Student",
+                "Professor",
+                "Plan",
+                "Pause Date",
+                "Available Balance",
+                "Excedent",
+              ],
+            ],
+            body: excedente.pausedEnrollmentsDetails.map((detail) => [
+              detail.enrollmentAlias || detail.studentNames,
+              detail.professorName,
+              detail.plan,
+              detail.pauseDate
+                ? formatDateForDisplay(detail.pauseDate)
+                : "N/A",
+              `$${detail.availableBalance.toFixed(2)}`,
+              `$${detail.excedente.toFixed(2)}`,
+            ]),
+            foot: [
+              [
+                {
+                  content: "Total:",
+                  colSpan: 5,
+                  styles: { halign: "right", fontStyle: "bold" },
+                },
+                `$${(excedente.totalPausedEnrollments || 0).toFixed(2)}`,
+              ],
+            ],
+            footStyles: {
+              fontStyle: "bold",
+              fillColor: [240, 240, 240],
+              textColor: [0, 0, 0],
+            },
+            theme: "grid",
+            styles: { fontSize: 8 },
+            didDrawPage: (data) => {
+              finalY = data.cursor?.y || 0;
+            },
+          });
+          finalY = (doc as any).lastAutoTable.finalY + 10;
+        }
+
+        // Sección 5: Penalizaciones de Estudiantes
+        if (
+          excedente.penalizationDetails &&
+          excedente.penalizationDetails.length > 0
+        ) {
+          hasExcedents = true;
+          finalY += 5;
+          doc.setFontSize(14);
+          doc.text("Student Penalizations (with linked incomes)", 14, finalY);
+          finalY += 8;
+
+          autoTable(doc, {
+            startY: finalY,
+            head: [
+              [
+                "Date",
+                "Student",
+                "Student Code",
+                "Description",
+                "Type",
+                "Penalization",
+                "Paid",
+                "Excedent",
+                "Status",
+              ],
+            ],
+            body: excedente.penalizationDetails.map((penalization) => [
+              formatDateForDisplay(penalization.createdAt),
+              penalization.studentName || "—",
+              penalization.studentCode || "—",
+              penalization.description || "No description",
+              penalization.penalizationType?.name || "—",
+              `$${penalization.penalizationMoney.toFixed(2)}`,
+              `$${(penalization.totalIncomesAmount || 0).toFixed(2)}`,
+              `$${(penalization.excedenteAmount || 0).toFixed(2)}`,
+              penalization.isFullyPaid ? "Fully Paid" : "Partially Paid",
+            ]),
+            foot: [
+              [
+                {
+                  content: "Total:",
+                  colSpan: 8,
+                  styles: { halign: "right", fontStyle: "bold" },
+                },
+                `$${(excedente.totalExcedentePenalizations || 0).toFixed(2)}`,
+              ],
+            ],
+            footStyles: {
+              fontStyle: "bold",
+              fillColor: [240, 240, 240],
+              textColor: [0, 0, 0],
+            },
+            theme: "grid",
+            styles: { fontSize: 8 },
+            didDrawPage: (data) => {
+              finalY = data.cursor?.y || 0;
+            },
+          });
+          finalY = (doc as any).lastAutoTable.finalY + 10;
+        }
+
+        // Sección 6: Bonos de Profesores
         if (excedente.bonusDetails && excedente.bonusDetails.length > 0) {
           hasExcedents = true;
           finalY += 5;
@@ -973,36 +1204,64 @@ function NewReportComponent() {
           doc.text("Excedents Summary", 14, finalY);
           finalY += 8;
 
+          const excedentsBody: any[] = [
+            [
+              "Total Excedent Incomes",
+              `$${excedente.totalExcedenteIncomes.toFixed(2)}`,
+            ],
+            [
+              "Total Classes Not Viewed",
+              `$${excedente.totalExcedenteClasses.toFixed(2)}`,
+            ],
+          ];
+
+          // Add Prepaid Enrollments if available
+          if (excedente.totalPrepaidEnrollments && excedente.totalPrepaidEnrollments > 0) {
+            excedentsBody.push([
+              "Total Prepaid Enrollments",
+              `$${excedente.totalPrepaidEnrollments.toFixed(2)}`,
+            ]);
+          }
+
+          // Add Paused Enrollments if available
+          if (excedente.totalPausedEnrollments && excedente.totalPausedEnrollments > 0) {
+            excedentsBody.push([
+              "Total Paused Enrollments",
+              `$${excedente.totalPausedEnrollments.toFixed(2)}`,
+            ]);
+          }
+
+          // Add Penalizations if available
+          if (excedente.totalExcedentePenalizations && excedente.totalExcedentePenalizations > 0) {
+            excedentsBody.push([
+              "Total Penalizations",
+              `$${excedente.totalExcedentePenalizations.toFixed(2)}`,
+            ]);
+          }
+
+          excedentsBody.push([
+            "Total Bonuses",
+            {
+              content: `-$${excedente.totalBonuses.toFixed(2)}`,
+              styles: { textColor: [255, 0, 0] },
+            },
+          ]);
+
+          excedentsBody.push([
+            {
+              content: "Grand Total:",
+              styles: { fontStyle: "bold" },
+            },
+            {
+              content: `$${excedente.totalExcedente.toFixed(2)}`,
+              styles: { fontStyle: "bold" },
+            },
+          ]);
+
           autoTable(doc, {
             startY: finalY,
             head: [["Concept", "Amount"]],
-            body: [
-              [
-                "Total Excedent Incomes",
-                `$${excedente.totalExcedenteIncomes.toFixed(2)}`,
-              ],
-              [
-                "Total Classes Not Viewed",
-                `$${excedente.totalExcedenteClasses.toFixed(2)}`,
-              ],
-              [
-                "Total Bonuses",
-                {
-                  content: `-$${excedente.totalBonuses.toFixed(2)}`,
-                  styles: { textColor: [255, 0, 0] },
-                },
-              ],
-              [
-                {
-                  content: "Grand Total:",
-                  styles: { fontStyle: "bold" },
-                },
-                {
-                  content: `$${excedente.totalExcedente.toFixed(2)}`,
-                  styles: { fontStyle: "bold" },
-                },
-              ],
-            ],
+            body: excedentsBody,
             theme: "grid",
             styles: { fontSize: 9 },
             headStyles: { fillColor: [240, 240, 240], fontStyle: "bold" },
@@ -1440,7 +1699,7 @@ function NewReportComponent() {
                   </Label>
                   <p className="text-2xl font-bold">
                     $
-                    {reportData.totals.subtotals.normalProfessors.totalTeacher.toFixed(
+                    {reportData.totals.subtotals.normalProfessors.totalFinal.toFixed(
                       2
                     )}
                   </p>
@@ -1842,21 +2101,142 @@ function NewReportComponent() {
                 </Table>
               </div>
 
-              {/* Sección 3: Penalizaciones Monetarias */}
+              {/* Sección 3: Prepaid Enrollments */}
+              {reportData.excedente.prepaidEnrollmentsDetails &&
+              reportData.excedente.prepaidEnrollmentsDetails.length > 0 && (
+                <div className="border-t pt-2">
+                  <h3 className="text-lg font-semibold">
+                    Prepaid Enrollments
+                  </h3>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Alias / Student Name</TableHead>
+                        <TableHead>Professor</TableHead>
+                        <TableHead>Plan</TableHead>
+                        <TableHead>Start Date</TableHead>
+                        <TableHead>End Date</TableHead>
+                        <TableHead className="text-right">Balance</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {reportData.excedente.prepaidEnrollmentsDetails.map(
+                        (detail) => (
+                          <TableRow key={detail.enrollmentId}>
+                            <TableCell>
+                              {detail.enrollmentAlias || detail.studentNames}
+                            </TableCell>
+                            <TableCell>{detail.professorName}</TableCell>
+                            <TableCell>{detail.plan}</TableCell>
+                            <TableCell>
+                              {formatDateForDisplay(detail.startDate)}
+                            </TableCell>
+                            <TableCell>
+                              {formatDateForDisplay(detail.endDate)}
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              ${detail.balance.toFixed(2)}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      )}
+                    </TableBody>
+                    <TableFooter>
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-right font-bold">
+                          Total:
+                        </TableCell>
+                        <TableCell className="text-right font-bold">
+                          $
+                          {(
+                            reportData.excedente.totalPrepaidEnrollments || 0
+                          ).toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    </TableFooter>
+                  </Table>
+                </div>
+              )}
+
+              {/* Sección 4: Paused Enrollments */}
+              {reportData.excedente.pausedEnrollmentsDetails &&
+              reportData.excedente.pausedEnrollmentsDetails.length > 0 && (
+                <div className="border-t pt-2">
+                  <h3 className="text-lg font-semibold">
+                    Paused Enrollments
+                  </h3>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Alias / Student Name</TableHead>
+                        <TableHead>Professor</TableHead>
+                        <TableHead>Plan</TableHead>
+                        <TableHead>Pause Date</TableHead>
+                        <TableHead>Available Balance</TableHead>
+                        <TableHead className="text-right">Excedent</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {reportData.excedente.pausedEnrollmentsDetails.map(
+                        (detail) => (
+                          <TableRow key={detail.enrollmentId}>
+                            <TableCell>
+                              {detail.enrollmentAlias || detail.studentNames}
+                            </TableCell>
+                            <TableCell>{detail.professorName}</TableCell>
+                            <TableCell>{detail.plan}</TableCell>
+                            <TableCell>
+                              {detail.pauseDate
+                                ? formatDateForDisplay(detail.pauseDate)
+                                : "N/A"}
+                            </TableCell>
+                            <TableCell>
+                              ${detail.availableBalance.toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              ${detail.excedente.toFixed(2)}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      )}
+                    </TableBody>
+                    <TableFooter>
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-right font-bold">
+                          Total:
+                        </TableCell>
+                        <TableCell className="text-right font-bold">
+                          $
+                          {(
+                            reportData.excedente.totalPausedEnrollments || 0
+                          ).toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    </TableFooter>
+                  </Table>
+                </div>
+              )}
+
+              {/* Sección 5: Penalizaciones Monetarias de Estudiantes */}
               {reportData.excedente.penalizationDetails &&
               reportData.excedente.penalizationDetails.length > 0 && (
                 <div className="border-t pt-2">
-                  <h3 className="text-lg font-semibold">Penalizations</h3>
+                  <h3 className="text-lg font-semibold">
+                    Student Penalizations (with linked incomes)
+                  </h3>
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Date</TableHead>
-                        <TableHead>Professor</TableHead>
-                        <TableHead>CI Number</TableHead>
+                        <TableHead>Student</TableHead>
+                        <TableHead>Student Code</TableHead>
                         <TableHead>Description</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead>Level</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead className="text-right">Penalization Amount</TableHead>
+                        <TableHead className="text-right">Paid Amount</TableHead>
+                        <TableHead className="text-right">Excedent Amount</TableHead>
+                        <TableHead>Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1866,9 +2246,11 @@ function NewReportComponent() {
                             <TableCell>
                               {formatDateForDisplay(penalization.createdAt)}
                             </TableCell>
-                            <TableCell>{penalization.professorName}</TableCell>
                             <TableCell>
-                              {penalization.professorCiNumber}
+                              {penalization.studentName || "—"}
+                            </TableCell>
+                            <TableCell>
+                              {penalization.studentCode || "—"}
                             </TableCell>
                             <TableCell>
                               {penalization.description || "No description"}
@@ -1893,13 +2275,30 @@ function NewReportComponent() {
                             <TableCell className="text-right font-medium">
                               ${penalization.penalizationMoney.toFixed(2)}
                             </TableCell>
+                            <TableCell className="text-right">
+                              ${(penalization.totalIncomesAmount || 0).toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              ${(penalization.excedenteAmount || 0).toFixed(2)}
+                            </TableCell>
+                            <TableCell>
+                              {penalization.isFullyPaid ? (
+                                <span className="text-green-600 font-semibold">
+                                  Fully Paid
+                                </span>
+                              ) : (
+                                <span className="text-orange-600 font-semibold">
+                                  Partially Paid
+                                </span>
+                              )}
+                            </TableCell>
                           </TableRow>
                         )
                       )}
                     </TableBody>
                     <TableFooter>
                       <TableRow>
-                        <TableCell colSpan={6} className="text-right font-bold">
+                        <TableCell colSpan={9} className="text-right font-bold">
                           Total:
                         </TableCell>
                         <TableCell className="text-right font-bold">
@@ -1911,7 +2310,7 @@ function NewReportComponent() {
                 </div>
               )}
 
-              {/* Sección 4: Professor Bonuses */}
+              {/* Sección 6: Professor Bonuses */}
               <div className="border-t pt-2">
                 <h3 className="text-lg font-semibold">
                   Professor Bonuses

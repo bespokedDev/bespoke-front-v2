@@ -303,8 +303,53 @@ export default function ClassRegistryDetailPage() {
           }),
         };
 
+      // Validar que todos los campos obligatorios estén llenos (excepto nota)
+      const missingFields: string[] = [];
+      
+      if (!base.minutesViewed || base.minutesViewed === "") {
+        missingFields.push("Minutes Viewed");
+      }
+      if (!base.classTime || base.classTime.trim() === "") {
+        missingFields.push("Class Time");
+      }
+      if (!base.classType || base.classType.length === 0) {
+        missingFields.push("Class Type");
+      }
+      if (!base.contentType || base.contentType.length === 0) {
+        missingFields.push("Content Type");
+      }
+      if (!base.vocabularyContent || base.vocabularyContent.trim() === "") {
+        missingFields.push("Vocabulary Content");
+      }
+      if (!base.studentMood || base.studentMood.trim() === "") {
+        missingFields.push("Student Mood");
+      }
+      if (!base.homework || base.homework.trim() === "") {
+        missingFields.push("Homework");
+      }
+      // Validar classDate solo si es reschedule
+      if (isReschedule && (!base.classDate || base.classDate.trim() === "")) {
+        missingFields.push("Class Date");
+      }
+      
+      if (missingFields.length > 0) {
+        window.alert(
+          `Please fill in all required fields before saving:\n\n${missingFields.join("\n")}`
+        );
+        return;
+      }
+
       const minutesNumber =
         base.minutesViewed === "" ? 0 : Number(base.minutesViewed);
+      
+      // Validar que el máximo de minutos sea 60
+      if (minutesNumber > 60) {
+        window.alert(
+          "The maximum minutes for a class is 60. Please enter a value between 0 and 60."
+        );
+        return;
+      }
+      
       const rescheduleValue = base.reschedule ?? registry.reschedule;
 
       // Determinar si el classType es "no show"
@@ -314,26 +359,44 @@ export default function ClassRegistryDetailPage() {
         selectedType?.name?.toLowerCase().includes("no show") || false;
 
       // Calcular classViewed automáticamente basado en minutesViewed y classType
+      // Nota: minutesNumber ya está validado para ser <= 60
       let classViewedValue: number;
       if (minutesNumber === 0 || isNoShow) {
         // No Show: minutesViewed === 0 o classType es "no show"
         classViewedValue = 3;
-      } else if (minutesNumber === 60) {
-        // Viewed: exactamente 60 minutos
+      } else if (minutesNumber > 50) {
+        // Viewed: mayor a 50 minutos
         classViewedValue = 1;
-      } else if (minutesNumber > 0 && minutesNumber < 60) {
-        // Partially Viewed: entre 0 y 60 minutos
-        classViewedValue = 2;
-        // Validación: si minutos < 60 y no hay reschedule
-        if (rescheduleValue === 0) {
+      } else {
+        // Partially Viewed: entre 0 y 50 minutos (ya validado que es > 0 y <= 50)
+        // Validación: minutesViewed debe ser >= 15 para classViewed: 2 según la API
+        if (minutesNumber < 15) {
           window.alert(
-            "This class has less than 60 minutes and no reschedule. Please create a reschedule before saving."
+            "To mark a class as partially viewed, you must have at least 15 minutes viewed. Please enter at least 15 minutes or mark it as 'No Show'."
           );
           return;
         }
-      } else {
-        // Fallback: si minutesViewed > 60, consideramos como Viewed
-        classViewedValue = 1;
+        classViewedValue = 2;
+        // Validación: si minutos < 50, verificar si ya tiene un reschedule
+        // Las clases con menos de 50 minutos requieren reschedule
+        // Las clases entre 50 y 60 minutos no requieren reschedule
+        if (minutesNumber < 50) {
+          // Verificar si existe un reschedule para esta clase original
+          const hasExistingReschedule = classRegistriesHook.classRegistries.some(
+            (r) => 
+              r.originalClassId !== null && 
+              r.originalClassId !== undefined &&
+              r.originalClassId._id === registry._id
+          );
+          
+          // Si no hay reschedule (ni en el campo reschedule ni existe un reschedule creado)
+          if (rescheduleValue === 0 && !hasExistingReschedule) {
+            window.alert(
+              "This class has less than 50 minutes and no reschedule. Please create a reschedule before saving."
+            );
+            return;
+          }
+        }
       }
 
       // Confirmación para profesores: después de guardar no podrá editar (porque classViewed será diferente de 0)
@@ -1393,6 +1456,28 @@ export default function ClassRegistryDetailPage() {
         cell: ({ row }) => {
           const registry = row.original;
           const canReschedule = registry.reschedule === 0;
+          
+          // Contar TODOS los reschedules del enrollment/periodo (no solo de esta clase)
+          const totalReschedulesCount = classRegistriesHook.classRegistries.filter(
+            (r) => 
+              r.originalClassId !== null && 
+              r.originalClassId !== undefined
+          ).length;
+          
+          // Validar si la clase tiene más de 50 minutos y está guardada
+          const minutesViewed = registry.minutesViewed ?? 0;
+          const isSaved = registry.classViewed !== 0 && 
+                         registry.classViewed !== null && 
+                         registry.classViewed !== undefined;
+          const hasMoreThan50MinutesAndSaved = minutesViewed > 50 && isSaved;
+          
+          // Si es profesor: máximo 2 reschedules en total
+          // Si es admin: sin límite
+          // No permitir crear reschedule si la clase tiene más de 50 minutos y está guardada
+          const canCreateReschedule = canReschedule && 
+                                     (isAdmin || totalReschedulesCount < 2) &&
+                                     !hasMoreThan50MinutesAndSaved;
+          
           const hasEvaluationInCache =
             evaluationsHook.evaluationCache[registry._id] ?? false;
           const isMenuOpen =
@@ -1435,6 +1520,28 @@ export default function ClassRegistryDetailPage() {
                   {canReschedule && (
                     <DropdownMenuItem
                       onClick={() => {
+                        // Validar límite de reschedules para profesores (máximo 2 en total)
+                        if (isProfessor && totalReschedulesCount >= 2) {
+                          window.alert(
+                            "You cannot create more than 2 reschedules for this enrollment period. Please contact an administrator if you need to create additional reschedules."
+                          );
+                          evaluationsHook.setOpenMenuRegistryId(null);
+                          return;
+                        }
+                        
+                        // Validar si la clase tiene más de 50 minutos y está guardada
+                        const minutesViewed = registry.minutesViewed ?? 0;
+                        const isSaved = registry.classViewed !== 0 && 
+                                       registry.classViewed !== null && 
+                                       registry.classViewed !== undefined;
+                        if (minutesViewed > 50 && isSaved) {
+                          window.alert(
+                            "You cannot create a reschedule for a class that has more than 50 minutes and is already saved."
+                          );
+                          evaluationsHook.setOpenMenuRegistryId(null);
+                          return;
+                        }
+                        
                         syncRefToState(registry._id);
                         classRegistriesHook.setRescheduleRegistryId(
                           registry._id
@@ -1442,9 +1549,12 @@ export default function ClassRegistryDetailPage() {
                         classRegistriesHook.setRescheduleDate("");
                         evaluationsHook.setOpenMenuRegistryId(null);
                       }}
+                      disabled={!canCreateReschedule}
                     >
                       <Calendar className="h-4 w-4 mr-2" />
                       Create Reschedule
+                      {isProfessor && totalReschedulesCount >= 2 && " (Period limit reached)"}
+                      {hasMoreThan50MinutesAndSaved && " (Not allowed: >50 min saved)"}
                     </DropdownMenuItem>
                   )}
                   {canReschedule && <DropdownMenuSeparator />}
@@ -1484,6 +1594,7 @@ export default function ClassRegistryDetailPage() {
       syncRefToState,
       classRegistriesHook,
       evaluationsHook,
+      isAdmin,
       classTypes,
       contentClasses,
       isProfessor,

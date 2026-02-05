@@ -122,11 +122,11 @@ export default function NotificationsPage() {
     try {
       // Build query string for filters
       const queryParams = new URLSearchParams();
-      if (filters.category) queryParams.append("category", filters.category);
-      if (filters.penalization) queryParams.append("penalization", filters.penalization);
-      if (filters.enrollment) queryParams.append("enrollment", filters.enrollment);
-      if (filters.professor) queryParams.append("professor", filters.professor);
-      if (filters.student) queryParams.append("student", filters.student);
+      if (filters.category) queryParams.append("idCategoryNotification", filters.category);
+      if (filters.penalization) queryParams.append("idPenalization", filters.penalization);
+      if (filters.enrollment) queryParams.append("idEnrollment", filters.enrollment);
+      if (filters.professor) queryParams.append("idProfessor", filters.professor);
+      if (filters.student) queryParams.append("idStudent", filters.student);
       if (filters.isActive !== "") queryParams.append("isActive", filters.isActive);
 
       const queryString = queryParams.toString();

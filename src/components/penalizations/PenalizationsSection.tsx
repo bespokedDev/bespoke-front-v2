@@ -48,22 +48,45 @@ import {
 } from "@/components/ui/command";
 import { CheckCircle2, ChevronsUpDown } from "lucide-react";
 
+interface EnrollmentInfo {
+  _id: string;
+  alias?: string | null;
+  planId?: {
+    name: string;
+  };
+  enrollmentType?: string;
+  language?: string;
+  professorId?: {
+    name: string;
+  };
+}
+
+interface PenalizationWithSource extends PenalizationRegistry {
+  source?: "student" | "enrollment";
+  sourceEnrollmentId?: string;
+  sourceEnrollmentInfo?: EnrollmentInfo;
+}
+
 interface PenalizationsSectionProps {
   entityId: string;
   entityType: "professor" | "enrollment" | "student";
   entityName?: string; // For display purposes
+  enrollmentIds?: string[]; // Optional: enrollment IDs to fetch penalizations from
+  enrollmentDetails?: EnrollmentInfo[]; // Optional: enrollment details for display
 }
 
 export function PenalizationsSection({
   entityId,
   entityType,
   entityName,
+  enrollmentIds,
+  enrollmentDetails,
 }: PenalizationsSectionProps) {
   const router = useRouter();
   const { user } = useAuth();
   const isAdmin = user?.role?.toLowerCase() === "admin";
 
-  const [penalizations, setPenalizations] = useState<PenalizationRegistry[]>([]);
+  const [penalizations, setPenalizations] = useState<PenalizationWithSource[]>([]);
   const [penalizationTypes, setPenalizationTypes] = useState<PenalizationType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -92,7 +115,9 @@ export function PenalizationsSection({
       setIsLoading(true);
       setError(null);
 
-      // Build filter query parameter based on entity type
+      const allPenalizations: PenalizationWithSource[] = [];
+
+      // Fetch penalizations for the main entity
       let filterParam = "";
       switch (entityType) {
         case "professor":
@@ -108,38 +133,112 @@ export function PenalizationsSection({
           filterParam = "";
       }
 
-      const url = filterParam
-        ? `api/penalization-registry?${filterParam}`
-        : "api/penalization-registry";
+      if (filterParam) {
+        try {
+          const url = `api/penalization-registry?${filterParam}`;
+          const response = await apiClient(url);
 
-      const response = await apiClient(url);
+          let penalizationsArray: PenalizationRegistry[] = [];
+          if (response && typeof response === "object" && "penalizations" in response) {
+            penalizationsArray = Array.isArray(response.penalizations)
+              ? response.penalizations
+              : [];
+          } else if (Array.isArray(response)) {
+            penalizationsArray = response;
+          }
 
-      if (response && typeof response === "object" && "penalizations" in response) {
-        const penalizationsArray = Array.isArray(response.penalizations)
-          ? response.penalizations
-          : [];
-        setPenalizations(penalizationsArray);
-      } else if (Array.isArray(response)) {
-        setPenalizations(response);
-      } else {
-        setPenalizations([]);
+          // Add source metadata
+          const penalizationsWithSource: PenalizationWithSource[] = penalizationsArray.map((p) => ({
+            ...p,
+            source: entityType === "student" ? "student" : undefined,
+          }));
+
+          allPenalizations.push(...penalizationsWithSource);
+        } catch (err) {
+          const errorInfo = handleApiError(err);
+          if (errorInfo.statusCode !== 404) {
+            console.warn("Error fetching main entity penalizations:", err);
+          }
+        }
       }
+
+      // If entityType is "student" and we have enrollmentIds, fetch penalizations for each enrollment
+      if (entityType === "student" && enrollmentIds && enrollmentIds.length > 0) {
+        const enrollmentPromises = enrollmentIds.map(async (enrollmentId) => {
+          try {
+            const url = `api/penalization-registry?enrollmentId=${enrollmentId}`;
+            const response = await apiClient(url);
+            console.log("response de penalizaciones enrollment de estudiante", response);
+
+            let penalizationsArray: PenalizationRegistry[] = [];
+            if (response && typeof response === "object" && "penalizations" in response) {
+              penalizationsArray = Array.isArray(response.penalizations)
+                ? response.penalizations
+                : [];
+            } else if (Array.isArray(response)) {
+              penalizationsArray = response;
+            }
+
+            // Add source metadata - use enrollmentId from penalization if populated, otherwise use enrollmentDetails
+            return penalizationsArray.map((p) => {
+              // Try to get enrollment info from the penalization's enrollmentId (if populated)
+              let enrollmentInfo: EnrollmentInfo | undefined;
+              
+              if (p.enrollmentId && typeof p.enrollmentId === "object" && p.enrollmentId !== null) {
+                // Use populated enrollmentId data
+                enrollmentInfo = {
+                  _id: p.enrollmentId._id,
+                  alias: p.enrollmentId.alias || null,
+                  planId: p.enrollmentId.planId ? {
+                    name: p.enrollmentId.planId.name
+                  } : undefined,
+                  enrollmentType: p.enrollmentId.enrollmentType,
+                  language: p.enrollmentId.language,
+                  professorId: undefined, // Will be set below if available
+                };
+              } else {
+                // Fallback to enrollmentDetails passed as prop
+                enrollmentInfo = enrollmentDetails?.find((e) => e._id === enrollmentId);
+              }
+
+              return {
+                ...p,
+                source: "enrollment" as const,
+                sourceEnrollmentId: enrollmentId,
+                sourceEnrollmentInfo: enrollmentInfo,
+              };
+            });
+          } catch (err) {
+            const errorInfo = handleApiError(err);
+            if (errorInfo.statusCode !== 404) {
+              console.warn(`Error fetching penalizations for enrollment ${enrollmentId}:`, err);
+            }
+            return [];
+          }
+        });
+
+        const enrollmentResults = await Promise.all(enrollmentPromises);
+        enrollmentResults.forEach((penalizations) => {
+          allPenalizations.push(...penalizations);
+        });
+      }
+
+      // Remove duplicates based on _id (in case a penalization appears in multiple queries)
+      const uniquePenalizations = Array.from(
+        new Map(allPenalizations.map((p) => [p._id, p])).values()
+      );
+
+      setPenalizations(uniquePenalizations);
     } catch (err: unknown) {
-      const errorInfo = handleApiError(err);
-      // If 404, it might mean no penalizations or endpoint not ready yet
-      if (errorInfo.statusCode === 404) {
-        setPenalizations([]);
-      } else {
-        const errorMessage = getFriendlyErrorMessage(
-          err,
-          "Failed to load penalizations. Please try again."
-        );
-        setError(errorMessage);
-      }
+      const errorMessage = getFriendlyErrorMessage(
+        err,
+        "Failed to load penalizations. Please try again."
+      );
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
-  }, [entityId, entityType]);
+  }, [entityId, entityType, enrollmentIds, enrollmentDetails]);
 
   // Fetch penalization types
   const fetchPenalizationTypes = useCallback(async () => {
@@ -352,7 +451,7 @@ export function PenalizationsSection({
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       {penalization.idPenalizacion && (
                         <span className="font-semibold text-sm">
                           {typeof penalization.idPenalizacion === "object" && penalization.idPenalizacion !== null
@@ -369,6 +468,48 @@ export function PenalizationsSection({
                       >
                         {penalization.status === 1 ? "Active" : "Inactive"}
                       </span>
+                      {/* Show source badge if it's from an enrollment */}
+                      {penalization.source === "enrollment" && (
+                        <div className="space-y-2">
+                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                            From Enrollment
+                          </span>
+                          {penalization.enrollmentId && typeof penalization.enrollmentId === "object" && penalization.enrollmentId !== null && (
+                            <div className="text-xs text-muted-foreground space-y-1 pl-2 border-l-2 border-blue-200 dark:border-blue-800">
+                              {penalization.enrollmentId.alias && (
+                                <div>
+                                  <span className="font-semibold">Alias:</span> {penalization.enrollmentId.alias}
+                                </div>
+                              )}
+                              {penalization.enrollmentId.planId?.name && (
+                                <div>
+                                  <span className="font-semibold">Plan:</span> {penalization.enrollmentId.planId.name}
+                                </div>
+                              )}
+                              {penalization.enrollmentId.enrollmentType && (
+                                <div>
+                                  <span className="font-semibold">Type:</span> {penalization.enrollmentId.enrollmentType}
+                                </div>
+                              )}
+                              {penalization.enrollmentId.language && (
+                                <div>
+                                  <span className="font-semibold">Language:</span> {penalization.enrollmentId.language}
+                                </div>
+                              )}
+                              {penalization.enrollmentId.professorId && typeof penalization.enrollmentId.professorId === "object" && (
+                                <div>
+                                  <span className="font-semibold">Professor:</span> {penalization.enrollmentId.professorId.name}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {penalization.source === "student" && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                          From: Student
+                        </span>
+                      )}
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {penalization.penalization_description}
@@ -385,15 +526,6 @@ export function PenalizationsSection({
                   </div>
                   {isAdmin && (
                     <div className="flex gap-2">
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        onClick={() =>
-                          router.push(`/penalization-registry?view=${penalization._id}`)
-                        }
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
                       {penalization.status === 1 ? (
                         <Button
                           size="icon"

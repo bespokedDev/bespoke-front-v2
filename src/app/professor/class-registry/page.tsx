@@ -102,7 +102,7 @@ export default function ProfessorClassRegistryPage() {
 
   const handleNavigateToFullDetails = (enrollmentId: string) => {
     setIsQuickViewOpen(false);
-    router.push(`/professor/enrollments/${enrollmentId}`);
+    router.push(`/enrollments/${enrollmentId}`);
   };
 
   const handleNavigateToClassRegistry = (enrollmentId: string) => {
@@ -278,7 +278,7 @@ export default function ProfessorClassRegistryPage() {
             asChild
             className="text-primary border-primary/50 hover:bg-primary/10"
           >
-            <Link href={`/professor/enrollments/${row.original._id}`}>
+            <Link href={`/enrollments/${row.original._id}`}>
               <ExternalLink className="h-4 w-4 mr-2" />
               Full Details
             </Link>

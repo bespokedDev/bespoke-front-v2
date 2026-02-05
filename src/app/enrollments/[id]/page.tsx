@@ -20,6 +20,7 @@ import {
   Users,
   Globe,
   Clock,
+  UserCheck,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -68,11 +69,18 @@ interface PenalizationInfo {
   totalPenalizationMoney: number;
 }
 
+interface ProfessorInfo {
+  _id: string;
+  name: string;
+  email: string;
+  phone?: string;
+}
+
 interface EnrollmentDetail {
   _id: string;
   planId: PlanDetail;
   studentIds: StudentDetail[];
-  professorId: string;
+  professorId: string | ProfessorInfo;
   enrollmentType: string;
   classCalculationType: number;
   alias?: string | null;
@@ -95,6 +103,8 @@ interface EnrollmentDetail {
   penalizationInfo?: PenalizationInfo;
   createdAt: string;
   updatedAt: string;
+  available_balance?: number;
+  totalAmount?: number;
 }
 
 interface EnrollmentStatistics {
@@ -169,10 +179,31 @@ export default function EnrollmentDetailPage() {
   const { user } = useAuth();
   const enrollmentId = params.id as string;
   const isAdmin = user?.role?.toLowerCase() === "admin";
+  const isProfessor = user?.role?.toLowerCase() === "professor";
   
-  // Check if we came from student view
+  // Check if we came from student view (query params)
   const fromStudent = searchParams?.get('from') === 'student';
   const studentId = searchParams?.get('studentId') || null;
+  
+  // Check navigation context from sessionStorage
+  const [navigationContext, setNavigationContext] = useState<{
+    from?: string;
+    teacherId?: string;
+    tab?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    // Read navigation context from sessionStorage
+    const stored = sessionStorage.getItem('enrollmentNavigation');
+    if (stored) {
+      try {
+        const context = JSON.parse(stored);
+        setNavigationContext(context);
+      } catch (e) {
+        console.error('Error parsing navigation context:', e);
+      }
+    }
+  }, []);
 
   const [enrollment, setEnrollment] = useState<EnrollmentDetail | null>(null);
   const [statistics, setStatistics] = useState<EnrollmentStatistics | null>(
@@ -180,6 +211,10 @@ export default function EnrollmentDetailPage() {
   );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mainProfessor, setMainProfessor] = useState<ProfessorInfo | null>(null);
+  const [substituteProfessor, setSubstituteProfessor] = useState<ProfessorInfo | null>(null);
+  const [availableBalance, setAvailableBalance] = useState<number | undefined>(undefined);
+  const [totalAmount, setTotalAmount] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     fetchEnrollmentDetail();
@@ -203,6 +238,38 @@ export default function EnrollmentDetailPage() {
 
       setEnrollment(enrollmentData);
 
+      // Obtener información del profesor principal
+      const mainProfessorId = typeof enrollmentData.professorId === 'string' 
+        ? enrollmentData.professorId 
+        : enrollmentData.professorId._id;
+      
+      if (typeof enrollmentData.professorId === 'object' && enrollmentData.professorId) {
+        // Ya tenemos la información completa
+        setMainProfessor(enrollmentData.professorId);
+      } else if (mainProfessorId) {
+        // Necesitamos obtener la información del profesor
+        try {
+          const professorData: ProfessorInfo = await apiClient(
+            `api/professors/${mainProfessorId}`
+          );
+          setMainProfessor(professorData);
+        } catch (profErr) {
+          console.warn("Could not fetch main professor info:", profErr);
+        }
+      }
+
+      // Obtener información del profesor suplente si existe
+      if (enrollmentData.substituteProfessor?.professorId) {
+        try {
+          const substituteProfData: ProfessorInfo = await apiClient(
+            `api/professors/${enrollmentData.substituteProfessor.professorId}`
+          );
+          setSubstituteProfessor(substituteProfData);
+        } catch (subProfErr) {
+          console.warn("Could not fetch substitute professor info:", subProfErr);
+        }
+      }
+
       // Obtener estadísticas detalladas usando el endpoint de estudiante
       // Si el enrollment tiene studentIds, usamos el primero para obtener estadísticas
       if (enrollmentData.studentIds && enrollmentData.studentIds.length > 0) {
@@ -217,6 +284,11 @@ export default function EnrollmentDetailPage() {
             console.log("enrollmentWithStats", enrollmentWithStats);
             if (enrollmentWithStats.statistics) {
               setStatistics(enrollmentWithStats.statistics);
+            }
+            // Guardar available_balance y totalAmount del enrollment en el response
+            if (enrollmentWithStats.enrollment) {
+              setAvailableBalance(enrollmentWithStats.enrollment.available_balance);
+              setTotalAmount(enrollmentWithStats.enrollment.totalAmount);
             }
           } catch (statsErr) {
             console.warn("Could not fetch enrollment statistics:", statsErr);
@@ -254,6 +326,13 @@ export default function EnrollmentDetailPage() {
           onClick={() => {
             if (fromStudent && studentId) {
               router.push(`/students/${studentId}`);
+            } else if (navigationContext?.from === 'teacher' && navigationContext.teacherId) {
+              // Clear sessionStorage after using it
+              sessionStorage.removeItem('enrollmentNavigation');
+              const tabParam = navigationContext.tab ? `?tab=${navigationContext.tab}` : '';
+              router.push(`/teachers/${navigationContext.teacherId}${tabParam}`);
+            } else if (isProfessor) {
+              router.back();
             } else {
               router.push("/enrollments");
             }
@@ -314,6 +393,18 @@ export default function EnrollmentDetailPage() {
         },
       };
 
+  // Validar si hay suficiente balance para acceder al registro de clases
+  // Solo validamos si ambos valores están disponibles
+  const canAccessClassRegistry = 
+    availableBalance === undefined || 
+    totalAmount === undefined || 
+    (availableBalance >= totalAmount);
+  
+  // Solo mostramos la validación si tenemos ambos valores
+  const showBalanceValidation = 
+    availableBalance !== undefined && 
+    totalAmount !== undefined;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center">
@@ -322,6 +413,13 @@ export default function EnrollmentDetailPage() {
           onClick={() => {
             if (fromStudent && studentId) {
               router.push(`/students/${studentId}`);
+            } else if (navigationContext?.from === 'teacher' && navigationContext.teacherId) {
+              // Clear sessionStorage after using it
+              sessionStorage.removeItem('enrollmentNavigation');
+              const tabParam = navigationContext.tab ? `?tab=${navigationContext.tab}` : '';
+              router.push(`/teachers/${navigationContext.teacherId}${tabParam}`);
+            } else if (isProfessor) {
+              router.back();
             } else {
               router.push("/enrollments");
             }
@@ -419,6 +517,36 @@ export default function EnrollmentDetailPage() {
                     </p>
                   </div>
                 )}
+                {showBalanceValidation && (
+                  <>
+                    <div className="space-y-2">
+                      <Label className="text-muted-foreground text-sm">
+                        Available Balance
+                      </Label>
+                      <p className={`text-2xl font-bold ${canAccessClassRegistry ? 'text-secondary' : 'text-red-600'}`}>
+                        ${availableBalance.toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-muted-foreground text-sm">
+                        Total Amount Required
+                      </Label>
+                      <p className="text-2xl font-bold">
+                        ${totalAmount.toFixed(2)}
+                      </p>
+                    </div>
+                    {!canAccessClassRegistry && (
+                      <div className="space-y-2">
+                        <Label className="text-muted-foreground text-sm text-red-600">
+                          Payment Status
+                        </Label>
+                        <p className="text-lg font-semibold text-red-600">
+                          Insufficient Balance
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
               {enrollment.penalizationInfo && enrollment.penalizationInfo.totalPenalizations > 0 && (
                 <div className="mt-4 pt-4 border-t border-border">
@@ -492,6 +620,30 @@ export default function EnrollmentDetailPage() {
                           <p>{studentInfo.languageLevel}</p>
                         </div>
                       )}
+                      {studentInfo.learningType && (
+                        <div>
+                          <Label className="text-muted-foreground">
+                            Learning Type
+                          </Label>
+                          <p>{studentInfo.learningType}</p>
+                        </div>
+                      )}
+                      {studentInfo.goals && (
+                        <div className="md:col-span-2">
+                          <Label className="text-muted-foreground">
+                            Goals
+                          </Label>
+                          <p>{studentInfo.goals}</p>
+                        </div>
+                      )}
+                      {studentInfo.preferences && (
+                        <div className="md:col-span-2">
+                          <Label className="text-muted-foreground">
+                            Preferences
+                          </Label>
+                          <p>{studentInfo.preferences}</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <Button
@@ -510,6 +662,122 @@ export default function EnrollmentDetailPage() {
             </CardContent>
           </Card>
 
+          {/* Professor Information */}
+          {(mainProfessor || substituteProfessor) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <UserCheck className="h-5 w-5" />
+                  Professor Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Main Professor */}
+                  {mainProfessor && (
+                    <div>
+                      <Label className="text-sm text-muted-foreground font-semibold">
+                        Main Professor
+                      </Label>
+                      <div className="mt-2 space-y-1">
+                        <p className="text-sm font-medium">{mainProfessor.name}</p>
+                        {mainProfessor.email && (
+                          <p className="text-xs text-muted-foreground">
+                            {mainProfessor.email}
+                          </p>
+                        )}
+                        {mainProfessor.phone && (
+                          <p className="text-xs text-muted-foreground">
+                            {mainProfessor.phone}
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        asChild
+                        className="mt-3"
+                      >
+                        <Link href={`/teachers/${mainProfessor._id}`}>
+                          <User className="h-4 w-4 mr-2" />
+                          View Professor
+                        </Link>
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Substitute Professor */}
+                  {substituteProfessor && enrollment.substituteProfessor && (
+                    <div>
+                      <Label className="text-sm text-muted-foreground font-semibold">
+                        Substitute Professor
+                      </Label>
+                      <div className="mt-2 space-y-1">
+                        <p className="text-sm font-medium">{substituteProfessor.name}</p>
+                        {substituteProfessor.email && (
+                          <p className="text-xs text-muted-foreground">
+                            {substituteProfessor.email}
+                          </p>
+                        )}
+                        {substituteProfessor.phone && (
+                          <p className="text-xs text-muted-foreground">
+                            {substituteProfessor.phone}
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        asChild
+                        className="mt-3"
+                      >
+                        <Link href={`/teachers/${substituteProfessor._id}`}>
+                          <User className="h-4 w-4 mr-2" />
+                          View Professor
+                        </Link>
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Substitute Information */}
+                {enrollment.substituteProfessor && (
+                  <div className="pt-4 border-t border-border">
+                    <Label className="text-sm text-muted-foreground font-semibold mb-2 block">
+                      Substitute Period
+                    </Label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {enrollment.substituteProfessor.assignedDate && (
+                        <div>
+                          <Label className="text-xs text-muted-foreground">
+                            Assigned Date
+                          </Label>
+                          <p className="text-sm mt-1">
+                            {enrollment.substituteProfessor.assignedDate === "sin fecha asignada"
+                              ? "Not assigned"
+                              : formatDateForDisplay(enrollment.substituteProfessor.assignedDate)}
+                          </p>
+                        </div>
+                      )}
+                      {enrollment.substituteProfessor.expiryDate && (
+                        <div>
+                          <Label className="text-xs text-muted-foreground">
+                            Expiry Date
+                          </Label>
+                          <p className="text-sm mt-1">
+                            {enrollment.substituteProfessor.expiryDate === "sin fecha asignada"
+                              ? "Not assigned"
+                              : formatDateForDisplay(enrollment.substituteProfessor.expiryDate)}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Plan & Schedule Information - Combined */}
           <Card>
             <CardHeader>
@@ -524,6 +792,12 @@ export default function EnrollmentDetailPage() {
                 <div>
                   <Label className="text-muted-foreground">Plan Name</Label>
                   <p className="font-medium">{enrollment.planId.name}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Plan Type</Label>
+                  <p className="font-medium">
+                    {planTypeLabels[enrollment.planId.planType] || "N/A"}
+                  </p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">
@@ -603,12 +877,33 @@ export default function EnrollmentDetailPage() {
               <CardTitle>Actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Button variant="default" className="w-full" asChild>
-                <Link href={`/professor/class-registry/${enrollmentId}`}>
-                  <ClipboardList className="h-4 w-4 mr-2" />
-                  View Class Registry
-                </Link>
-              </Button>
+              {showBalanceValidation && !canAccessClassRegistry ? (
+                <div className="space-y-2">
+                  <Button variant="default" className="w-full" disabled>
+                    <ClipboardList className="h-4 w-4 mr-2" />
+                    View Class Registry
+                  </Button>
+                  <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-3 py-2 rounded text-sm">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold">Insufficient Balance</p>
+                        <p className="text-xs mt-1">
+                          The student does not have sufficient balance to access the class registry. 
+                          Available: ${availableBalance!.toFixed(2)} / Required: ${totalAmount!.toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <Button variant="default" className="w-full" asChild>
+                  <Link href={`/professor/class-registry/${enrollmentId}`}>
+                    <ClipboardList className="h-4 w-4 mr-2" />
+                    View Class Registry
+                  </Link>
+                </Button>
+              )}
               {isAdmin && (
                 <Button 
                   variant="outline" 
@@ -621,8 +916,18 @@ export default function EnrollmentDetailPage() {
                     }
                   }}
                 >
-                    <ArrowLeft className="h-4 w-4 mr-2" />
+                  <ArrowLeft className="h-4 w-4 mr-2" />
                   {fromStudent ? "Back to Student" : "Back to Enrollments"}
+                </Button>
+              )}
+              {isProfessor && (
+                <Button 
+                  variant="outline" 
+                  className="w-full"
+                  onClick={() => router.back()}
+                >
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Go Back
                 </Button>
               )}
             </CardContent>

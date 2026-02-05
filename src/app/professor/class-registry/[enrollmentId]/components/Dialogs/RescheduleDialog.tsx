@@ -44,6 +44,20 @@ export const RescheduleDialog = ({
       // Error message will be handled by parent component
       return;
     }
+    
+    // Validar que la fecha no sea anterior a la fecha actual
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Resetear horas para comparar solo fechas
+    const selectedDate = new Date(rescheduleDate);
+    selectedDate.setHours(0, 0, 0, 0);
+    
+    if (selectedDate < today) {
+      window.alert(
+        "The reschedule date cannot be before today's date. Please select today's date or a future date."
+      );
+      return;
+    }
+    
     await onCreateReschedule(registryId, rescheduleDate);
   };
 

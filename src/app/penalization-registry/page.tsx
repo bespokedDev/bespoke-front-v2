@@ -356,8 +356,17 @@ export default function PenalizationRegistryPage() {
     }
 
     // At least one entity must be selected
-    if (!formData.enrollmentId && !formData.professorId && !formData.studentId) {
-      errors.entity = "At least one entity (Enrollment, Professor, or Student) must be selected";
+    // Validate that exactly one entity is selected
+    const entityCount = [
+      formData.enrollmentId,
+      formData.professorId,
+      formData.studentId,
+    ].filter(Boolean).length;
+
+    if (entityCount === 0) {
+      errors.entity = "One entity (Enrollment, Professor, or Student) must be selected";
+    } else if (entityCount > 1) {
+      errors.entity = "Only one entity can be selected at a time";
     }
 
     // If student is selected, penalizationMoney cannot be set
@@ -1426,7 +1435,7 @@ export default function PenalizationRegistryPage() {
                   Select Entity *
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  At least one entity (Enrollment, Professor, or Student) must be selected
+                  Select only one entity (Enrollment, Professor, or Student)
                 </p>
               </div>
               
@@ -1487,6 +1496,11 @@ export default function PenalizationRegistryPage() {
                                   setFormData((prev) => ({
                                     ...prev,
                                     enrollmentId: enrollment._id,
+                                    // Clear other entities when selecting enrollment
+                                    professorId: "",
+                                    studentId: "",
+                                    // Clear penalizationMoney when student is deselected
+                                    penalizationMoney: null,
                                   }));
                                   setOpenPopovers((prev) => ({ ...prev, enrollment: false }));
                                 }}
@@ -1564,6 +1578,11 @@ export default function PenalizationRegistryPage() {
                                   setFormData((prev) => ({
                                     ...prev,
                                     professorId: professor._id,
+                                    // Clear other entities when selecting professor
+                                    enrollmentId: "",
+                                    studentId: "",
+                                    // Clear penalizationMoney when student is deselected
+                                    penalizationMoney: null,
                                   }));
                                   setOpenPopovers((prev) => ({ ...prev, professor: false }));
                                 }}
@@ -1647,6 +1666,9 @@ export default function PenalizationRegistryPage() {
                                   setFormData((prev) => ({
                                     ...prev,
                                     studentId: student._id,
+                                    // Clear other entities when selecting student
+                                    enrollmentId: "",
+                                    professorId: "",
                                     // Clear penalizationMoney when student is selected
                                     penalizationMoney: null,
                                   }));

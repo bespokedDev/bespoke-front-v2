@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiClient } from "@/lib/api";
@@ -101,6 +101,19 @@ interface Enrollment {
   status: number;
 }
 
+interface SubstituteEnrollment extends Enrollment {
+  professor?: {
+    _id: string;
+    name: string;
+    email: string;
+    phone?: string;
+  } | null;
+  substituteInfo?: {
+    assignedDate: string;
+    expiryDate: string;
+  };
+}
+
 interface ProfessorEnrollmentsResponse {
   message: string;
   professor: {
@@ -109,6 +122,17 @@ interface ProfessorEnrollmentsResponse {
     email: string;
   };
   enrollments: Enrollment[];
+  total: number;
+}
+
+interface ProfessorSubstituteEnrollmentsResponse {
+  message: string;
+  professor: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  enrollments: SubstituteEnrollment[];
   total: number;
 }
 
@@ -161,16 +185,22 @@ interface UpdateBonusData {
 export default function TeacherDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const teacherId = params.id as string;
-  
+
   // Verificar si el usuario es admin
   const userRole = user?.role?.toLowerCase();
   const isAdmin = userRole === "admin";
+  
+  // Obtener el tab desde query params, por defecto "information"
+  const tabFromUrl = searchParams?.get('tab');
+  const [activeTab, setActiveTab] = useState<string>(tabFromUrl || "information");
 
   const [teacher, setTeacher] = useState<Professor | null>(null);
   const [professorTypes, setProfessorTypes] = useState<ProfessorType[]>([]);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [substituteEnrollments, setSubstituteEnrollments] = useState<SubstituteEnrollment[]>([]);
   const [bonuses, setBonuses] = useState<Bonus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isEnrollmentsLoading, setIsEnrollmentsLoading] = useState(false);
@@ -180,7 +210,7 @@ export default function TeacherDetailPage() {
   const [formData, setFormData] = useState<Partial<ProfessorFormData>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
-  
+
   // Estados para bonos
   const [bonusDialog, setBonusDialog] = useState<
     "create" | "edit" | "view" | "delete" | null
@@ -206,7 +236,7 @@ export default function TeacherDetailPage() {
       setIsLoading(false);
       return;
     }
-    
+
     try {
       setIsLoading(true);
       setError(null);
@@ -222,11 +252,11 @@ export default function TeacherDetailPage() {
       // Solo actualizar el estado si el error no es 404 (Not Found) durante navegación
       const errorInfo = handleApiError(err);
       if (errorInfo.statusCode !== 404) {
-      const errorMessage = getFriendlyErrorMessage(
-        err,
-        "Failed to load teacher. Please try again."
-      );
-      setError(errorMessage);
+        const errorMessage = getFriendlyErrorMessage(
+          err,
+          "Failed to load teacher. Please try again."
+        );
+        setError(errorMessage);
       }
     } finally {
       setIsLoading(false);
@@ -261,18 +291,35 @@ export default function TeacherDetailPage() {
   const fetchEnrollments = useCallback(async () => {
     try {
       setIsEnrollmentsLoading(true);
+
+      // Obtener enrollments principales
       const response: ProfessorEnrollmentsResponse = await apiClient(
         `api/professors/${teacherId}/enrollments`
       );
       console.log("response enrollments", response);
       setEnrollments(response.enrollments || []);
+
+      // Obtener enrollments suplentes
+      const substituteResponse: ProfessorSubstituteEnrollmentsResponse = await apiClient(
+        `api/professors/${teacherId}/substitute-enrollments`
+      );
+      console.log("response substitute enrollments", substituteResponse);
+      setSubstituteEnrollments(substituteResponse.enrollments || []);
     } catch (err: unknown) {
       console.error("Failed to load enrollments:", err);
       setEnrollments([]);
+      setSubstituteEnrollments([]);
     } finally {
       setIsEnrollmentsLoading(false);
     }
   }, [teacherId]);
+
+  // Cargar enrollments cuando se active la pestaña (desde URL o clic)
+  useEffect(() => {
+    if (activeTab === "enrollments" && teacherId) {
+      fetchEnrollments();
+    }
+  }, [activeTab, teacherId, fetchEnrollments]);
 
   // --- OBTENCIÓN DE BONOS ---
   const fetchBonuses = useCallback(async () => {
@@ -349,7 +396,7 @@ export default function TeacherDetailPage() {
       setBonusSuccessMessage("Bonus created successfully");
       handleCloseBonusDialog();
       fetchBonuses();
-      
+
       // Auto-hide success message after 5 seconds
       setTimeout(() => setBonusSuccessMessage(null), 5000);
     } catch (err: unknown) {
@@ -389,7 +436,7 @@ export default function TeacherDetailPage() {
       setBonusSuccessMessage("Bonus updated successfully");
       handleCloseBonusDialog();
       fetchBonuses();
-      
+
       // Auto-hide success message after 5 seconds
       setTimeout(() => setBonusSuccessMessage(null), 5000);
     } catch (err: unknown) {
@@ -420,7 +467,7 @@ export default function TeacherDetailPage() {
       setBonusSuccessMessage("Bonus deactivated successfully");
       handleCloseBonusDialog();
       fetchBonuses();
-      
+
       // Auto-hide success message after 5 seconds
       setTimeout(() => setBonusSuccessMessage(null), 5000);
     } catch (err: unknown) {
@@ -525,8 +572,8 @@ export default function TeacherDetailPage() {
         errorInfo.isValidationError
           ? "Please check all required fields and try again."
           : errorInfo.isConflictError
-          ? "A teacher with this information already exists."
-          : "Failed to save teacher. Please try again."
+            ? "A teacher with this information already exists."
+            : "Failed to save teacher. Please try again."
       );
       setDialogError(errorMessage);
     } finally {
@@ -592,10 +639,10 @@ export default function TeacherDetailPage() {
         )}
       </div>
 
-      <Tabs defaultValue="information" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="information">Information</TabsTrigger>
-          <TabsTrigger value="enrollments" onClick={fetchEnrollments}>
+          <TabsTrigger value="enrollments">
             Enrollments
           </TabsTrigger>
           <TabsTrigger value="bonuses" onClick={fetchBonuses}>
@@ -605,86 +652,86 @@ export default function TeacherDetailPage() {
         </TabsList>
 
         <TabsContent value="information">
-      {!isEditing ? (
-        <div className="space-y-6">
-          <GeneralInformationSection
-            data={teacher}
-            isEditing={false}
-            professorTypes={professorTypes}
-            isAdmin={isAdmin}
-          />
-          <ContactInformationSection
-            data={teacher}
-            isEditing={false}
-          />
-          <PaymentInformationSection
-            data={teacher}
-            isEditing={false}
-          />
-        </div>
-      ) : (
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleCancelEdit}
-              disabled={isSubmitting}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              className="bg-primary hover:bg-primary/90 text-white"
-              disabled={isSubmitting}
-            >
-              {isSubmitting && (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              )}
-              Save
-            </Button>
-          </div>
-
-          {dialogError && (
-            <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-3 py-2 rounded text-sm flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>{dialogError}</span>
-            </div>
-          )}
-
-          <GeneralInformationSection
-            data={formData}
-            isEditing={true}
-            professorTypes={professorTypes}
-            isAdmin={isAdmin}
-            onFormChange={handleFormChange}
-            typeSelectComponent={
-              <ProfessorTypeSelect
-                items={professorTypes}
-                selectedId={typeof formData.typeId === 'string' ? formData.typeId : (typeof formData.typeId === 'object' && formData.typeId?._id ? formData.typeId._id : "") || ""}
-                onSelectedChange={(id: string) =>
-                  setFormData((prev) => ({ ...prev, typeId: id }))
-                }
-                placeholder="Select professor type..."
-                required
+          {!isEditing ? (
+            <div className="space-y-6">
+              <GeneralInformationSection
+                data={teacher}
+                isEditing={false}
+                professorTypes={professorTypes}
+                isAdmin={isAdmin}
               />
-            }
-          />
-          <ContactInformationSection
-            data={formData}
-            isEditing={true}
-            onFormChange={handleFormChange}
-            onNestedChange={handleNestedChange}
-          />
-          <PaymentInformationSection
-            data={formData}
-            isEditing={true}
-            onPaymentDataChange={handlePaymentDataChange}
-            onAddPaymentMethod={addPaymentMethod}
-            onRemovePaymentMethod={removePaymentMethod}
-          />
-        </form>
-      )}
+              <ContactInformationSection
+                data={teacher}
+                isEditing={false}
+              />
+              <PaymentInformationSection
+                data={teacher}
+                isEditing={false}
+              />
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCancelEdit}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-primary hover:bg-primary/90 text-white"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting && (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  )}
+                  Save
+                </Button>
+              </div>
+
+              {dialogError && (
+                <div className="bg-destructive/10 border border-destructive/20 text-destructive dark:text-destructive-foreground px-3 py-2 rounded text-sm flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{dialogError}</span>
+                </div>
+              )}
+
+              <GeneralInformationSection
+                data={formData}
+                isEditing={true}
+                professorTypes={professorTypes}
+                isAdmin={isAdmin}
+                onFormChange={handleFormChange}
+                typeSelectComponent={
+                  <ProfessorTypeSelect
+                    items={professorTypes}
+                    selectedId={typeof formData.typeId === 'string' ? formData.typeId : (typeof formData.typeId === 'object' && formData.typeId?._id ? formData.typeId._id : "") || ""}
+                    onSelectedChange={(id: string) =>
+                      setFormData((prev) => ({ ...prev, typeId: id }))
+                    }
+                    placeholder="Select professor type..."
+                    required
+                  />
+                }
+              />
+              <ContactInformationSection
+                data={formData}
+                isEditing={true}
+                onFormChange={handleFormChange}
+                onNestedChange={handleNestedChange}
+              />
+              <PaymentInformationSection
+                data={formData}
+                isEditing={true}
+                onPaymentDataChange={handlePaymentDataChange}
+                onAddPaymentMethod={addPaymentMethod}
+                onRemovePaymentMethod={removePaymentMethod}
+              />
+            </form>
+          )}
         </TabsContent>
 
         <TabsContent value="enrollments">
@@ -697,116 +744,328 @@ export default function TeacherDetailPage() {
                 <div className="flex justify-center items-center p-8">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
-              ) : enrollments.length > 0 ? (
+              ) : enrollments.length > 0 || substituteEnrollments.length > 0 ? (
                 <div className="space-y-6">
-                  {enrollments.map((enrollment, index) => (
-                    <div key={enrollment._id}>
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 space-y-4">
-                          {/* Nombres de estudiantes - Más prominente */}
-                          <div>
-                            <Label className="text-sm text-muted-foreground font-semibold">
-                              Students
-                            </Label>
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {enrollment.studentIds.map((student) => (
-                                <div
-                                  key={student._id}
-                                  className="flex items-center gap-2"
-                                >
-                                  <User className="h-4 w-4 text-muted-foreground" />
-                                  <span className="text-base font-bold">
-                                    {student.studentId.name}
+                  {/* Enrollments principales */}
+                  {enrollments.length > 0 && (
+                    <>
+                      {enrollments.length > 0 && substituteEnrollments.length > 0 && (
+                        <div className="mb-4">
+                          <h3 className="text-lg font-semibold mb-2">Regular Enrollments</h3>
+                        </div>
+                      )}
+                      {enrollments.map((enrollment, index) => (
+                        <div key={enrollment._id}>
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1 space-y-4">
+                              {/* Nombres de estudiantes - Más prominente */}
+                              <div>
+                                <Label className="text-sm text-muted-foreground font-semibold">
+                                  Students
+                                </Label>
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  {enrollment.studentIds.map((student) => (
+                                    <div
+                                      key={student._id}
+                                      className="flex items-center gap-2"
+                                    >
+                                      <User className="h-4 w-4 text-muted-foreground" />
+                                      <span className="text-base font-bold">
+                                        {student.studentId.name}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Resto de información en el orden especificado */}
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                  <Label className="text-sm text-muted-foreground font-semibold">
+                                    Language
+                                  </Label>
+                                  <p className="text-sm mt-1">{enrollment.language}</p>
+                                </div>
+                                <div>
+                                  <Label className="text-sm text-muted-foreground font-semibold">
+                                    Plan
+                                  </Label>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <p className="text-sm">{enrollment.planId.name}</p>
+                                    {enrollment.alias && (
+                                      <span className="text-xs text-muted-foreground">
+                                        ({enrollment.alias})
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div>
+                                  <Label className="text-sm text-muted-foreground font-semibold">
+                                    Enrollment Type
+                                  </Label>
+                                  <p className="text-sm mt-1 capitalize">
+                                    {enrollment.enrollmentType}
+                                  </p>
+                                </div>
+                                <div>
+                                  <Label className="text-sm text-muted-foreground font-semibold">
+                                    Status
+                                  </Label>
+                                  <span
+                                    className={`inline-block px-2 py-1 rounded-full text-xs font-semibold mt-1 ${enrollment.status === 1
+                                      ? "bg-secondary/20 text-secondary"
+                                      : enrollment.status === 2
+                                        ? "bg-accent-1/20 text-accent-1"
+                                        : "bg-muted text-muted-foreground"
+                                      }`}
+                                  >
+                                    {enrollment.status === 1
+                                      ? "Active"
+                                      : enrollment.status === 2
+                                        ? "Inactive"
+                                        : "Other"}
                                   </span>
                                 </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* Resto de información en el orden especificado */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                              <Label className="text-sm text-muted-foreground font-semibold">
-                                Language
-                              </Label>
-                              <p className="text-sm mt-1">{enrollment.language}</p>
-                            </div>
-                            <div>
-                              <Label className="text-sm text-muted-foreground font-semibold">
-                                Plan
-                              </Label>
-                              <div className="flex items-center gap-2 mt-1">
-                                <p className="text-sm">{enrollment.planId.name}</p>
-                                {enrollment.alias && (
-                                  <span className="text-xs text-muted-foreground">
-                                    ({enrollment.alias})
-                                  </span>
-                                )}
+                                <div>
+                                  <Label className="text-sm text-muted-foreground font-semibold">
+                                    Start Date
+                                  </Label>
+                                  <p className="text-sm mt-1">
+                                    {formatDateForDisplay(enrollment.startDate)}
+                                  </p>
+                                </div>
+                                <div>
+                                  <Label className="text-sm text-muted-foreground font-semibold">
+                                    End Date
+                                  </Label>
+                                  <p className="text-sm mt-1">
+                                    {formatDateForDisplay(enrollment.endDate)}
+                                  </p>
+                                </div>
                               </div>
                             </div>
-                            <div>
-                              <Label className="text-sm text-muted-foreground font-semibold">
-                                Enrollment Type
-                              </Label>
-                              <p className="text-sm mt-1 capitalize">
-                                {enrollment.enrollmentType}
-                              </p>
-                            </div>
-                            <div>
-                              <Label className="text-sm text-muted-foreground font-semibold">
-                                Status
-                              </Label>
-                              <span
-                                className={`inline-block px-2 py-1 rounded-full text-xs font-semibold mt-1 ${
-                                  enrollment.status === 1
-                                    ? "bg-secondary/20 text-secondary"
-                                    : enrollment.status === 2
-                                    ? "bg-accent-1/20 text-accent-1"
-                                    : "bg-muted text-muted-foreground"
-                                }`}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              asChild
+                              className="ml-4"
+                            >
+                              <Link 
+                                href={`/enrollments/${enrollment._id}`}
+                                onClick={() => {
+                                  sessionStorage.setItem('enrollmentNavigation', JSON.stringify({
+                                    from: 'teacher',
+                                    teacherId: teacherId,
+                                    tab: 'enrollments'
+                                  }));
+                                }}
                               >
-                                {enrollment.status === 1
-                                  ? "Active"
-                                  : enrollment.status === 2
-                                  ? "Inactive"
-                                  : "Other"}
-                              </span>
-                            </div>
-                            <div>
-                              <Label className="text-sm text-muted-foreground font-semibold">
-                                Start Date
-                              </Label>
-                              <p className="text-sm mt-1">
-                                {formatDateForDisplay(enrollment.startDate)}
-                              </p>
-                            </div>
-                            <div>
-                              <Label className="text-sm text-muted-foreground font-semibold">
-                                End Date
-                              </Label>
-                              <p className="text-sm mt-1">
-                                {formatDateForDisplay(enrollment.endDate)}
-                              </p>
-                            </div>
+                                <BookOpen className="h-4 w-4 mr-2" />
+                                View Details
+                              </Link>
+                            </Button>
                           </div>
+                          {index < enrollments.length - 1 && (
+                            <div className="border-t my-6" />
+                          )}
                         </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          asChild
-                          className="ml-4"
-                        >
-                          <Link href={`/professor/enrollments/${enrollment._id}`}>
-                            <BookOpen className="h-4 w-4 mr-2" />
-                            View Details
-                          </Link>
-                        </Button>
-                      </div>
-                      {index < enrollments.length - 1 && (
-                        <div className="border-t my-6" />
+                      ))}
+                    </>
+                  )}
+
+                  {/* Enrollments suplentes */}
+                  {substituteEnrollments.length > 0 && (
+                    <>
+                      {enrollments.length > 0 && (
+                        <div className="mt-8 mb-4">
+                          <h3 className="text-lg font-semibold mb-2">Substitute Enrollments</h3>
+                        </div>
                       )}
-                    </div>
-                  ))}
+                      {substituteEnrollments.map((enrollment, index) => (
+                        <div key={enrollment._id} className="border-l-4 border-orange-500 pl-4">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1 space-y-4">
+                              {/* Badge indicando que es suplente */}
+                              <div className="flex items-center gap-2">
+                                <span className="inline-block px-2 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                                  Substitute
+                                </span>
+                              </div>
+
+                              {/* Nombres de estudiantes */}
+                              <div>
+                                <Label className="text-sm text-muted-foreground font-semibold">
+                                  Students
+                                </Label>
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  {enrollment.studentIds.map((student) => (
+                                    <div
+                                      key={student._id}
+                                      className="flex items-center gap-2"
+                                    >
+                                      <User className="h-4 w-4 text-muted-foreground" />
+                                      <span className="text-base font-bold">
+                                        {student.studentId.name}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                               {/* Información del profesor principal y suplente */}
+                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                 {enrollment.professor && (
+                                   <div>
+                                     <Label className="text-sm text-muted-foreground font-semibold">
+                                       Main Professor
+                                     </Label>
+                                     <p className="text-sm mt-1">{enrollment.professor.name}</p>
+                                     {enrollment.professor.email && (
+                                       <p className="text-xs text-muted-foreground mt-1">
+                                         {enrollment.professor.email}
+                                       </p>
+                                     )}
+                                   </div>
+                                 )}
+                                 {teacher && (
+                                   <div>
+                                     <Label className="text-sm text-muted-foreground font-semibold">
+                                       Substitute Professor
+                                     </Label>
+                                     <p className="text-sm mt-1">{teacher.name}</p>
+                                     {teacher.email && (
+                                       <p className="text-xs text-muted-foreground mt-1">
+                                         {teacher.email}
+                                       </p>
+                                     )}
+                                   </div>
+                                 )}
+                               </div>
+
+                               {/* Información de suplencia */}
+                               {enrollment.substituteInfo && (
+                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                   <div>
+                                     <Label className="text-sm text-muted-foreground font-semibold">
+                                       Substitute Assigned Date
+                                     </Label>
+                                     <p className="text-sm mt-1">
+                                       {enrollment.substituteInfo.assignedDate === "sin fecha asignada"
+                                         ? "Not assigned"
+                                         : formatDateForDisplay(enrollment.substituteInfo.assignedDate)}
+                                     </p>
+                                   </div>
+                                   <div>
+                                     <Label className="text-sm text-muted-foreground font-semibold">
+                                       Substitute Expiry Date
+                                     </Label>
+                                     <p className="text-sm mt-1">
+                                       {enrollment.substituteInfo.expiryDate === "sin fecha asignada"
+                                         ? "Not assigned"
+                                         : formatDateForDisplay(enrollment.substituteInfo.expiryDate)}
+                                     </p>
+                                   </div>
+                                 </div>
+                               )}
+
+                               {/* Resto de información */}
+                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                 <div>
+                                   <Label className="text-sm text-muted-foreground font-semibold">
+                                     Language
+                                   </Label>
+                                   <p className="text-sm mt-1">{enrollment.language || "N/A"}</p>
+                                 </div>
+                                 <div>
+                                   <Label className="text-sm text-muted-foreground font-semibold">
+                                     Plan
+                                   </Label>
+                                   <div className="flex items-center gap-2 mt-1">
+                                     <p className="text-sm">{enrollment.planId?.name || "N/A"}</p>
+                                     {enrollment.alias && (
+                                       <span className="text-xs text-muted-foreground">
+                                         ({enrollment.alias})
+                                       </span>
+                                     )}
+                                   </div>
+                                 </div>
+                                 <div>
+                                   <Label className="text-sm text-muted-foreground font-semibold">
+                                     Enrollment Type
+                                   </Label>
+                                   <p className="text-sm mt-1 capitalize">
+                                     {enrollment.enrollmentType || "N/A"}
+                                   </p>
+                                 </div>
+                                 <div>
+                                   <Label className="text-sm text-muted-foreground font-semibold">
+                                     Status
+                                   </Label>
+                                   <span
+                                     className={`inline-block px-2 py-1 rounded-full text-xs font-semibold mt-1 ${enrollment.status === 1
+                                       ? "bg-secondary/20 text-secondary"
+                                       : enrollment.status === 2
+                                         ? "bg-accent-1/20 text-accent-1"
+                                         : "bg-muted text-muted-foreground"
+                                       }`}
+                                   >
+                                     {enrollment.status === 1
+                                       ? "Active"
+                                       : enrollment.status === 2
+                                         ? "Inactive"
+                                         : "Other"}
+                                   </span>
+                                 </div>
+                                 <div>
+                                   <Label className="text-sm text-muted-foreground font-semibold">
+                                     Start Date
+                                   </Label>
+                                   <p className="text-sm mt-1">
+                                     {enrollment.startDate
+                                       ? formatDateForDisplay(enrollment.startDate)
+                                       : "N/A"}
+                                   </p>
+                                 </div>
+                                 <div>
+                                   <Label className="text-sm text-muted-foreground font-semibold">
+                                     End Date
+                                   </Label>
+                                   <p className="text-sm mt-1">
+                                     {enrollment.endDate
+                                       ? formatDateForDisplay(enrollment.endDate)
+                                       : "N/A"}
+                                   </p>
+                                 </div>
+                               </div>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              asChild
+                              className="ml-4"
+                            >
+                              <Link 
+                                href={`/enrollments/${enrollment._id}`}
+                                onClick={() => {
+                                  sessionStorage.setItem('enrollmentNavigation', JSON.stringify({
+                                    from: 'teacher',
+                                    teacherId: teacherId,
+                                    tab: 'enrollments'
+                                  }));
+                                }}
+                              >
+                                <BookOpen className="h-4 w-4 mr-2" />
+                                View Details
+                              </Link>
+                            </Button>
+                          </div>
+                          {index < substituteEnrollments.length - 1 && (
+                            <div className="border-t my-6" />
+                          )}
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
@@ -857,9 +1116,9 @@ export default function TeacherDetailPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                      <TableHead>Bonus Date</TableHead>
-                      <TableHead>Month To Be Paid In</TableHead>
-                      <TableHead>Description</TableHead>
+                        <TableHead>Bonus Date</TableHead>
+                        <TableHead>Month To Be Paid In</TableHead>
+                        <TableHead>Description</TableHead>
                         <TableHead>Amount</TableHead>
                         <TableHead>Created By</TableHead>
                         <TableHead>Status</TableHead>
@@ -884,11 +1143,10 @@ export default function TeacherDetailPage() {
                           </TableCell>
                           <TableCell>
                             <span
-                              className={`inline-block px-2 py-1 rounded-full text-xs font-semibold ${
-                                bonus.status === 1
-                                  ? "bg-secondary/20 text-secondary"
-                                  : "bg-accent-1/20 text-accent-1"
-                              }`}
+                              className={`inline-block px-2 py-1 rounded-full text-xs font-semibold ${bonus.status === 1
+                                ? "bg-secondary/20 text-secondary"
+                                : "bg-accent-1/20 text-accent-1"
+                                }`}
                             >
                               {bonus.status === 1 ? "Active" : "Deactivated"}
                             </span>
@@ -968,11 +1226,10 @@ export default function TeacherDetailPage() {
                 <div>
                   <Label className="text-sm font-semibold">Status</Label>
                   <span
-                    className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                      selectedBonus.status === 1
-                        ? "bg-secondary/20 text-secondary"
-                        : "bg-accent-1/20 text-accent-1"
-                    }`}
+                    className={`px-2 py-1 rounded-full text-xs font-semibold ${selectedBonus.status === 1
+                      ? "bg-secondary/20 text-secondary"
+                      : "bg-accent-1/20 text-accent-1"
+                      }`}
                   >
                     {selectedBonus.status === 1 ? "Active" : "Deactivated"}
                   </span>
@@ -1247,9 +1504,8 @@ function ProfessorTypeSelect({
                 }}
               >
                 <Check
-                  className={`mr-2 h-4 w-4 ${
-                    selectedId === item._id ? "opacity-100" : "opacity-0"
-                  }`}
+                  className={`mr-2 h-4 w-4 ${selectedId === item._id ? "opacity-100" : "opacity-0"
+                    }`}
                 />
                 <div className="flex flex-col flex-1">
                   <span className="font-medium">{item.name}</span>
