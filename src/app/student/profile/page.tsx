@@ -88,6 +88,7 @@ export default function StudentProfilePage() {
           student: infoResponse.student,
           totalAvailableBalance: infoResponse.totalAvailableBalance,
           totalBalancePerClass: infoResponse.totalBalancePerClass,
+          totalAmount: infoResponse.totalAmount,
           enrollmentDetails: infoResponse.enrollmentDetails || [],
           rescheduleTime: infoResponse.rescheduleTime,
           rescheduleClasses: infoResponse.rescheduleClasses,
