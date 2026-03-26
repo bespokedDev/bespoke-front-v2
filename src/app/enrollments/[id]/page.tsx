@@ -235,7 +235,7 @@ export default function EnrollmentDetailPage() {
         setError("Enrollment not found");
         return;
       }
-
+      console.log("enrollmentData", enrollmentData);
       setEnrollment(enrollmentData);
 
       // Obtener información del profesor principal
@@ -553,7 +553,7 @@ export default function EnrollmentDetailPage() {
                   <h4 className="text-sm font-semibold mb-2">Penalization Details</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                     <div>
-                      <Label className="text-muted-foreground">Total Active Penalizations</Label>
+                      <Label className="text-muted-foreground">Total Penalizations</Label>
                       <p className="font-medium">{enrollment.penalizationInfo.totalPenalizations}</p>
                     </div>
                     {enrollment.penalizationInfo.monetaryPenalizations.count > 0 && (

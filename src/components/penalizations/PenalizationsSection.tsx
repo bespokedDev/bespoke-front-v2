@@ -35,6 +35,10 @@ import type {
   PenalizationLevel,
 } from "@/app/penalization-registry/types";
 import {
+  getPenalizationStatusLabel,
+  getPenalizationStatusBadgeClass,
+} from "@/app/penalization-registry/types";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -460,13 +464,9 @@ export function PenalizationsSection({
                         </span>
                       )}
                       <span
-                        className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                          penalization.status === 1
-                            ? "bg-secondary/20 text-secondary"
-                            : "bg-accent-1/20 text-accent-1"
-                        }`}
+                        className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getPenalizationStatusBadgeClass(penalization.status)}`}
                       >
-                        {penalization.status === 1 ? "Active" : "Inactive"}
+                        {getPenalizationStatusLabel(penalization.status)}
                       </span>
                       {/* Show source badge if it's from an enrollment */}
                       {penalization.source === "enrollment" && (
@@ -524,7 +524,7 @@ export function PenalizationsSection({
                       Created: {formatDateForDisplay(penalization.createdAt)}
                     </p>
                   </div>
-                  {isAdmin && (
+                  {isAdmin && (penalization.status === 0 || penalization.status === 1) && (
                     <div className="flex gap-2">
                       {penalization.status === 1 ? (
                         <Button

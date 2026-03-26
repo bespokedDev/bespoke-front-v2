@@ -1,5 +1,34 @@
 // Types for Penalization Registry
 
+/** Status of a penalization registry (API: 0 = Inactive, 1 = Active, 2 = Paid/Applied) */
+export type PenalizationStatus = 0 | 1 | 2;
+
+export const PENALIZATION_STATUS_LABELS: Record<PenalizationStatus, string> = {
+  0: "Inactive",
+  1: "Active",
+  2: "Paid",
+};
+
+export function getPenalizationStatusLabel(status: number): string {
+  if (status === 0 || status === 1 || status === 2) {
+    return PENALIZATION_STATUS_LABELS[status as PenalizationStatus];
+  }
+  return "Unknown";
+}
+
+/** Returns Tailwind classes for the status badge (bg and text). */
+export function getPenalizationStatusBadgeClass(status: number): string {
+  switch (status) {
+    case 1:
+      return "bg-secondary/20 text-secondary";
+    case 2:
+      return "bg-primary/20 text-primary";
+    case 0:
+    default:
+      return "bg-muted text-muted-foreground";
+  }
+}
+
 export interface PenalizationLevel {
   _id: string; // ObjectId del elemento dentro del array penalizationLevels
   tipo: string;
@@ -59,7 +88,7 @@ export interface PenalizationRegistry {
   support_file?: string | null;
   userId?: string | null;
   payOutId?: string | null;
-  status: number;
+  status: PenalizationStatus;
   createdAt: string;
   updatedAt: string;
 }

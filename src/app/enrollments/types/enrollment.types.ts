@@ -75,7 +75,9 @@ export interface Enrollment {
   cancellationPaymentsEnabled?: boolean;
   rescheduleHours?: number;
   disolve_reason?: string | null;
-  disolve_user?: string | null;
+  disolve_user?: string | { _id: string; name: string; email?: string } | null;
+  balance_transferred_to_enrollment?: string | null;
+  disolveDate?: string | null;
 }
 
 export type StudentEnrollmentFormData = {

@@ -1,6 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,6 +35,9 @@ export const RescheduleDialog = ({
   isCreating,
   errorMessage,
 }: RescheduleDialogProps) => {
+  const { user } = useAuth();
+  const isAdmin = user?.role?.toLowerCase() === "admin";
+
   const handleClose = () => {
     onRescheduleDateChange("");
     onOpenChange(false);
@@ -45,19 +49,21 @@ export const RescheduleDialog = ({
       return;
     }
     
-    // Validar que la fecha no sea anterior a la fecha actual
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Resetear horas para comparar solo fechas
-    const selectedDate = new Date(rescheduleDate);
-    selectedDate.setHours(0, 0, 0, 0);
-    
-    if (selectedDate < today) {
-      window.alert(
-        "The reschedule date cannot be before today's date. Please select today's date or a future date."
-      );
-      return;
+    // Validar que la fecha no sea anterior a la fecha actual (excepto para admin)
+    if (!isAdmin) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Resetear horas para comparar solo fechas
+      const selectedDate = new Date(rescheduleDate);
+      selectedDate.setHours(0, 0, 0, 0);
+
+      if (selectedDate < today) {
+        window.alert(
+          "The reschedule date cannot be before today's date. Please select today's date or a future date."
+        );
+        return;
+      }
     }
-    
+
     await onCreateReschedule(registryId, rescheduleDate);
   };
 
@@ -85,7 +91,7 @@ export const RescheduleDialog = ({
               value={rescheduleDate}
               onChange={(e) => onRescheduleDateChange(e.target.value)}
               required
-              min={new Date().toISOString().split("T")[0]}
+              min={isAdmin ? undefined : new Date().toISOString().split("T")[0]}
             />
           </div>
         </div>

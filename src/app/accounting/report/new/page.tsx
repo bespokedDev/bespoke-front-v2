@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
-import { useState, useEffect, useMemo, Suspense } from "react";
+import { useState, useEffect, useMemo, Suspense, Fragment } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiClient } from "@/lib/api";
 import { handleApiError, getFriendlyErrorMessage } from "@/lib/errorHandler";
@@ -41,6 +41,12 @@ interface ReportDetail {
   totalTeacher: number;
   totalBespoke: number;
   balanceRemaining: number;
+  lostClasses?: {
+    count: number;
+  } | null;
+  cycleRemaining?: number | null;
+  studentReserveTotal?: number | null;
+  prepaidExtra?: number | null;
   status: 1 | 2;
   type: "normal" | "substitute" | "bonus";
   bonusReason?: string;
@@ -103,11 +109,13 @@ interface ProfessorReport {
 
 interface SpecialReportDetail {
   enrollmentId: string | null;
+  enrollmentAlias?: string | null;
   period: string;
   plan: string;
   studentName: string;
   amount: number;
   amountInDollars: number;
+  balance: number | null;
   totalHours: number;
   pricePerHour: number;
   pPerHour: number;
@@ -116,6 +124,12 @@ interface SpecialReportDetail {
   payment: number | null;
   total: number;
   balanceRemaining: number;
+  lostClasses?: {
+    count: number;
+  } | null;
+  cycleRemaining?: number | null;
+  studentReserveTotal?: number | null;
+  prepaidExtra?: number | null;
   type: "normal" | "substitute" | "bonus";
   bonusReason?: string;
 }
@@ -159,15 +173,109 @@ interface ExcedentDetail {
   createdAt: string;
 }
 
+/** Desglose por precio cuando hay varios ciclos/precios en el mismo enrollment (API). */
+interface ClassNotViewedGroupedByPrice {
+  pricePerHour: number;
+  numberOfClasses: number;
+  excedente: number;
+  classesNotViewed?: Array<{
+    classId: string;
+    classDate: string;
+    classViewed: number;
+    pricePerHour: number;
+  }>;
+}
+
 interface ClassNotViewedDetail {
   enrollmentId: string;
   enrollmentAlias: string | null;
   studentNames: string;
+  professorName?: string;
   plan: string;
   numberOfClasses: number;
-  pricePerHour: number;
+  /** `null` si hay varios precios en el enrollment; usar `classesNotViewedGroupedByPrice`. */
+  pricePerHour: number | null;
   excedente: number;
   classesNotViewed: any[]; // Array de ClassRegistry objects
+  classesNotViewedGroupedByPrice?: ClassNotViewedGroupedByPrice[];
+}
+
+/** Desglose en sub-filas solo cuando hay más de un precio distinto (varios grupos). */
+function shouldShowGroupedClassNotViewedBreakdown(
+  detail: ClassNotViewedDetail
+): boolean {
+  const groups = detail.classesNotViewedGroupedByPrice;
+  return groups != null && groups.length > 1;
+}
+
+/**
+ * Precio a mostrar en fila única: raíz si viene; si es null y hay un solo grupo, el del grupo.
+ */
+function resolveClassNotViewedDisplayPrice(
+  detail: ClassNotViewedDetail
+): number | null {
+  if (typeof detail.pricePerHour === "number" && !Number.isNaN(detail.pricePerHour)) {
+    return detail.pricePerHour;
+  }
+  const groups = detail.classesNotViewedGroupedByPrice;
+  if (groups?.length === 1) {
+    const p = groups[0].pricePerHour;
+    return typeof p === "number" && !Number.isNaN(p) ? p : null;
+  }
+  return null;
+}
+
+function formatMoney2(value: number): string {
+  return `$${value.toFixed(2)}`;
+}
+
+function formatPricePerHourCell(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return "—";
+  return formatMoney2(value);
+}
+
+/** Filas para jsPDF: una fila plana o cabecera + una fila por grupo cuando hay varios precios. */
+function buildClassNotViewedPdfBodyRows(
+  details: ClassNotViewedDetail[]
+): string[][] {
+  const rows: string[][] = [];
+  for (const detail of details) {
+    const enrollmentLabel = String(
+      detail.enrollmentAlias || detail.enrollmentId
+    );
+    if (shouldShowGroupedClassNotViewedBreakdown(detail)) {
+      const groups = detail.classesNotViewedGroupedByPrice!;
+      rows.push([
+        enrollmentLabel,
+        detail.studentNames,
+        detail.plan,
+        detail.numberOfClasses.toString(),
+        "Varios",
+        formatMoney2(detail.excedente),
+      ]);
+      for (const g of groups) {
+        rows.push([
+          "",
+          "",
+          "",
+          g.numberOfClasses.toString(),
+          formatMoney2(g.pricePerHour),
+          formatMoney2(g.excedente),
+        ]);
+      }
+    } else {
+      const price = resolveClassNotViewedDisplayPrice(detail);
+      rows.push([
+        enrollmentLabel,
+        detail.studentNames,
+        detail.plan,
+        detail.numberOfClasses.toString(),
+        formatPricePerHourCell(price),
+        formatMoney2(detail.excedente),
+      ]);
+    }
+  }
+  return rows;
 }
 
 interface BonusDetail {
@@ -232,6 +340,7 @@ interface PrepaidEnrollmentDetail {
   incomes: ExcedentDetail[];
 }
 
+/** Usado en pausedEnrollmentsDetails y en dissolvedEnrollments.details (misma forma según API) */
 interface PausedEnrollmentDetail {
   enrollmentId: string;
   enrollmentAlias: string | null;
@@ -240,6 +349,8 @@ interface PausedEnrollmentDetail {
   plan: string;
   status: number;
   pauseDate: string | null;
+  disolveDate?: string | null;
+  balance_transferred_to_enrollment?: string | null;
   availableBalance: number;
   excedente: number;
 }
@@ -262,6 +373,12 @@ interface ExcedentReport {
   classNotViewedDetails: ClassNotViewedDetail[];
   prepaidEnrollmentsDetails?: PrepaidEnrollmentDetail[];
   pausedEnrollmentsDetails?: PausedEnrollmentDetail[];
+  /** Enrollments disueltos (status 0) sin transferencia; details tienen la misma forma que pausedEnrollmentsDetails */
+  dissolvedEnrollments?: {
+    total: number;
+    count: number;
+    details: PausedEnrollmentDetail[];
+  };
   bonusDetails: BonusDetail[];
   penalizationDetails?: PenalizationDetail[];
 }
@@ -430,6 +547,11 @@ function NewReportComponent() {
               excedenteResponse.pausedEnrollmentsDetails ?? [],
             bonusDetails: excedenteResponse.bonusDetails ?? [],
             penalizationDetails: excedenteResponse.penalizationDetails ?? [],
+            dissolvedEnrollments: excedenteResponse.dissolvedEnrollments ?? {
+              total: 0,
+              count: 0,
+              details: [],
+            },
             // Mantener compatibilidad con estructura antigua
             details:
               excedenteResponse.incomeDetails ??
@@ -473,20 +595,6 @@ function NewReportComponent() {
       default:
         return "";
     }
-  };
-
-  // Función helper para formatear el nombre del enrollment
-  const formatEnrollmentName = (enrollment: EnrollmentForSelect) => {
-    const studentName =
-      enrollment.studentIds[0]?.alias || enrollment.studentIds[0]?.name || "";
-    const planName = enrollment.planId.name;
-    const typePrefix =
-      enrollment.enrollmentType === "single"
-        ? "S"
-        : enrollment.enrollmentType === "couple"
-        ? "C"
-        : "G";
-    return `(${typePrefix} - ${planName}) ${studentName}`;
   };
 
   // Función helper para obtener el balance disponible considerando suplencias previas (versión mejorada)
@@ -661,9 +769,11 @@ function NewReportComponent() {
               "Price/Hr",
               "Hrs Seen",
               "Pay/Hr",
-              "Balance",
+              "Cycle Rem.",
+              "Prepaid Extra",
               "T. Teacher",
               "T. Bespoke",
+              "Lost Classes",
               "Bal. Rem.",
             ],
           ],
@@ -671,22 +781,32 @@ function NewReportComponent() {
             d.period,
             d.plan,
             d.studentName,
-            `$${(d.amountInDollars || 0).toFixed(2)}`,
+            `$${(d.balance || 0).toFixed(2)}`,
             d.totalHours,
             `$${d.pricePerHour.toFixed(2)}`,
             d.hoursSeen || "",
             `$${d.pPerHour.toFixed(2)}`,
-            `$${(d.balance || 0).toFixed(2)}`,
+            `$${Number(
+              typeof d.cycleRemaining === "number" ? d.cycleRemaining : 0
+            ).toFixed(2)}`,
+            `$${Number(
+              typeof d.prepaidExtra === "number" ? d.prepaidExtra : 0
+            ).toFixed(2)}`,
             `$${d.totalTeacher.toFixed(2)}`,
             `$${d.totalBespoke.toFixed(2)}`,
-            `$${d.balanceRemaining.toFixed(2)}`,
+            Number(d.lostClasses?.count ?? 0),
+            `$${Number(
+              typeof d.studentReserveTotal === "number"
+                ? d.studentReserveTotal
+                : d.balanceRemaining
+            ).toFixed(2)}`,
           ]),
           foot: [
             [
               // MODIFICACIÓN: Se corrige 'textAlign' por 'halign'
               {
                 content: "Subtotals",
-                colSpan: 9,
+                colSpan: 11,
                 styles: { halign: "right", fontStyle: "bold" },
               },
               `$${prof.totalTeacher.toFixed(2)}`,
@@ -774,27 +894,33 @@ function NewReportComponent() {
               "Balance",
               "Payment",
               "Total",
+              "Lost Classes",
               "Bal. Rem.",
             ],
           ],
           body: calculatedData.specialReport.details.map((d) => [
             d.period,
             d.plan,
-            d.studentName,
-            `$${(d.amountInDollars || 0).toFixed(2)}`,
+            d.enrollmentAlias || d.studentName,
+            `$${(d.balance || 0).toFixed(2)}`,
             d.totalHours,
             d.hoursSeen || "",
             `$${(d.oldBalance || 0).toFixed(2)}`,
             `$${(d.payment || 0).toFixed(2)}`,
             `$${d.total.toFixed(2)}`,
-            `$${d.balanceRemaining.toFixed(2)}`,
+            Number(d.lostClasses?.count ?? 0),
+            `$${Number(
+              typeof d.studentReserveTotal === "number"
+                ? d.studentReserveTotal
+                : d.balanceRemaining
+            ).toFixed(2)}`,
           ]),
           foot: [
             [
               // MODIFICACIÓN: Se corrige 'textAlign' por 'halign'
               {
                 content: "Subtotals",
-                colSpan: 8,
+                colSpan: 9,
                 styles: { halign: "right", fontStyle: "bold" },
               },
               `$${calculatedData.specialReport.subtotal.total.toFixed(2)}`,
@@ -944,14 +1070,9 @@ function NewReportComponent() {
                 "Excedent",
               ],
             ],
-            body: excedente.classNotViewedDetails.map((detail) => [
-              detail.enrollmentAlias || detail.enrollmentId,
-              detail.studentNames,
-              detail.plan,
-              detail.numberOfClasses.toString(),
-              `$${detail.pricePerHour.toFixed(2)}`,
-              `$${detail.excedente.toFixed(2)}`,
-            ]),
+            body: buildClassNotViewedPdfBodyRows(
+              excedente.classNotViewedDetails
+            ),
             foot: [
               [
                 {
@@ -1046,23 +1167,83 @@ function NewReportComponent() {
             startY: finalY,
             head: [
               [
-                "Alias / Student",
-                "Professor",
+                "Date",
+                "Student",
                 "Plan",
-                "Pause Date",
-                "Available Balance",
+                "Professor",
                 "Excedent",
               ],
             ],
             body: excedente.pausedEnrollmentsDetails.map((detail) => [
-              detail.enrollmentAlias || detail.studentNames,
-              detail.professorName,
-              detail.plan,
               detail.pauseDate
                 ? formatDateForDisplay(detail.pauseDate)
                 : "N/A",
-              `$${detail.availableBalance.toFixed(2)}`,
+              detail.enrollmentAlias || detail.studentNames,
+              detail.plan,
+              detail.professorName,
               `$${detail.excedente.toFixed(2)}`,
+            ]),
+            foot: [
+              [
+                {
+                  content: "Total:",
+                  colSpan: 4,
+                  styles: { halign: "right", fontStyle: "bold" },
+                },
+                `$${(excedente.totalPausedEnrollments || 0).toFixed(2)}`,
+              ],
+            ],
+            footStyles: {
+              fontStyle: "bold",
+              fillColor: [240, 240, 240],
+              textColor: [0, 0, 0],
+            },
+            theme: "grid",
+            styles: { fontSize: 8 },
+            didDrawPage: (data) => {
+              finalY = data.cursor?.y || 0;
+            },
+          });
+          finalY = (doc as any).lastAutoTable.finalY + 10;
+        }
+
+        // Dissolved Enrollments (dentro de excedente según doc API)
+        if (
+          excedente.dissolvedEnrollments &&
+          excedente.dissolvedEnrollments.count > 0
+        ) {
+          hasExcedents = true;
+          finalY += 5;
+          doc.setFontSize(14);
+          doc.text("Dissolved Enrollments", 14, finalY);
+          finalY += 6;
+          doc.setFontSize(9);
+          doc.text(
+            `${excedente.dissolvedEnrollments.count} dissolved · Total excedente: $${excedente.dissolvedEnrollments.total.toFixed(2)}`,
+            14,
+            finalY
+          );
+          finalY += 8;
+
+          autoTable(doc, {
+            startY: finalY,
+            head: [
+              [
+                "Date",
+                "Student",
+                "Plan",
+                "Professor",
+                "Balance transferred",
+                "Excedent",
+              ],
+            ],
+            body: excedente.dissolvedEnrollments.details.map((d) => [
+              d.disolveDate ? formatDateForDisplay(d.disolveDate) : "N/A",
+              d.studentNames,
+              d.enrollmentAlias?.trim() || d.plan,
+              d.professorName,
+              d.balance_transferred_to_enrollment ? "Yes" : "—",
+              `$${d.excedente.toFixed(2)}`,
             ]),
             foot: [
               [
@@ -1071,7 +1252,7 @@ function NewReportComponent() {
                   colSpan: 5,
                   styles: { halign: "right", fontStyle: "bold" },
                 },
-                `$${(excedente.totalPausedEnrollments || 0).toFixed(2)}`,
+                `$${excedente.dissolvedEnrollments.total.toFixed(2)}`,
               ],
             ],
             footStyles: {
@@ -1420,7 +1601,8 @@ function NewReportComponent() {
                       <TableHead className="w-[110px]">Price/Hour</TableHead>
                       <TableHead className="w-[110px]">Hours Seen</TableHead>
                       <TableHead className="w-[110px]">Pay/Hour</TableHead>
-                      <TableHead className="w-[110px]">Balance</TableHead>
+                      <TableHead className="w-[110px]">Cycle Rem.</TableHead>
+                      <TableHead className="w-[110px]">Prepaid Extra</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead className="text-right">
                         Total Teacher
@@ -1428,6 +1610,7 @@ function NewReportComponent() {
                       <TableHead className="text-right">
                         Total Bespoke
                       </TableHead>
+                      <TableHead className="text-right">Lost Classes</TableHead>
                       <TableHead className="text-right">Balance Rem.</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1482,7 +1665,7 @@ function NewReportComponent() {
                           </TableCell>
                           <TableCell>
                             <span className="px-2">
-                              ${typeof detail.amountInDollars === "number" ? detail.amountInDollars.toFixed(2) : "0.00"}
+                              ${typeof detail.balance === "number" ? detail.balance.toFixed(2) : "0.00"}
                             </span>
                           </TableCell>
                           <TableCell>
@@ -1507,7 +1690,12 @@ function NewReportComponent() {
                           </TableCell>
                           <TableCell>
                             <span className="px-2">
-                              ${typeof detail.balance === "number" ? detail.balance.toFixed(2) : "0.00"}
+                              ${typeof detail.cycleRemaining === "number" ? detail.cycleRemaining.toFixed(2) : "0.00"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="px-2">
+                              ${typeof detail.prepaidExtra === "number" ? detail.prepaidExtra.toFixed(2) : "0.00"}
                             </span>
                           </TableCell>
                           <TableCell className="text-center">
@@ -1530,15 +1718,22 @@ function NewReportComponent() {
                           <TableCell className="text-right font-medium">
                             {detail.totalBespoke.toFixed(2)}
                           </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {Number(detail.lostClasses?.count ?? 0)}
+                          </TableCell>
                           <TableCell className="text-right font-bold">
-                            {detail.balanceRemaining.toFixed(2)}
+                            {Number(
+                              typeof detail.studentReserveTotal === "number"
+                                ? detail.studentReserveTotal
+                                : detail.balanceRemaining
+                            ).toFixed(2)}
                           </TableCell>
                         </TableRow>
                       ))
                     ) : (
                       <TableRow>
                         <TableCell
-                          colSpan={13}
+                          colSpan={15}
                           className="text-center text-muted-foreground"
                         >
                           No details found
@@ -1548,7 +1743,7 @@ function NewReportComponent() {
                   </TableBody>
                   <TableFooter>
                     <TableRow>
-                      <TableCell colSpan={10}></TableCell>
+                      <TableCell colSpan={12}></TableCell>
                       <TableCell className="text-right font-bold text-base">
                         {profReport.totalTeacher.toFixed(2)}
                       </TableCell>
@@ -1749,10 +1944,11 @@ function NewReportComponent() {
                       <TableHead className="w-[120px]">Amount</TableHead>
                       <TableHead className="w-[120px]">Total Hours</TableHead>
                       <TableHead className="w-[120px]">Hours Seen</TableHead>
-                      <TableHead className="w-[120px]">Balance</TableHead>
+                    <TableHead className="w-[120px]">Balance</TableHead>
                       <TableHead className="w-[120px]">Payment</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Total</TableHead>
+                    <TableHead>Lost Classes</TableHead>
                       <TableHead>Balance Rem.</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1770,18 +1966,12 @@ function NewReportComponent() {
                             </TableCell>
                             <TableCell>
                                 <span className="font-medium px-1">
-                                      {detail.enrollmentId
-                                        ? formatEnrollmentName(
-                                            enrollments.find(
-                                        (e) => e._id === detail.enrollmentId
-                                            )!
-                                    ) || detail.studentName
-                                  : detail.studentName}
-                              </span>
+                                  {detail.enrollmentAlias || detail.studentName || "—"}
+                                </span>
                             </TableCell>
                             <TableCell>
                               <span className="px-2">
-                                ${typeof detail.amountInDollars === "number" ? detail.amountInDollars.toFixed(2) : "0.00"}
+                                ${typeof detail.balance === "number" ? detail.balance.toFixed(2) : "0.00"}
                               </span>
                             </TableCell>
                             <TableCell>
@@ -1821,8 +2011,15 @@ function NewReportComponent() {
                             <TableCell className="text-right font-medium">
                               ${detail.total.toFixed(2)}
                             </TableCell>
+                            <TableCell className="text-right font-medium">
+                              {Number(detail.lostClasses?.count ?? 0)}
+                            </TableCell>
                             <TableCell className="text-right font-bold">
-                              {detail.balanceRemaining.toFixed(2)}
+                              {Number(
+                                typeof detail.studentReserveTotal === "number"
+                                  ? detail.studentReserveTotal
+                                  : detail.balanceRemaining
+                              ).toFixed(2)}
                             </TableCell>
                           </TableRow>
                         )
@@ -1830,7 +2027,7 @@ function NewReportComponent() {
                     ) : (
                       <TableRow>
                         <TableCell
-                          colSpan={11}
+                          colSpan={12}
                           className="text-center text-muted-foreground"
                         >
                           No details found
@@ -1840,7 +2037,7 @@ function NewReportComponent() {
                   </TableBody>
                   <TableFooter>
                     <TableRow>
-                      <TableCell colSpan={9}></TableCell>
+                      <TableCell colSpan={10}></TableCell>
                       <TableCell className="text-right font-bold text-base">
                         $
                         {calculatedData.specialReport.subtotal.total.toFixed(2)}
@@ -2058,21 +2255,74 @@ function NewReportComponent() {
                     {reportData.excedente.classNotViewedDetails &&
                     reportData.excedente.classNotViewedDetails.length > 0 ? (
                       reportData.excedente.classNotViewedDetails.map(
-                        (detail) => (
-                          <TableRow key={detail.enrollmentId}>
-                            <TableCell>{detail.enrollmentAlias ||detail.studentNames}</TableCell>
-                            <TableCell>{detail.plan}</TableCell>
-                            <TableCell className="text-right">
-                              {detail.numberOfClasses}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              ${detail.pricePerHour.toFixed(2)}
-                            </TableCell>
-                            <TableCell className="text-right font-medium">
-                              ${detail.excedente.toFixed(2)}
-                            </TableCell>
-                          </TableRow>
-                        )
+                        (detail) => {
+                          if (
+                            shouldShowGroupedClassNotViewedBreakdown(detail)
+                          ) {
+                            const groups =
+                              detail.classesNotViewedGroupedByPrice!;
+                            return (
+                              <Fragment key={detail.enrollmentId}>
+                                <TableRow>
+                                  <TableCell>
+                                    {detail.enrollmentAlias ||
+                                      detail.studentNames}
+                                  </TableCell>
+                                  <TableCell>{detail.plan}</TableCell>
+                                  <TableCell className="text-right">
+                                    {detail.numberOfClasses}
+                                  </TableCell>
+                                  <TableCell className="text-right text-muted-foreground">
+                                    Varios
+                                  </TableCell>
+                                  <TableCell className="text-right font-medium">
+                                    {formatMoney2(detail.excedente)}
+                                  </TableCell>
+                                </TableRow>
+                                {groups.map((g, i) => (
+                                  <TableRow
+                                    key={`${detail.enrollmentId}-g-${i}`}
+                                    className="bg-muted/40"
+                                  >
+                                    <TableCell />
+                                    <TableCell className="pl-6 text-sm text-muted-foreground">
+                                      Por precio
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      {g.numberOfClasses}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      {formatMoney2(g.pricePerHour)}
+                                    </TableCell>
+                                    <TableCell className="text-right font-medium">
+                                      {formatMoney2(g.excedente)}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </Fragment>
+                            );
+                          }
+                          const displayPrice =
+                            resolveClassNotViewedDisplayPrice(detail);
+                          return (
+                            <TableRow key={detail.enrollmentId}>
+                              <TableCell>
+                                {detail.enrollmentAlias ||
+                                  detail.studentNames}
+                              </TableCell>
+                              <TableCell>{detail.plan}</TableCell>
+                              <TableCell className="text-right">
+                                {detail.numberOfClasses}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {formatPricePerHourCell(displayPrice)}
+                              </TableCell>
+                              <TableCell className="text-right font-medium">
+                                {formatMoney2(detail.excedente)}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        }
                       )
                     ) : (
                       <TableRow>
@@ -2168,11 +2418,10 @@ function NewReportComponent() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Alias / Student Name</TableHead>
-                        <TableHead>Professor</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Student</TableHead>
                         <TableHead>Plan</TableHead>
-                        <TableHead>Pause Date</TableHead>
-                        <TableHead>Available Balance</TableHead>
+                        <TableHead>Professor</TableHead>
                         <TableHead className="text-right">Excedent</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -2181,18 +2430,15 @@ function NewReportComponent() {
                         (detail) => (
                           <TableRow key={detail.enrollmentId}>
                             <TableCell>
-                              {detail.enrollmentAlias || detail.studentNames}
-                            </TableCell>
-                            <TableCell>{detail.professorName}</TableCell>
-                            <TableCell>{detail.plan}</TableCell>
-                            <TableCell>
                               {detail.pauseDate
                                 ? formatDateForDisplay(detail.pauseDate)
                                 : "N/A"}
                             </TableCell>
                             <TableCell>
-                              ${detail.availableBalance.toFixed(2)}
+                              {detail.enrollmentAlias || detail.studentNames}
                             </TableCell>
+                            <TableCell>{detail.plan}</TableCell>
+                            <TableCell>{detail.professorName}</TableCell>
                             <TableCell className="text-right font-medium">
                               ${detail.excedente.toFixed(2)}
                             </TableCell>
@@ -2202,7 +2448,7 @@ function NewReportComponent() {
                     </TableBody>
                     <TableFooter>
                       <TableRow>
-                        <TableCell colSpan={5} className="text-right font-bold">
+                        <TableCell colSpan={4} className="text-right font-bold">
                           Total:
                         </TableCell>
                         <TableCell className="text-right font-bold">
@@ -2216,6 +2462,67 @@ function NewReportComponent() {
                   </Table>
                 </div>
               )}
+
+              {/* Dissolved Enrollments (dentro de excedente según doc API) */}
+              {reportData.excedente?.dissolvedEnrollments &&
+                reportData.excedente.dissolvedEnrollments.count > 0 && (
+                  <div className="border-t pt-2">
+                    <h3 className="text-lg font-semibold">
+                      Dissolved Enrollments
+                    </h3>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Student</TableHead>
+                          <TableHead>Plan</TableHead>
+                          <TableHead>Professor</TableHead>
+                          <TableHead>Balance transferred</TableHead>
+                          <TableHead className="text-right">Excedent</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {reportData.excedente.dissolvedEnrollments.details.map(
+                          (d) => (
+                            <TableRow key={d.enrollmentId}>
+                              <TableCell>
+                                {d.disolveDate
+                                  ? formatDateForDisplay(d.disolveDate)
+                                  : "N/A"}
+                              </TableCell>
+                              <TableCell>{d.studentNames}</TableCell>
+                              <TableCell>
+                                {d.enrollmentAlias?.trim() || d.plan}
+                              </TableCell>
+                              <TableCell>{d.professorName}</TableCell>
+                              <TableCell className="text-muted-foreground text-sm">
+                                {d.balance_transferred_to_enrollment
+                                  ? "Yes"
+                                  : "—"}
+                              </TableCell>
+                              <TableCell className="text-right font-medium">
+                                ${d.excedente.toFixed(2)}
+                              </TableCell>
+                            </TableRow>
+                          )
+                        )}
+                      </TableBody>
+                      <TableFooter>
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-right font-bold">
+                            Total:
+                          </TableCell>
+                          <TableCell className="text-right font-bold">
+                            $
+                            {reportData.excedente.dissolvedEnrollments.total.toFixed(
+                              2
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      </TableFooter>
+                    </Table>
+                  </div>
+                )}
 
               {/* Sección 5: Penalizaciones Monetarias de Estudiantes */}
               {reportData.excedente.penalizationDetails &&

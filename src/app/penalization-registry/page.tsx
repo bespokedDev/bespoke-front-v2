@@ -44,6 +44,10 @@ import type {
   StudentBrief,
 } from "./types";
 import {
+  getPenalizationStatusLabel,
+  getPenalizationStatusBadgeClass,
+} from "./types";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -102,7 +106,7 @@ export default function PenalizationRegistryPage() {
     penalizationType: "",
     entityType: "" as "" | "enrollment" | "professor" | "student",
     entityId: "",
-    status: "" as "" | "1" | "0",
+    status: "" as "" | "0" | "1" | "2",
     startDate: "",
     endDate: "",
   });
@@ -291,10 +295,12 @@ export default function PenalizationRegistryPage() {
       }
     }
 
-    // Filter by status
+    // Filter by status (0 = Inactive, 1 = Active, 2 = Paid)
     if (filters.status !== "") {
-      const statusNum = filters.status === "1" ? 1 : 0;
-      filtered = filtered.filter((r) => r.status === statusNum);
+      const statusNum = Number(filters.status);
+      if (statusNum === 0 || statusNum === 1 || statusNum === 2) {
+        filtered = filtered.filter((r) => r.status === statusNum);
+      }
     }
 
     // Filter by date range
@@ -702,13 +708,9 @@ export default function PenalizationRegistryPage() {
       ),
       cell: ({ row }) => (
         <span
-          className={`px-2 py-1 rounded-full text-xs font-semibold ${
-            row.original.status === 1
-              ? "bg-secondary/20 text-secondary"
-              : "bg-accent-1/20 text-accent-1"
-          }`}
+          className={`px-2 py-1 rounded-full text-xs font-semibold ${getPenalizationStatusBadgeClass(row.original.status)}`}
         >
-          {row.original.status === 1 ? "Active" : "Inactive"}
+          {getPenalizationStatusLabel(row.original.status)}
         </span>
       ),
     },
@@ -725,24 +727,27 @@ export default function PenalizationRegistryPage() {
           >
             <Eye className="h-4 w-4" />
           </Button>
-          {row.original.status === 1 ? (
-            <Button
-              size="icon"
-              variant="outline"
-              className="text-destructive border-destructive/50 hover:bg-destructive/10"
-              onClick={() => handleOpen("toggle-status", row.original)}
-            >
-              <Ban className="h-4 w-4" />
-            </Button>
-          ) : (
-            <Button
-              size="icon"
-              variant="outline"
-              className="text-secondary border-secondary/50 hover:bg-secondary/10"
-              onClick={() => handleOpen("toggle-status", row.original)}
-            >
-              <Check className="h-4 w-4" />
-            </Button>
+          {/* Only allow toggle for status 0 (Inactive) and 1 (Active); status 2 (Paid) cannot be changed */}
+          {(row.original.status === 0 || row.original.status === 1) && (
+            row.original.status === 1 ? (
+              <Button
+                size="icon"
+                variant="outline"
+                className="text-destructive border-destructive/50 hover:bg-destructive/10"
+                onClick={() => handleOpen("toggle-status", row.original)}
+              >
+                <Ban className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button
+                size="icon"
+                variant="outline"
+                className="text-secondary border-secondary/50 hover:bg-secondary/10"
+                onClick={() => handleOpen("toggle-status", row.original)}
+              >
+                <Check className="h-4 w-4" />
+              </Button>
+            )
           )}
         </div>
       ),
@@ -1128,9 +1133,7 @@ export default function PenalizationRegistryPage() {
                         <span className="text-left flex-1 truncate">
                           {filters.status === ""
                             ? "All statuses"
-                            : filters.status === "1"
-                            ? "Active"
-                            : "Inactive"}
+                            : getPenalizationStatusLabel(Number(filters.status))}
                         </span>
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
@@ -1166,6 +1169,20 @@ export default function PenalizationRegistryPage() {
                               }`}
                             />
                             Active
+                          </CommandItem>
+                          <CommandItem
+                            value="2"
+                            onSelect={() => {
+                              setFilters((prev) => ({ ...prev, status: "2" }));
+                              setFilterPopovers((prev) => ({ ...prev, status: false }));
+                            }}
+                          >
+                            <Check
+                              className={`mr-2 h-4 w-4 ${
+                                filters.status === "2" ? "opacity-100" : "opacity-0"
+                              }`}
+                            />
+                            Paid
                           </CommandItem>
                           <CommandItem
                             value="0"
@@ -1972,13 +1989,9 @@ export default function PenalizationRegistryPage() {
                 <div>
                   <Label className="text-sm font-semibold">Status</Label>
                   <span
-                    className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                      selectedRegistry.status === 1
-                        ? "bg-secondary/20 text-secondary"
-                        : "bg-accent-1/20 text-accent-1"
-                    }`}
+                    className={`px-2 py-1 rounded-full text-xs font-semibold ${getPenalizationStatusBadgeClass(selectedRegistry.status)}`}
                   >
-                    {selectedRegistry.status === 1 ? "Active" : "Inactive"}
+                    {getPenalizationStatusLabel(selectedRegistry.status)}
                   </span>
                 </div>
 
@@ -1998,20 +2011,30 @@ export default function PenalizationRegistryPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Toggle Status Dialog */}
+      {/* Toggle Status Dialog (only for status 0 or 1; status 2 Paid cannot be toggled) */}
       <Dialog open={openDialog === "toggle-status"} onOpenChange={handleClose}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {selectedRegistry?.status === 1 ? "Deactivate" : "Activate"} Penalization Registry
+              {selectedRegistry?.status === 2
+                ? "Penalization is paid"
+                : selectedRegistry?.status === 1
+                  ? "Deactivate Penalization Registry"
+                  : "Activate Penalization Registry"}
             </DialogTitle>
           </DialogHeader>
 
           {selectedRegistry && (
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Are you sure you want to {selectedRegistry.status === 1 ? "deactivate" : "activate"} this penalization registry?
-              </p>
+              {selectedRegistry.status === 2 ? (
+                <p className="text-sm text-muted-foreground">
+                  This penalization is marked as paid and cannot be activated or deactivated.
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Are you sure you want to {selectedRegistry.status === 1 ? "deactivate" : "activate"} this penalization registry?
+                </p>
+              )}
             </div>
           )}
 
@@ -2024,20 +2047,22 @@ export default function PenalizationRegistryPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={handleClose} disabled={isSubmitting}>
-              Cancel
+              {selectedRegistry?.status === 2 ? "Close" : "Cancel"}
             </Button>
-            <Button
-              variant={selectedRegistry?.status === 1 ? "destructive" : "default"}
-              onClick={() => {
-                if (selectedRegistry) {
-                  updateStatus(selectedRegistry._id, selectedRegistry.status === 1 ? 0 : 1);
-                }
-              }}
-              disabled={isSubmitting}
-            >
-              {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {selectedRegistry?.status === 1 ? "Deactivate" : "Activate"}
-            </Button>
+            {selectedRegistry?.status !== 2 && (
+              <Button
+                variant={selectedRegistry?.status === 1 ? "destructive" : "default"}
+                onClick={() => {
+                  if (selectedRegistry) {
+                    updateStatus(selectedRegistry._id, selectedRegistry.status === 1 ? 0 : 1);
+                  }
+                }}
+                disabled={isSubmitting}
+              >
+                {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {selectedRegistry?.status === 1 ? "Deactivate" : "Activate"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -44,7 +44,11 @@ export function EnrollmentsBalanceCard({
           <Label className="text-sm text-muted-foreground">
             Total Available Balance
           </Label>
-          <p className="text-3xl font-bold text-secondary">
+          <p
+            className={`text-3xl font-bold ${
+              totalBalance < 0 ? "text-destructive" : "text-secondary"
+            }`}
+          >
             ${totalBalance.toFixed(2)}
           </p>
         </div>

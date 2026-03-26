@@ -100,6 +100,9 @@ interface PenalizationRegistryBrief {
   enrollmentId?: {
     _id: string;
     alias?: string | null;
+    planId?: { _id: string; name: string } | null;
+    professorId?: { _id: string; name: string } | null;
+    studentNames?: string | null;
   } | null;
   professorId?: {
     _id: string;
@@ -122,7 +125,7 @@ interface Income {
   note: string;
   idPaymentMethod: PaymentMethod;
   idEnrollment: EnrollmentBrief;
-  idPenalization?: PenalizationRegistryBrief | null;
+  idPenalizationRegistry?: PenalizationRegistryBrief | null;
   income_date: string;
   createdAt: string;
   updatedAt: string;
@@ -138,7 +141,7 @@ type IncomeFormData = {
   note: string;
   idPaymentMethod: string;
   idEnrollment: string;
-  idPenalization?: string | null;
+  idPenalizationRegistry?: string | null;
 };
 
 interface SummaryItem {
@@ -159,7 +162,7 @@ const initialIncomeState: IncomeFormData = {
   note: "",
   idPaymentMethod: "",
   idEnrollment: "",
-  idPenalization: null,
+  idPenalizationRegistry: null,
 };
 
 const isEnrollmentStatusActive = (status: EnrollmentBrief["status"]) => {
@@ -236,13 +239,13 @@ export default function IncomesPage() {
         setProfessors(sortedProfessors);
         setDivisas(divisaData);
         setPaymentMethods(paymentMethodData);
-        
+
         // Procesar penalizaciones: solo activas (status = 1) con penalizationMoney > 0
         const penalizationsResponse = penalizationData;
         let penalizationsArray: PenalizationRegistryBrief[] = [];
         if (penalizationsResponse && typeof penalizationsResponse === "object" && "penalizations" in penalizationsResponse) {
-          penalizationsArray = Array.isArray(penalizationsResponse.penalizations) 
-            ? penalizationsResponse.penalizations 
+          penalizationsArray = Array.isArray(penalizationsResponse.penalizations)
+            ? penalizationsResponse.penalizations
             : [];
         } else if (Array.isArray(penalizationsResponse)) {
           penalizationsArray = penalizationsResponse;
@@ -342,7 +345,7 @@ export default function IncomesPage() {
         note: income.note || "",
         idPaymentMethod: income.idPaymentMethod?._id || "",
         idEnrollment: income.idEnrollment?._id || "",
-        idPenalization: income.idPenalization?._id || null,
+        idPenalizationRegistry: income.idPenalizationRegistry?._id || null,
       });
     } else if (income) {
       setSelectedIncome(income);
@@ -389,16 +392,16 @@ export default function IncomesPage() {
       return;
     }
 
-    // Validation: idPenalization must be a valid ObjectId if provided
-    if (formData.idPenalization && formData.idPenalization.trim() !== "") {
+    // Validation: idPenalizationRegistry must be a valid ObjectId if provided
+    if (formData.idPenalizationRegistry && formData.idPenalizationRegistry.trim() !== "") {
       const objectIdRegex = /^[0-9a-fA-F]{24}$/;
-      if (!objectIdRegex.test(formData.idPenalization)) {
+      if (!objectIdRegex.test(formData.idPenalizationRegistry)) {
         setDialogError("Invalid penalization ID format.");
         return;
       }
       // Verify that the penalization exists and is active
       const selectedPenalization = penalizations.find(
-        (p) => p._id === formData.idPenalization
+        (p) => p._id === formData.idPenalizationRegistry
       );
       if (!selectedPenalization) {
         setDialogError("Selected penalization is not available or has been deactivated.");
@@ -415,7 +418,7 @@ export default function IncomesPage() {
         selectedDivisa &&
         (selectedDivisa.name.toLowerCase() === "dollar" ||
           selectedDivisa.name.toLowerCase() === "dólar");
-      
+
       const amountInDollars = isDollar || !formData.tasa || formData.tasa <= 0
         ? formData.amount
         : formData.amount / formData.tasa;
@@ -436,12 +439,12 @@ export default function IncomesPage() {
         note: formData.note || undefined,
         tasa: formData.tasa && formData.tasa > 0 ? formData.tasa : undefined,
       };
-      
-      // Add idPenalization only if provided
-      if (formData.idPenalization && formData.idPenalization.trim() !== "") {
-        incomePayload.idPenalization = formData.idPenalization;
+
+      // Add idPenalizationRegistry only if provided
+      if (formData.idPenalizationRegistry && formData.idPenalizationRegistry.trim() !== "") {
+        incomePayload.idPenalizationRegistry = formData.idPenalizationRegistry;
       } else {
-        incomePayload.idPenalization = null;
+        incomePayload.idPenalizationRegistry = null;
       }
 
       console.log("incomePayload", incomePayload);
@@ -475,10 +478,10 @@ export default function IncomesPage() {
         errorInfo.isValidationError
           ? "Please check all required fields and try again."
           : errorInfo.isNotFoundError
-          ? "Income not found."
-          : errorInfo.isConflictError
-          ? "An income with this information already exists."
-          : "Failed to save income. Please try again."
+            ? "Income not found."
+            : errorInfo.isConflictError
+              ? "An income with this information already exists."
+              : "Failed to save income. Please try again."
       );
       setDialogError(errorMessage);
     } finally {
@@ -512,8 +515,8 @@ export default function IncomesPage() {
         errorInfo.isNotFoundError
           ? "Income not found"
           : errorInfo.isValidationError
-          ? "Invalid income ID"
-          : "Failed to delete income. Please try again."
+            ? "Invalid income ID"
+            : "Failed to delete income. Please try again."
       );
       setDialogError(errorMessage);
     } finally {
@@ -523,15 +526,15 @@ export default function IncomesPage() {
 
   const stringLocaleSort =
     (locale = "es") =>
-    (rowA: any, rowB: any, columnId: string) => {
-      const a = (rowA.getValue(columnId) ?? "").toString();
-      const b = (rowB.getValue(columnId) ?? "").toString();
-      return a.localeCompare(b, locale, {
-        numeric: true,
-        sensitivity: "base",
-        ignorePunctuation: true,
-      });
-    };
+      (rowA: any, rowB: any, columnId: string) => {
+        const a = (rowA.getValue(columnId) ?? "").toString();
+        const b = (rowB.getValue(columnId) ?? "").toString();
+        return a.localeCompare(b, locale, {
+          numeric: true,
+          sensitivity: "base",
+          ignorePunctuation: true,
+        });
+      };
 
   const columns = useMemo<ColumnDef<Income, any>[]>(() => {
     return [
@@ -826,10 +829,19 @@ export default function IncomesPage() {
       >
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="flex flex-wrap items-center gap-2">
               {openDialog === "create" && "Register New Income"}
               {openDialog === "edit" && "Edit Income"}
-              {openDialog === "view" && "Income Details"}
+              {openDialog === "view" && (
+                <>
+                  Income Details
+                  {selectedIncome?.idPenalizationRegistry && (
+                    <span className="inline-flex items-center rounded-md bg-primary/15 px-2.5 py-0.5 text-xs font-medium text-primary border border-primary/30">
+                      Penalization payment
+                    </span>
+                  )}
+                </>
+              )}
             </DialogTitle>
           </DialogHeader>
           {(openDialog === "create" || openDialog === "edit") && (
@@ -1014,6 +1026,7 @@ export default function IncomesPage() {
                     parts.push(`$${(p.penalizationMoney || 0).toFixed(2)}`);
                     if (p.idPenalizacion?.name) parts.push(`(${p.idPenalizacion.name})`);
                     if (p.enrollmentId?.alias) parts.push(`Enr: ${p.enrollmentId.alias}`);
+                    else if (p.enrollmentId?.studentNames) parts.push(`Enr: ${p.enrollmentId.studentNames}`);
                     else if (p.professorId?.name) parts.push(`Prof: ${p.professorId.name}`);
                     else if (p.studentId?.name) parts.push(`Stud: ${p.studentId.name}`);
                     return {
@@ -1021,9 +1034,9 @@ export default function IncomesPage() {
                       name: parts.join(" - "),
                     };
                   })}
-                  selectedId={formData.idPenalization || ""}
+                  selectedId={formData.idPenalizationRegistry || ""}
                   onSelectedChange={(v) =>
-                    setFormData((p) => ({ ...p, idPenalization: v || null }))
+                    setFormData((p) => ({ ...p, idPenalizationRegistry: v || null }))
                   }
                   placeholder="Select a penalization (optional)..."
                 />
@@ -1063,6 +1076,24 @@ export default function IncomesPage() {
 
           {openDialog === "view" && selectedIncome && (
             <div className="space-y-6 max-h-[70vh] overflow-y-auto p-1 pr-4">
+              {/* Purpose: Penalization payment vs general income */}
+              {selectedIncome.idPenalizationRegistry ? (
+                <div className="rounded-lg border border-primary/30 bg-primary/10 p-4">
+                  <p className="text-sm font-semibold text-primary">
+                    This income is for paying a penalization.
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    The amount below is applied to the linked penalization. Enrollment balance may also be updated if the income is associated with an enrollment.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-border bg-muted/50 p-3">
+                  <p className="text-sm text-muted-foreground">
+                    General income (not linked to a penalization).
+                  </p>
+                </div>
+              )}
+
               {/* Deposit Name and Date */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
                 <div>
@@ -1126,51 +1157,60 @@ export default function IncomesPage() {
                   <p className="text-sm">
                     {selectedIncome.idEnrollment
                       ? (() => {
-                          const enrollment = selectedIncome.idEnrollment;
-                          const studentNames = enrollment.studentIds?.map((s) => s.studentId?.name).join(", ") || "";
-                          const primaryText = enrollment.alias || studentNames;
-                          const planName = enrollment.planId?.name || "";
-                          return planName ? `${primaryText} - ${planName}` : primaryText || "N/A";
-                        })()
+                        const enrollment = selectedIncome.idEnrollment;
+                        const studentNames = enrollment.studentIds?.map((s) => s.studentId?.name).join(", ") || "";
+                        const primaryText = enrollment.alias || studentNames;
+                        const planName = enrollment.planId?.name || "";
+                        return planName ? `${primaryText} - ${planName}` : primaryText || "N/A";
+                      })()
                       : "N/A"}
                   </p>
                 </div>
               </div>
 
-              {/* Penalization */}
-              {selectedIncome.idPenalization && (
-                <div>
-                  <Label className="font-semibold">Penalization</Label>
-                  <div className="mt-1 p-3 bg-muted rounded-md">
-                    <p className="text-sm font-medium">
-                      {selectedIncome.idPenalization.penalization_description}
+              {/* Penalization being paid (only when this income is a penalization payment) */}
+              {selectedIncome.idPenalizationRegistry && (
+                <div className="space-y-2">
+                  <Label className="font-semibold text-foreground">
+                    Penalization being paid
+                  </Label>
+                  <div className="mt-1 p-4 rounded-lg border border-primary/20 bg-primary/5">
+                    <p className="text-sm font-medium text-foreground">
+                      {selectedIncome.idPenalizationRegistry.penalization_description}
                     </p>
-                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-muted-foreground">
-                      {selectedIncome.idPenalization.penalizationMoney && (
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                      {selectedIncome.idPenalizationRegistry.penalizationMoney != null && selectedIncome.idPenalizationRegistry.penalizationMoney > 0 && (
                         <p>
-                          <span className="font-semibold">Amount:</span> ${selectedIncome.idPenalization.penalizationMoney.toFixed(2)}
+                          <span className="font-semibold text-muted-foreground">Amount:</span>{" "}
+                          <span className="font-medium text-destructive">${selectedIncome.idPenalizationRegistry.penalizationMoney.toFixed(2)}</span>
                         </p>
                       )}
-                      {selectedIncome.idPenalization.idPenalizacion && (
+                      {selectedIncome.idPenalizationRegistry.idPenalizacion && (
                         <p>
-                          <span className="font-semibold">Type:</span> {selectedIncome.idPenalization.idPenalizacion.name}
+                          <span className="font-semibold text-muted-foreground">Type:</span>{" "}
+                          {selectedIncome.idPenalizationRegistry.idPenalizacion.name}
                         </p>
                       )}
-                      {selectedIncome.idPenalization.enrollmentId && (
-                        <p>
-                          <span className="font-semibold">Enrollment:</span> {selectedIncome.idPenalization.enrollmentId.alias || "N/A"}
-                        </p>
-                      )}
-                      {selectedIncome.idPenalization.professorId && (
-                        <p>
-                          <span className="font-semibold">Professor:</span> {selectedIncome.idPenalization.professorId.name}
-                        </p>
-                      )}
-                      {selectedIncome.idPenalization.studentId && (
-                        <p>
-                          <span className="font-semibold">Student:</span> {selectedIncome.idPenalization.studentId.name}
-                        </p>
-                      )}
+                      {selectedIncome.idPenalizationRegistry.enrollmentId && (() => {
+                        const enr = selectedIncome.idPenalizationRegistry.enrollmentId;
+                        const enrollmentLabel =
+                          enr.alias || enr.studentNames || "N/A";
+                        const planPart = enr.planId?.name
+                          ? ` ${enr.planId.name}`
+                          : "";
+                        const professorPart = enr.professorId?.name
+                          ? ` ${enr.professorId.name}`
+                          : "";
+                        const parts = [enrollmentLabel, planPart, professorPart].filter(Boolean);
+                        return (
+                          <p>
+                            <span className="font-semibold text-muted-foreground">
+                              Enrollment (penalization):
+                            </span>{" "}
+                            {parts.join(" - ")}
+                          </p>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>

@@ -100,7 +100,7 @@ export default function StudentProfilePage() {
           enrollmentStatistics: infoResponse.enrollmentStatistics,
           incomeHistory: infoResponse.incomeHistory,
         };
-        console.log("studentInfoData", data);
+        console.log("studentInfoData!!", data);
         setStudentInfo(data);
       } catch (infoErr) {
         // If info endpoint fails, we can still show student profile
@@ -200,14 +200,35 @@ export default function StudentProfilePage() {
             <CardContent>
               {studentInfo ? (
                 <div className="space-y-6">
-                  <div className="text-center p-6 bg-secondary/10 rounded-lg">
-                    <Label className="text-sm text-muted-foreground">
-                      Total Available Balance
-                    </Label>
-                    <p className="text-4xl font-bold text-secondary mt-2">
-                      ${studentInfo.totalAvailableBalance.toFixed(2)}
-                    </p>
-                  </div>
+                  {(() => {
+                    const totalAvailable =
+                      studentInfo.totalAvailableBalance ?? 0;
+                    const totalAmount = studentInfo.totalAmount ?? 0;
+                    const totalBalancePerClass =
+                      studentInfo.totalBalancePerClass ?? 0;
+                    const totalBalance =
+                      totalAvailable >= totalAmount
+                        ? totalAvailable -
+                          totalAmount +
+                          totalBalancePerClass
+                        : totalAvailable - totalAmount;
+                    return (
+                      <div className="text-center p-6 bg-secondary/10 rounded-lg">
+                        <Label className="text-sm text-muted-foreground">
+                          Total Available Balance
+                        </Label>
+                        <p
+                          className={`text-4xl font-bold mt-2 ${
+                            totalBalance < 0
+                              ? "text-destructive"
+                              : "text-secondary"
+                          }`}
+                        >
+                          ${totalBalance.toFixed(2)}
+                        </p>
+                      </div>
+                    );
+                  })()}
 
                   <div className="space-y-4">
                     <h3 className="text-lg font-semibold">

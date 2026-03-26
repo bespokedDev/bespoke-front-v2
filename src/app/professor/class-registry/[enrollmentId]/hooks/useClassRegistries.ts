@@ -502,18 +502,23 @@ export function useClassRegistries(
   const handleCreateReschedule = useCallback(async (registryId: string, classDate: string) => {
     setIsCreatingReschedule(true);
     
-    // Validar que la fecha no sea anterior a la fecha actual
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Resetear horas para comparar solo fechas
-    const selectedDate = new Date(classDate);
-    selectedDate.setHours(0, 0, 0, 0);
-    
-    if (selectedDate < today) {
-      setIsCreatingReschedule(false);
-      window.alert(
-        "The reschedule date cannot be before today's date. Please select today's date or a future date."
-      );
-      return;
+    // Validar que la fecha no sea anterior a la fecha actual (excepto para admin)
+    const userRole = user?.role?.toLowerCase();
+    const isAdmin = userRole === "admin";
+
+    if (!isAdmin) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Resetear horas para comparar solo fechas
+      const selectedDate = new Date(classDate);
+      selectedDate.setHours(0, 0, 0, 0);
+
+      if (selectedDate < today) {
+        setIsCreatingReschedule(false);
+        window.alert(
+          "The reschedule date cannot be before today's date. Please select today's date or a future date."
+        );
+        return;
+      }
     }
 
     // Obtener la información de la clase original para validaciones
@@ -536,7 +541,6 @@ export function useClassRegistries(
     }
 
     // Obtener professorId o userId según el rol del usuario
-    const userRole = user?.role?.toLowerCase();
     const professorId = userRole === "professor" ? user?.id : undefined;
     const userId = userRole === "admin" ? user?.id : undefined;
 

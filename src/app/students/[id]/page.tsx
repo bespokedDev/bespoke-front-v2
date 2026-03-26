@@ -289,8 +289,8 @@ export default function StudentDetailPage() {
         errorInfo.isValidationError
           ? "Please check all required fields and try again."
           : errorInfo.isConflictError
-          ? "A student with this information already exists."
-          : "Failed to save student. Please try again."
+            ? "A student with this information already exists."
+            : "Failed to save student. Please try again."
       );
       setDialogError(errorMessage);
     } finally {
@@ -524,13 +524,12 @@ export default function StudentDetailPage() {
                       Status
                     </Label>
                     <span
-                      className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                        student.status === 1
+                      className={`px-2 py-1 rounded-full text-xs font-semibold ${student.status === 1
                           ? "bg-secondary/20 text-secondary"
                           : student.status === 0
-                          ? "bg-accent-1/20 text-accent-1"
-                          : "bg-yellow-100 text-yellow-800"
-                      }`}
+                            ? "bg-accent-1/20 text-accent-1"
+                            : "bg-yellow-100 text-yellow-800"
+                        }`}
                     >
                       {student.status === 1 ? "Active" : "Inactive"}
                     </span>
@@ -933,13 +932,12 @@ export default function StudentDetailPage() {
                               Status
                             </Label>
                             <span
-                              className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                student.status === 1
+                              className={`px-2 py-1 rounded-full text-xs font-semibold ${student.status === 1
                                   ? "bg-secondary/20 text-secondary"
                                   : student.status === 0
-                                  ? "bg-accent-1/20 text-accent-1"
-                                  : "bg-yellow-100 text-yellow-800"
-                              }`}
+                                    ? "bg-accent-1/20 text-accent-1"
+                                    : "bg-yellow-100 text-yellow-800"
+                                }`}
                             >
                               {student.status === 1 ? "Active" : "Inactive"}
                             </span>
@@ -1268,7 +1266,14 @@ export default function StudentDetailPage() {
           {/* Tab: Enrollments */}
           <TabsContent value="enrollments">
             <EnrollmentsBalanceCard
-              totalBalance={(studentInfo?.totalAvailableBalance ?? 0) - (studentInfo?.totalAmount ?? 0)}
+              totalBalance={(() => {
+                const totalAvailable = studentInfo?.totalAvailableBalance ?? 0;
+                const totalAmount = studentInfo?.totalAmount ?? 0;
+                const totalBalancePerClass = studentInfo?.totalBalancePerClass ?? 0;
+                return totalAvailable >= totalAmount
+                  ? totalAvailable - totalAmount + totalBalancePerClass
+                  : totalAvailable - totalAmount;
+              })()}
               enrollments={studentInfo?.enrollmentDetails ?? []}
               onViewEnrollment={handleViewEnrollment}
               isLoading={!studentInfo}
@@ -1359,8 +1364,8 @@ export default function StudentDetailPage() {
                             )}
                             {groupIndex <
                               (studentInfo.incomeHistory?.length ?? 0) - 1 && (
-                              <div className="border-t my-6" />
-                            )}
+                                <div className="border-t my-6" />
+                              )}
                           </div>
                         )
                       )}
@@ -1421,7 +1426,7 @@ export default function StudentDetailPage() {
                     studentInfo.rescheduleClasses.total > 0 && (
                       <div className="space-y-2">
                         <Label className="font-semibold">
-                          Classes in Reschedule
+                          Total Reschedule Classes
                         </Label>
                         <p className="text-2xl font-bold">
                           {studentInfo.rescheduleClasses.total}
@@ -1435,8 +1440,8 @@ export default function StudentDetailPage() {
                     <p className="text-2xl font-bold">
                       {studentInfo?.rescheduleTime?.totalAvailableHours
                         ? `${studentInfo.rescheduleTime.totalAvailableHours.toFixed(
-                            2
-                          )} hrs`
+                          2
+                        )} hrs`
                         : "0 hrs"}
                     </p>
                   </div>
@@ -1537,7 +1542,7 @@ export default function StudentDetailPage() {
                                 {stat.rescheduleClasses && (
                                   <div className="space-y-1">
                                     <Label className="text-xs text-muted-foreground">
-                                      Reschedule Classes
+                                      Reschedule Classes Pending
                                     </Label>
                                     <p className="font-semibold">
                                       {stat.rescheduleClasses.total}

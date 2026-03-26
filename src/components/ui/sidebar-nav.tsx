@@ -89,8 +89,9 @@ interface SidebarNavProps {
 export function SidebarNav({ isMobileOpen = false, onMobileClose }: SidebarNavProps) {
   const pathname = usePathname();
   const { user } = useAuth();
-  // Sidebar colapsado por defecto
+  // Sidebar colapsado por defecto; se expande al clic en hamburguesa o en icono de desplegable
   const [collapsed, setCollapsed] = useState(true);
+  const isExpanded = !collapsed;
   // Estado para manejar los submenús abiertos
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({
     Accounting: false,
@@ -124,6 +125,20 @@ export function SidebarNav({ isMobileOpen = false, onMobileClose }: SidebarNavPr
     }));
   };
 
+  // Al hacer clic en un ítem con submenú: si está colapsado, expandir y abrir el submenú; si no, solo toggle
+  const handleDropdownClick = (itemTitle: string, isMobile: boolean) => {
+    if (isMobile) {
+      toggleSubmenu(itemTitle);
+      return;
+    }
+    if (collapsed) {
+      setCollapsed(false);
+      setOpenSubmenus((prev) => ({ ...prev, [itemTitle]: true }));
+    } else {
+      toggleSubmenu(itemTitle);
+    }
+  };
+
   // Función helper para renderizar el contenido del nav
   const renderNavContent = (isMobile = false) => (
     <nav className="flex flex-col gap-1 p-2">
@@ -132,27 +147,23 @@ export function SidebarNav({ isMobileOpen = false, onMobileClose }: SidebarNavPr
           // Renderiza un grupo de submenú
           <div key={item.title}>
             <button
-              onClick={() => {
-                if (isMobile || !collapsed) {
-                  toggleSubmenu(item.title);
-                }
-              }}
+              onClick={() => handleDropdownClick(item.title, isMobile)}
               className={cn(
                 "flex items-center w-full gap-3 px-4 py-2 text-sm rounded-md transition-colors justify-start",
                 // Lógica para resaltar el padre si un hijo está activo
                 item.subItems.some((sub) => pathname === sub.href)
                   ? "text-primary dark:text-white font-semibold"
                   : "text-light-text hover:bg-primary/10 dark:text-dark-text dark:hover:bg-primary/20",
-                !isMobile && collapsed && "justify-center"
+                !isMobile && !isExpanded && "justify-center"
               )}
             >
               <item.icon className="h-5 w-5 shrink-0" />
-              {(!collapsed || isMobile) && (
+              {(isExpanded || isMobile) && (
                 <span className="truncate flex-1 text-left">
                   {item.title}
                 </span>
               )}
-              {(!collapsed || isMobile) && (
+              {(isExpanded || isMobile) && (
                 <ChevronDown
                   className={cn(
                     "h-4 w-4 transition-transform",
@@ -162,7 +173,7 @@ export function SidebarNav({ isMobileOpen = false, onMobileClose }: SidebarNavPr
               )}
             </button>
             {/* Renderiza los sub-ítems si el submenú está abierto */}
-            {((!collapsed || isMobile) && openSubmenus[item.title]) && (
+            {((isExpanded || isMobile) && openSubmenus[item.title]) && (
               <div className="flex flex-col gap-1 pt-1 pl-6">
                 {item.subItems.map((subItem) => (
                   <Link
@@ -194,11 +205,11 @@ export function SidebarNav({ isMobileOpen = false, onMobileClose }: SidebarNavPr
               pathname === item.href || pathname.startsWith(item.href + "/")
                 ? "bg-secondary text-white hover:bg-secondary/90"
                 : "text-light-text hover:bg-primary hover:text-white dark:text-dark-text dark:hover:text-white",
-              !isMobile && collapsed && "justify-center"
+              !isMobile && !isExpanded && "justify-center"
             )}
           >
             <item.icon className="h-5 w-5 shrink-0" />
-            {(!collapsed || isMobile) && <span className="truncate">{item.title}</span>}
+            {(isExpanded || isMobile) && <span className="truncate">{item.title}</span>}
           </Link>
         )
       )}
@@ -207,15 +218,15 @@ export function SidebarNav({ isMobileOpen = false, onMobileClose }: SidebarNavPr
 
   return (
     <>
-      {/* Sidebar Desktop */}
+      {/* Sidebar Desktop: se expande con el botón o al clic en icono de desplegable */}
       <aside
         className={cn(
           "hidden md:block min-h-screen border-r border-border bg-card dark:bg-card transition-all duration-300",
-          collapsed ? "w-16" : "w-64"
+          isExpanded ? "w-64" : "w-16"
         )}
       >
       <div className="flex items-center justify-between px-4 py-4">
-        {!collapsed && (
+        {isExpanded && (
           <div className="flex items-center gap-2">
             {/*<Image src="/logo.png" alt="Logo" width={32} height={32} />*/}
             <span className="font-bold text-lg text-card-foreground">Bespoke</span>
@@ -224,8 +235,9 @@ export function SidebarNav({ isMobileOpen = false, onMobileClose }: SidebarNavPr
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="p-2 rounded-md hover:bg-accent/10"
+          title={!isExpanded ? "Expand sidebar" : "Collapse sidebar"}
         >
-          {collapsed ? (
+          {!isExpanded ? (
             <Menu className="h-5 w-5" />
           ) : (
             <ChevronLeft className="h-5 w-5" />

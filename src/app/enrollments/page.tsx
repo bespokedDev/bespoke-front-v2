@@ -89,6 +89,8 @@ export default function EnrollmentsPage() {
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [openDisolveDialog, setOpenDisolveDialog] = useState(false);
   const [disolveReason, setDisolveReason] = useState("");
+  const [transferToEnrollmentId, setTransferToEnrollmentId] = useState<string | null>(null);
+  const TRANSFER_NONE = "__none__"; // sentinel for "no transfer" (Radix Select does not allow value="")
   const [openPauseDialog, setOpenPauseDialog] = useState(false);
   const [openResumeDialog, setOpenResumeDialog] = useState(false);
   const [resumeStartDate, setResumeStartDate] = useState("");
@@ -200,20 +202,30 @@ export default function EnrollmentsPage() {
   const handleDisolveClose = () => {
     setOpenDisolveDialog(false);
     setDisolveReason("");
+    setTransferToEnrollmentId(null);
   };
 
   const handleDisolveConfirm = async () => {
     if (!selectedEnrollment || !disolveReason.trim()) return;
-    
+    if (transferToEnrollmentId === selectedEnrollment._id) return; // no enviar mismo ID
+
     setIsSubmitting(true);
     try {
+      const body: { disolve_reason: string; transfer_to_enrollment_id?: string } = {
+        disolve_reason: disolveReason.trim(),
+      };
+      if (
+        transferToEnrollmentId &&
+        transferToEnrollmentId !== TRANSFER_NONE &&
+        transferToEnrollmentId !== selectedEnrollment._id
+      ) {
+        body.transfer_to_enrollment_id = transferToEnrollmentId.trim();
+      }
       const response = await apiClient(
         `api/enrollments/${selectedEnrollment._id}/disolve`,
         {
           method: "PATCH",
-          body: JSON.stringify({
-            disolve_reason: disolveReason.trim(),
-          }),
+          body: JSON.stringify(body),
         }
       );
 
@@ -997,6 +1009,50 @@ export default function EnrollmentsPage() {
                 rows={4}
                 required
               />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-muted-foreground font-normal">
+                Transfer remaining balance to another enrollment (optional)
+              </Label>
+              <Select
+                value={transferToEnrollmentId ?? TRANSFER_NONE}
+                onValueChange={(v) => setTransferToEnrollmentId(v === TRANSFER_NONE ? null : v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="None (no transfer)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={TRANSFER_NONE}>
+                    None (no transfer)
+                  </SelectItem>
+                  {enrollments
+                    .filter(
+                      (e) =>
+                        e._id !== selectedEnrollment?._id && e.status === 1
+                    )
+                    .map((e) => {
+                      const label =
+                        e.alias?.trim() ||
+                        (e.studentIds as { studentId?: string | { name?: string }; name?: string }[])
+                          ?.map((s) =>
+                            typeof s.studentId === "object" && s.studentId?.name
+                              ? s.studentId.name
+                              : typeof s === "object" && "name" in s
+                                ? (s as { name: string }).name
+                                : students.find((st) => st._id === (s as { studentId?: string }).studentId)?.name ?? "N/A"
+                          )
+                          .filter((n) => n && n !== "N/A")
+                          .join(", ") ||
+                        (e.planId as Plan)?.name ||
+                        e._id;
+                      return (
+                        <SelectItem key={e._id} value={e._id}>
+                          {label}
+                        </SelectItem>
+                      );
+                    })}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>
